@@ -223,6 +223,21 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 
 // handleFocusSwitch checks for focus switching keys
 func (lm *LayoutManager) handleFocusSwitch(event tcell.Event) bool {
+	// Handle mouse clicks to change focus
+	if ev, ok := event.(*tcell.EventMouse); ok {
+		if ev.Buttons() == tcell.Button1 {
+			x, _ := ev.Position()
+			newPanel := lm.panelAtX(x)
+			if newPanel != lm.ActivePanel && newPanel >= 0 {
+				log.Printf("THOCK: Mouse click at x=%d, switching focus from panel %d to %d", x, lm.ActivePanel, newPanel)
+				lm.setActivePanel(newPanel)
+				// Don't consume the event - let the panel handle the click too
+			}
+		}
+		return false // Let the panel also handle mouse events
+	}
+
+	// Handle keyboard focus switching
 	ev, ok := event.(*tcell.EventKey)
 	if !ok {
 		return false
@@ -237,6 +252,34 @@ func (lm *LayoutManager) handleFocusSwitch(event tcell.Event) bool {
 	}
 
 	return false
+}
+
+// panelAtX returns which panel is at the given x coordinate
+// Returns: 0=filebrowser, 1=editor, 2=terminal, -1=none
+func (lm *LayoutManager) panelAtX(x int) int {
+	treeWidth := lm.getTreeWidth()
+	leftPanelsWidth := lm.getLeftPanelsWidth()
+
+	if x < treeWidth {
+		if lm.FileBrowser != nil {
+			return 0
+		}
+	} else if x < leftPanelsWidth {
+		return 1
+	} else {
+		lm.mu.RLock()
+		hasTerminal := lm.Terminal != nil
+		lm.mu.RUnlock()
+		if hasTerminal {
+			return 2
+		}
+	}
+	return -1
+}
+
+// setActivePanel changes the active panel (focus states update on next render)
+func (lm *LayoutManager) setActivePanel(panel int) {
+	lm.ActivePanel = panel
 }
 
 // cycleFocus cycles to the next panel

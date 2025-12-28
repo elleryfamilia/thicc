@@ -81,26 +81,55 @@ var SelectedUnfocusedStyle = tcell.StyleDefault.
 
 // renderNode renders a single tree node
 func (p *Panel) renderNode(screen tcell.Screen, y int, node *filemanager.TreeNode, isSelected bool, panelFocused bool) {
+	// Determine selection style
+	var selStyle tcell.Style
+	if isSelected {
+		if panelFocused {
+			selStyle = FocusedStyle
+		} else {
+			selStyle = SelectedUnfocusedStyle
+		}
+		// Fill entire line with selection background first
+		for i := 0; i < p.Region.Width; i++ {
+			screen.SetContent(p.Region.X+i, p.Region.Y+y, ' ', nil, selStyle)
+		}
+	}
+
 	x := 1 // Left padding
 
 	// Indentation (1 space per level to save horizontal space)
 	indent := strings.Repeat(" ", node.Indent)
-	x += p.drawText(screen, x, y, indent, DefaultStyle)
+	style := DefaultStyle
+	if isSelected {
+		style = selStyle
+	}
+	x += p.drawText(screen, x, y, indent, style)
 
 	// Expansion indicator for directories
 	if node.IsDir {
+		style = DirectoryStyle
+		if isSelected {
+			style = selStyle
+		}
 		if node.Expanded {
-			x += p.drawText(screen, x, y, "▼ ", DirectoryStyle)
+			x += p.drawText(screen, x, y, "▼ ", style)
 		} else {
-			x += p.drawText(screen, x, y, "▶ ", DirectoryStyle)
+			x += p.drawText(screen, x, y, "▶ ", style)
 		}
 	} else {
-		x += p.drawText(screen, x, y, "  ", DefaultStyle)
+		style = DefaultStyle
+		if isSelected {
+			style = selStyle
+		}
+		x += p.drawText(screen, x, y, "  ", style)
 	}
 
 	// Icon with color based on file type
 	icon := filemanager.IconForNode(node)
 	iconStyle := StyleForPath(node.Path, node.IsDir)
+	if isSelected {
+		iconStyle = selStyle
+	}
 	x += p.drawText(screen, x, y, icon+" ", iconStyle)
 
 	// Name
@@ -111,56 +140,20 @@ func (p *Panel) renderNode(screen tcell.Screen, y int, node *filemanager.TreeNod
 
 	// Truncate if needed
 	maxWidth := p.Region.Width - x - 2
-	if len(name) > maxWidth {
+	if maxWidth > 0 && len(name) > maxWidth {
 		name = name[:maxWidth-3] + "..."
 	}
 
-	// Choose style for name (white for files, blue for directories)
-	var nameStyle tcell.Style
+	// Choose style for name
+	nameStyle := FileStyle
 	if node.IsDir {
 		nameStyle = DirectoryStyle
-	} else {
-		nameStyle = FileStyle
 	}
-
-	// Override with selection style if selected
-	style := nameStyle
 	if isSelected {
-		if panelFocused {
-			style = FocusedStyle
-		} else {
-			style = SelectedUnfocusedStyle
-		}
+		nameStyle = selStyle
 	}
 
-	// Fill the rest of the line with the selection style if selected
-	if isSelected {
-		// Choose selection style based on focus
-		selStyle := SelectedUnfocusedStyle
-		if panelFocused {
-			selStyle = FocusedStyle
-		}
-
-		// Draw selection background for entire line
-		for i := 0; i < p.Region.Width-1; i++ {
-			screen.SetContent(p.Region.X+i, p.Region.Y+y, ' ', nil, selStyle)
-		}
-		// Redraw the text we already drew with selection style
-		x = 1
-		x += len(indent)
-		if node.IsDir {
-			if node.Expanded {
-				p.drawText(screen, x, y, "▼ ", selStyle)
-			} else {
-				p.drawText(screen, x, y, "▶ ", selStyle)
-			}
-		}
-		x += 2
-		p.drawText(screen, x, y, icon+" ", selStyle)
-		x += len(icon) + 1
-	}
-
-	p.drawText(screen, x, y, name, style)
+	p.drawText(screen, x, y, name, nameStyle)
 }
 
 // drawText draws text at the given position and returns the number of characters drawn
