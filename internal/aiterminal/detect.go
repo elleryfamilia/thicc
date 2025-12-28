@@ -1,0 +1,172 @@
+package aiterminal
+
+import (
+	"os"
+	"os/exec"
+	"strings"
+)
+
+// AITool represents an AI CLI tool
+type AITool struct {
+	Name        string // Display name
+	Command     string // Command to execute
+	Args        []string // Default arguments
+	Description string
+	Available   bool
+}
+
+// GetAvailableAITools detects which AI CLI tools are installed
+func GetAvailableAITools() []AITool {
+	tools := []AITool{
+		{
+			Name:        "Claude Code",
+			Command:     "claude",
+			Args:        []string{},
+			Description: "Anthropic's Claude Code CLI",
+		},
+		{
+			Name:        "Aider",
+			Command:     "aider",
+			Args:        []string{},
+			Description: "AI pair programming in your terminal",
+		},
+		{
+			Name:        "GitHub Copilot",
+			Command:     "gh",
+			Args:        []string{"copilot"},
+			Description: "GitHub Copilot CLI",
+		},
+		{
+			Name:        "Gemini CLI",
+			Command:     "gemini",
+			Args:        []string{},
+			Description: "Google's Gemini CLI",
+		},
+		{
+			Name:        "ChatGPT CLI",
+			Command:     "chatgpt",
+			Args:        []string{},
+			Description: "OpenAI ChatGPT CLI",
+		},
+		{
+			Name:        "OpenAI CLI",
+			Command:     "openai",
+			Args:        []string{},
+			Description: "OpenAI official CLI",
+		},
+		{
+			Name:        "Shell (default)",
+			Command:     getShell(),
+			Args:        []string{},
+			Description: "Your default shell",
+			Available:   true, // Always available
+		},
+	}
+
+	// Check which tools are available
+	for i := range tools {
+		if tools[i].Available {
+			continue // Already marked as available
+		}
+		tools[i].Available = isCommandAvailable(tools[i].Command)
+	}
+
+	return tools
+}
+
+// GetAvailableToolsOnly returns only the tools that are installed
+func GetAvailableToolsOnly() []AITool {
+	all := GetAvailableAITools()
+	available := make([]AITool, 0)
+
+	for _, tool := range all {
+		if tool.Available {
+			available = append(available, tool)
+		}
+	}
+
+	return available
+}
+
+// isCommandAvailable checks if a command is available in PATH
+func isCommandAvailable(command string) bool {
+	_, err := exec.LookPath(command)
+	return err == nil
+}
+
+// getShell returns the user's default shell
+func getShell() string {
+	// Check common shell environment variables
+	if shell := lookupEnv("SHELL"); shell != "" {
+		return shell
+	}
+
+	// Fallback to common shells
+	shells := []string{"zsh", "bash", "fish", "sh"}
+	for _, shell := range shells {
+		if isCommandAvailable(shell) {
+			return shell
+		}
+	}
+
+	return "sh" // Ultimate fallback
+}
+
+// lookupEnv is a helper to get environment variables
+func lookupEnv(key string) string {
+	return os.Getenv(key)
+}
+
+// FormatToolName returns a formatted name for display in menu
+func (t *AITool) FormatToolName() string {
+	if t.Available {
+		return "✓ " + t.Name
+	}
+	return "  " + t.Name
+}
+
+// GetCommandLine returns the full command line to execute
+func (t *AITool) GetCommandLine() []string {
+	result := []string{t.Command}
+	result = append(result, t.Args...)
+	return result
+}
+
+// DetectAndFormat returns a formatted list of available tools for menu display
+func DetectAndFormat() []string {
+	tools := GetAvailableToolsOnly()
+	result := make([]string, len(tools))
+
+	for i, tool := range tools {
+		result[i] = tool.Name + " - " + tool.Description
+	}
+
+	return result
+}
+
+// ParseSelection returns the selected tool from a menu choice
+func ParseSelection(choice int) *AITool {
+	tools := GetAvailableToolsOnly()
+	if choice < 0 || choice >= len(tools) {
+		return nil
+	}
+	return &tools[choice]
+}
+
+// QuickLaunchFirst launches the first available AI tool
+// Useful for default behavior when no selection is made
+func QuickLaunchFirst() *AITool {
+	tools := GetAvailableToolsOnly()
+	if len(tools) == 0 {
+		return nil
+	}
+
+	// Prefer Claude if available, otherwise first tool
+	for _, tool := range tools {
+		if strings.Contains(strings.ToLower(tool.Name), "claude") {
+			return &tool
+		}
+	}
+
+	return &tools[0]
+}

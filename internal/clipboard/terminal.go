@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/micro-editor/tcell/v2"
-	"github.com/zyedidia/micro/v2/internal/screen"
+	"github.com/ellery/thock/internal/screen"
 )
 
 type terminalClipboard struct{}

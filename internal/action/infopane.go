@@ -4,11 +4,11 @@ import (
 	"bytes"
 
 	"github.com/micro-editor/tcell/v2"
-	"github.com/zyedidia/micro/v2/internal/buffer"
-	"github.com/zyedidia/micro/v2/internal/config"
-	"github.com/zyedidia/micro/v2/internal/display"
-	"github.com/zyedidia/micro/v2/internal/info"
-	"github.com/zyedidia/micro/v2/internal/util"
+	"github.com/ellery/thock/internal/buffer"
+	"github.com/ellery/thock/internal/config"
+	"github.com/ellery/thock/internal/display"
+	"github.com/ellery/thock/internal/info"
+	"github.com/ellery/thock/internal/util"
 )
 
 type InfoKeyAction func(*InfoPane)

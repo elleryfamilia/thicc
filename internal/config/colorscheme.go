@@ -2,6 +2,7 @@ package config
 
 import (
 	"errors"
+	"log"
 	"regexp"
 	"strconv"
 	"strings"
@@ -52,16 +53,23 @@ func InitColorscheme() error {
 	Colorscheme = make(map[string]tcell.Style)
 	DefStyle = tcell.StyleDefault
 
+	log.Printf("THOCK: InitColorscheme starting, colorscheme setting = %v", GlobalSettings["colorscheme"])
+
 	c, err := LoadDefaultColorscheme()
 	if err == nil {
 		Colorscheme = c
+		log.Printf("THOCK: Colorscheme loaded successfully with %d styles", len(c))
 	} else {
+		log.Printf("THOCK: LoadDefaultColorscheme failed: %v", err)
 		// The colorscheme setting seems broken (maybe because we have not validated
 		// it earlier, see comment in verifySetting()). So reset it to the default
 		// colorscheme and try again.
 		GlobalSettings["colorscheme"] = DefaultGlobalOnlySettings["colorscheme"]
 		if c, err2 := LoadDefaultColorscheme(); err2 == nil {
 			Colorscheme = c
+			log.Printf("THOCK: Fallback colorscheme loaded with %d styles", len(c))
+		} else {
+			log.Printf("THOCK: Fallback colorscheme also failed: %v", err2)
 		}
 	}
 

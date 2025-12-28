@@ -7,7 +7,7 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/zyedidia/micro/v2/internal/util"
+	"github.com/ellery/thock/internal/util"
 )
 
 // A Completer is a function that takes a buffer and returns info

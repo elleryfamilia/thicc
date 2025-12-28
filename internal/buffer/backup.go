@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/zyedidia/micro/v2/internal/config"
-	"github.com/zyedidia/micro/v2/internal/screen"
-	"github.com/zyedidia/micro/v2/internal/util"
+	"github.com/ellery/thock/internal/config"
+	"github.com/ellery/thock/internal/screen"
+	"github.com/ellery/thock/internal/util"
 )
 
 const BackupMsg = `A backup was detected for:

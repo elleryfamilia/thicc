@@ -1,6 +1,6 @@
 package action
 
-import "github.com/zyedidia/micro/v2/internal/buffer"
+import "github.com/ellery/thock/internal/buffer"
 
 // InfoBar is the global info bar.
 var InfoBar *InfoPane

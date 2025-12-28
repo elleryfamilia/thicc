@@ -4,7 +4,7 @@ package action
 
 import (
 	shellquote "github.com/kballard/go-shellquote"
-	"github.com/zyedidia/micro/v2/internal/shell"
+	"github.com/ellery/thock/internal/shell"
 )
 
 // TermEmuSupported is a constant that marks if the terminal emulator is supported

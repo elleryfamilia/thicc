@@ -8,12 +8,12 @@ import (
 
 	"github.com/micro-editor/tcell/v2"
 	lua "github.com/yuin/gopher-lua"
-	"github.com/zyedidia/micro/v2/internal/buffer"
-	"github.com/zyedidia/micro/v2/internal/config"
-	"github.com/zyedidia/micro/v2/internal/display"
-	ulua "github.com/zyedidia/micro/v2/internal/lua"
-	"github.com/zyedidia/micro/v2/internal/screen"
-	"github.com/zyedidia/micro/v2/internal/util"
+	"github.com/ellery/thock/internal/buffer"
+	"github.com/ellery/thock/internal/config"
+	"github.com/ellery/thock/internal/display"
+	ulua "github.com/ellery/thock/internal/lua"
+	"github.com/ellery/thock/internal/screen"
+	"github.com/ellery/thock/internal/util"
 )
 
 type BufAction any

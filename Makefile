@@ -6,8 +6,8 @@ HASH = $(shell git rev-parse --short HEAD)
 DATE = $(shell GOOS=$(shell go env GOHOSTOS) GOARCH=$(shell go env GOHOSTARCH) \
 	go run tools/build-date.go)
 GOBIN ?= $(shell go env GOPATH)/bin
-GOVARS = -X github.com/zyedidia/micro/v2/internal/util.Version=$(VERSION) -X github.com/zyedidia/micro/v2/internal/util.CommitHash=$(HASH) -X 'github.com/zyedidia/micro/v2/internal/util.CompileDate=$(DATE)'
-DEBUGVAR = -X github.com/zyedidia/micro/v2/internal/util.Debug=ON
+GOVARS = -X github.com/ellery/thock/internal/util.Version=$(VERSION) -X github.com/ellery/thock/internal/util.CommitHash=$(HASH) -X 'github.com/ellery/thock/internal/util.CompileDate=$(DATE)'
+DEBUGVAR = -X github.com/ellery/thock/internal/util.Debug=ON
 VSCODE_TESTS_BASE_URL = 'https://raw.githubusercontent.com/microsoft/vscode/e6a45f4242ebddb7aa9a229f85555e8a3bd987e2/src/vs/editor/test/common/model/'
 CGO_ENABLED := $(if $(CGO_ENABLED),$(CGO_ENABLED),0)
 
@@ -24,17 +24,17 @@ endif
 build: generate build-quick
 
 build-quick:
-	CGO_ENABLED=$(CGO_ENABLED) go build -trimpath -ldflags "-s -w $(GOVARS) $(ADDITIONAL_GO_LINKER_FLAGS)" ./cmd/micro
+	CGO_ENABLED=$(CGO_ENABLED) go build -trimpath -ldflags "-s -w $(GOVARS) $(ADDITIONAL_GO_LINKER_FLAGS)" -o thock ./cmd/thock
 
 build-dbg:
-	CGO_ENABLED=$(CGO_ENABLED) go build -trimpath -ldflags "$(ADDITIONAL_GO_LINKER_FLAGS) $(DEBUGVAR)" ./cmd/micro
+	CGO_ENABLED=$(CGO_ENABLED) go build -trimpath -ldflags "$(ADDITIONAL_GO_LINKER_FLAGS) $(DEBUGVAR)" -o thock ./cmd/thock
 
 build-tags: fetch-tags build
 
 build-all: build
 
 install: generate
-	go install -ldflags "-s -w $(GOVARS) $(ADDITIONAL_GO_LINKER_FLAGS)" ./cmd/micro
+	go install -ldflags "-s -w $(GOVARS) $(ADDITIONAL_GO_LINKER_FLAGS)" ./cmd/thock
 
 install-all: install
 
@@ -75,4 +75,13 @@ bench-compare:
 	benchstat -alpha 0.15 benchmark_results_baseline benchmark_results
 
 clean:
-	rm -f micro
+	rm -f thock
+	rm -f log.txt
+
+# THOCK: Quick build without generate step
+quick:
+	CGO_ENABLED=$(CGO_ENABLED) go build -o thock ./cmd/thock
+
+# THOCK: Run with debug logging
+dev: quick
+	./thock -debug

@@ -12,13 +12,13 @@ import (
 
 	shellquote "github.com/kballard/go-shellquote"
 	"github.com/micro-editor/tcell/v2"
-	"github.com/zyedidia/micro/v2/internal/buffer"
-	"github.com/zyedidia/micro/v2/internal/clipboard"
-	"github.com/zyedidia/micro/v2/internal/config"
-	"github.com/zyedidia/micro/v2/internal/display"
-	"github.com/zyedidia/micro/v2/internal/screen"
-	"github.com/zyedidia/micro/v2/internal/shell"
-	"github.com/zyedidia/micro/v2/internal/util"
+	"github.com/ellery/thock/internal/buffer"
+	"github.com/ellery/thock/internal/clipboard"
+	"github.com/ellery/thock/internal/config"
+	"github.com/ellery/thock/internal/display"
+	"github.com/ellery/thock/internal/screen"
+	"github.com/ellery/thock/internal/shell"
+	"github.com/ellery/thock/internal/util"
 )
 
 // ScrollUp is not an action
