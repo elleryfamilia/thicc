@@ -6,14 +6,15 @@ import (
 
 // HandleEvent processes keyboard and mouse events
 func (p *Panel) HandleEvent(event tcell.Event) bool {
-	if !p.Focus {
-		return false
-	}
-
 	switch ev := event.(type) {
 	case *tcell.EventKey:
+		// Keyboard only works when focused
+		if !p.Focus {
+			return false
+		}
 		return p.handleKey(ev)
 	case *tcell.EventMouse:
+		// Mouse always works (clicking focuses the panel)
 		return p.handleMouse(ev)
 	}
 
@@ -91,27 +92,29 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 	// Convert to local coordinates
 	localY := y - p.Region.Y
 
-	// Handle different mouse button actions
-	switch ev.Buttons() {
-	case tcell.Button1: // Left click
+	// Handle left click
+	if ev.Buttons() == tcell.Button1 {
 		// Check if click is on a node (after header)
 		if localY >= 2 {
 			nodeIndex := p.TopLine + (localY - 2)
 			nodes := p.Tree.GetNodes()
 			if nodeIndex < len(nodes) {
 				p.Selected = nodeIndex
-				return true
-			}
-		}
+				node := nodes[nodeIndex]
 
-	case tcell.ButtonNone:
-		// This might be a double-click or release
-		// For now, we'll handle double-click as open
-		if localY >= 2 {
-			nodeIndex := p.TopLine + (localY - 2)
-			nodes := p.Tree.GetNodes()
-			if nodeIndex < len(nodes) && nodeIndex == p.Selected {
-				return p.openSelected()
+				if node.IsDir {
+					// Toggle directory expansion
+					p.Tree.Toggle(node)
+				} else {
+					// Preview file and move focus to editor
+					if p.OnFileOpen != nil {
+						p.OnFileOpen(node.Path)
+					}
+					if p.OnFocusEditor != nil {
+						p.OnFocusEditor()
+					}
+				}
+				return true
 			}
 		}
 	}
