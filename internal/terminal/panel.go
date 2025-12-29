@@ -8,7 +8,6 @@ import (
 
 	"github.com/creack/pty"
 	"github.com/hinshun/vt10x"
-	"github.com/ellery/thock/internal/aiterminal"
 )
 
 // Region defines a rectangular screen region (same as filebrowser)
@@ -26,23 +25,45 @@ type Panel struct {
 	Cmd     *exec.Cmd
 	Region  Region
 	Focus   bool
-	Tool    *aiterminal.AITool
 	Running bool
 	mu      sync.Mutex
+
+	// OnRedraw is called when new data arrives and screen needs refresh
+	OnRedraw func()
 }
 
 // NewPanel creates a new terminal panel
-func NewPanel(x, y, w, h int, tool *aiterminal.AITool) (*Panel, error) {
-	// Create VT emulator with specified size
-	vt := vt10x.New(vt10x.WithSize(w, h))
+// cmdArgs is the command to run (defaults to user's shell if nil/empty)
+func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
+	// Default to user's shell if no command specified
+	if cmdArgs == nil || len(cmdArgs) == 0 {
+		shell := os.Getenv("SHELL")
+		if shell == "" {
+			shell = "/bin/bash"
+		}
+		cmdArgs = []string{shell}
+	}
 
-	// Get command line from tool
-	cmdLine := tool.GetCommandLine()
-	cmd := exec.Command(cmdLine[0], cmdLine[1:]...)
+	// Content area is inside the border (1 cell on each side)
+	contentW := w - 2
+	contentH := h - 2
+	if contentW < 10 {
+		contentW = 10
+	}
+	if contentH < 5 {
+		contentH = 5
+	}
+
+	// Create VT emulator with content size (not full region)
+	vt := vt10x.New(vt10x.WithSize(contentW, contentH))
+
+	// Create command
+	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
 
 	// Set up environment
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+	cmd.Env = append(cmd.Env, "THOCK_TERM=1") // Marker so users can customize prompt in their shell config
 
 	// Start command with PTY
 	ptmx, err := pty.Start(cmd)
@@ -50,10 +71,10 @@ func NewPanel(x, y, w, h int, tool *aiterminal.AITool) (*Panel, error) {
 		return nil, err
 	}
 
-	// Set initial PTY size
+	// Set initial PTY size (content area, not full region)
 	_ = pty.Setsize(ptmx, &pty.Winsize{
-		Rows: uint16(h),
-		Cols: uint16(w),
+		Rows: uint16(contentH),
+		Cols: uint16(contentW),
 	})
 
 	p := &Panel{
@@ -61,7 +82,6 @@ func NewPanel(x, y, w, h int, tool *aiterminal.AITool) (*Panel, error) {
 		PTY:     ptmx,
 		Cmd:     cmd,
 		Region:  Region{X: x, Y: y, Width: w, Height: h},
-		Tool:    tool,
 		Running: true,
 		Focus:   false,
 	}
@@ -80,9 +100,24 @@ func (p *Panel) readLoop() {
 		p.mu.Unlock()
 	}()
 
-	// Copy PTY output to VT emulator
-	// This blocks until PTY is closed
-	_, _ = io.Copy(p.VT, p.PTY)
+	buf := make([]byte, 4096)
+	for {
+		n, err := p.PTY.Read(buf)
+		if err != nil {
+			// EOF or error - terminal closed
+			return
+		}
+
+		if n > 0 {
+			// Write to VT emulator
+			p.VT.Write(buf[:n])
+
+			// Trigger screen refresh
+			if p.OnRedraw != nil {
+				p.OnRedraw()
+			}
+		}
+	}
 }
 
 // Write sends data to the PTY (used for user input)
@@ -105,16 +140,26 @@ func (p *Panel) Resize(w, h int) error {
 	p.Region.Width = w
 	p.Region.Height = h
 
-	// Resize PTY
+	// Content area is inside the border
+	contentW := w - 2
+	contentH := h - 2
+	if contentW < 10 {
+		contentW = 10
+	}
+	if contentH < 5 {
+		contentH = 5
+	}
+
+	// Resize PTY to content area
 	if p.PTY != nil {
 		_ = pty.Setsize(p.PTY, &pty.Winsize{
-			Rows: uint16(h),
-			Cols: uint16(w),
+			Rows: uint16(contentH),
+			Cols: uint16(contentW),
 		})
 	}
 
-	// Resize VT emulator
-	p.VT.Resize(w, h)
+	// Resize VT emulator to content area
+	p.VT.Resize(contentW, contentH)
 
 	return nil
 }

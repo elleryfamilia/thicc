@@ -23,6 +23,9 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 
 // handleKey processes keyboard events
 func (p *Panel) handleKey(ev *tcell.EventKey) bool {
+	// Note: Ctrl+N, Ctrl+D, Ctrl+R are handled globally in LayoutManager
+	// so they work from any panel
+
 	nodes := p.Tree.GetNodes()
 	if len(nodes) == 0 {
 		return false

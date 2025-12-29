@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"log"
 	"unicode/utf8"
 
 	"github.com/micro-editor/tcell/v2"
@@ -8,15 +9,30 @@ import (
 
 // HandleEvent processes keyboard and mouse events
 func (p *Panel) HandleEvent(event tcell.Event) bool {
+	log.Printf("THOCK Terminal.HandleEvent: Focus=%v", p.Focus)
 	if !p.Focus {
+		log.Println("THOCK Terminal: Not focused, returning false")
 		return false
 	}
 
 	switch ev := event.(type) {
 	case *tcell.EventKey:
-		return p.handleKey(ev)
+		log.Printf("THOCK Terminal: Key event, Key=%v, Rune=%c", ev.Key(), ev.Rune())
+		result := p.handleKey(ev)
+		log.Printf("THOCK Terminal: handleKey returned %v", result)
+		return result
+	case *tcell.EventPaste:
+		// Handle paste events directly (backup if layout manager doesn't catch it)
+		log.Printf("THOCK Terminal: Paste event, len=%d", len(ev.Text()))
+		_, err := p.Write([]byte(ev.Text()))
+		return err == nil
 	case *tcell.EventMouse:
-		// Mouse events in terminal - future enhancement
+		// Consume mouse clicks so they don't fall through to micro
+		// (which might steal focus back)
+		if ev.Buttons() != tcell.ButtonNone {
+			log.Printf("THOCK Terminal: Mouse click consumed")
+			return true
+		}
 		return false
 	}
 

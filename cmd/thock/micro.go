@@ -551,6 +551,19 @@ func DoEvent() {
 	}
 
 	action.InfoBar.Display()
+
+	// THOCK: Control cursor visibility based on which panel has focus
+	// Editor always shows its cursor during Display(), so we need to override after rendering
+	if thockLayout != nil && thockLayout.ActivePanel != 1 {
+		if thockLayout.ActivePanel == 2 {
+			// Terminal focused - re-show terminal cursor (editor overwrote it)
+			thockLayout.ShowTerminalCursor(screen.Screen)
+		} else {
+			// Tree focused - hide cursor (tree doesn't have a cursor)
+			screen.Screen.HideCursor()
+		}
+	}
+
 	screen.Screen.Show()
 
 	// Check for new events
@@ -605,10 +618,10 @@ func DoEvent() {
 		} else if thockLayout != nil {
 			// THOCK: Try layout manager first
 			if !thockLayout.HandleEvent(event) {
-				// If layout didn't handle it (e.g., editor is active), pass to tabs
-				if thockLayout.ActivePanel == 1 {
-					action.Tabs.HandleEvent(event)
-				}
+				// Layout didn't consume event - pass to tabs for global actions (quit, etc.)
+				// Always pass through for editor, and for global keys like Ctrl+Q from any panel
+				log.Println("THOCK: Layout returned false, passing to Tabs.HandleEvent")
+				action.Tabs.HandleEvent(event)
 			}
 		} else {
 			// Fallback: Standard micro event handling

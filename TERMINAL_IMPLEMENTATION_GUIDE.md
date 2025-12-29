@@ -193,7 +193,102 @@ func keyToBytes(ev *tcell.EventKey) []byte {
 }
 ```
 
-### 4. pty.go - PTY Management Helpers
+### 4. Clipboard/Paste Handling
+
+**Problem:** When terminal has focus, Cmd-V/Ctrl-V must paste to terminal, not editor.
+
+**Challenge:** tcell can generate paste events in multiple ways:
+1. `tcell.EventPaste` - Bracketed paste from outer terminal
+2. `tcell.EventKey` with `KeyCtrlV` - Direct Ctrl-V keypress
+3. `tcell.EventKey` with `KeyRune` 'v' + `ModMeta` - Cmd-V on Mac
+
+**Solution:** Focus-aware clipboard routing in the layout manager.
+
+**Implementation (layout/manager.go):**
+
+```go
+// handleTerminalPaste intercepts paste commands when terminal has focus
+// Returns true if event was a paste that was handled
+func (lm *LayoutManager) handleTerminalPaste(event tcell.Event) bool {
+    lm.mu.RLock()
+    term := lm.Terminal
+    lm.mu.RUnlock()
+
+    if term == nil {
+        return false
+    }
+
+    // Handle tcell.EventPaste (bracketed paste from outer terminal)
+    if ev, ok := event.(*tcell.EventPaste); ok {
+        term.Write([]byte(ev.Text()))
+        return true
+    }
+
+    // Handle Cmd-V (Mac) or Ctrl-V paste keybinding
+    if ev, ok := event.(*tcell.EventKey); ok {
+        isPaste := false
+
+        // Check for Ctrl-V
+        if ev.Key() == tcell.KeyCtrlV {
+            isPaste = true
+        }
+
+        // Check for Cmd-V (Mac) or Ctrl-V as rune with modifier
+        if ev.Key() == tcell.KeyRune && ev.Rune() == 'v' {
+            if ev.Modifiers()&tcell.ModMeta != 0 || ev.Modifiers()&tcell.ModCtrl != 0 {
+                isPaste = true
+            }
+        }
+
+        if isPaste {
+            clip, err := clipboard.Read(clipboard.ClipboardReg)
+            if err != nil {
+                return true // Still consume to prevent editor paste
+            }
+            term.Write([]byte(clip))
+            return true
+        }
+    }
+
+    return false
+}
+```
+
+**Call site in HandleEvent():**
+```go
+func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
+    // Handle modal dialog first
+    if lm.Modal != nil && lm.Modal.Active {
+        return lm.Modal.HandleEvent(event)
+    }
+
+    // Handle paste for terminal BEFORE other routing
+    if lm.ActivePanel == 2 {
+        if lm.handleTerminalPaste(event) {
+            return true
+        }
+    }
+    // ... rest of event handling
+}
+```
+
+**Defensive backup in terminal/input.go:**
+```go
+case *tcell.EventPaste:
+    // Handle paste events directly (backup if layout manager doesn't catch it)
+    _, err := p.Write([]byte(ev.Text()))
+    return err == nil
+```
+
+**Why this approach:**
+1. **Early interception**: Paste checked before regular event routing
+2. **Focus-aware**: Only intercepts when `ActivePanel == 2` (terminal)
+3. **Multiple paste methods**: Handles EventPaste, Cmd-V, and Ctrl-V
+4. **Clipboard integration**: Reads actual system clipboard via micro's clipboard package
+5. **Editor unchanged**: When editor focused, returns false → micro handles normally
+6. **Defensive depth**: Terminal also handles EventPaste directly as backup
+
+### 5. pty.go - PTY Management Helpers
 
 **Functions:**
 - `startCommand(cmdLine []string) (*os.File, *exec.Cmd, error)`
@@ -355,9 +450,10 @@ func main() {
    - Add scrolling with PageUp/PageDown
    - Store history in VT state
 
-2. **Copy/Paste:**
-   - Intercept Ctrl+C/Ctrl+V when not in terminal
-   - Use system clipboard
+2. **Copy/Paste:** ✅ IMPLEMENTED
+   - Paste (Cmd-V/Ctrl-V) routes to focused panel
+   - See "Clipboard/Paste Handling" section above
+   - TODO: Copy from terminal (mouse selection → clipboard)
 
 3. **Multiple Sessions:**
    - Tab between different AI tools
