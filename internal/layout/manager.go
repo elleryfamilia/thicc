@@ -36,6 +36,9 @@ type LayoutManager struct {
 	InputModal   *InputModal
 	ConfirmModal *ConfirmModal
 
+	// Tab bar for showing open files
+	TabBar *TabBar
+
 	// Layout configuration
 	TreeWidth       int // Left panel width (fixed at 30)
 	TermWidthPct    int // Right panel width as percentage (40 = 40%)
@@ -67,6 +70,7 @@ func NewLayoutManager(root string) *LayoutManager {
 		Modal:         NewModal(),
 		InputModal:    NewInputModal(),
 		ConfirmModal:  NewConfirmModal(),
+		TabBar:        NewTabBar(),
 	}
 }
 
@@ -316,6 +320,27 @@ func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 	// Always draw editor border (bright when focused, dim when not)
 	lm.drawEditorBorder(screen, lm.ActivePanel == 1)
 
+	// Draw tab bar below top border
+	if lm.TabBar != nil {
+		tab := action.MainTab()
+		if tab != nil {
+			for _, pane := range tab.Panes {
+				if bp, ok := pane.(*action.BufPane); ok {
+					tabInfo := lm.TabBar.GetCurrentTab(bp)
+					lm.TabBar.Region = Region{
+						X:      lm.getTreeWidth() + 1,
+						Y:      1, // Below top border
+						Width:  lm.getEditorWidth() - 2,
+						Height: 1,
+					}
+					lm.TabBar.Focused = (lm.ActivePanel == 1)
+					lm.TabBar.Render(screen, tabInfo)
+					break
+				}
+			}
+		}
+	}
+
 	// Draw modal dialog on top of everything
 	if lm.Modal != nil && lm.Modal.Active {
 		lm.Modal.Render(screen)
@@ -354,6 +379,18 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 	if lm.ActivePanel == 2 {
 		if lm.handleTerminalPaste(event) {
 			return true
+		}
+	}
+
+	// Handle tab bar mouse clicks
+	if ev, ok := event.(*tcell.EventMouse); ok {
+		if ev.Buttons() == tcell.Button1 {
+			x, y := ev.Position()
+			if lm.TabBar != nil && lm.TabBar.IsCloseButtonClick(x, y) {
+				log.Println("THOCK: Tab close button clicked")
+				lm.CloseCurrentTab()
+				return true
+			}
 		}
 	}
 
@@ -876,6 +913,7 @@ func (lm *LayoutManager) ConstrainEditorRegion() {
 
 	// Always leave room for border on all sides (prevents content "jumping" on focus change)
 	const borderOffset = 1
+	const tabBarHeight = 2 // Space for tab bar (1) + separator line (1)
 
 	// Adjust all BufPanes in the tab to use middle region
 	for _, pane := range tab.Panes {
@@ -886,8 +924,8 @@ func (lm *LayoutManager) ConstrainEditorRegion() {
 				// Constrain to middle region (always with border space)
 				view.X = editorX + borderOffset
 				view.Width = editorWidth - (borderOffset * 2)
-				view.Y = borderOffset
-				view.Height = lm.ScreenH - (borderOffset * 2)
+				view.Y = borderOffset + tabBarHeight // Leave room for tab bar
+				view.Height = lm.ScreenH - (borderOffset * 2) - tabBarHeight
 			}
 		}
 	}
@@ -951,6 +989,55 @@ func (lm *LayoutManager) clearEditorIfPathDeleted(deletedPath string, isDir bool
 			}
 		}
 	}
+}
+
+// CloseCurrentTab closes the current tab, deselects the file in tree, and opens an empty buffer
+func (lm *LayoutManager) CloseCurrentTab() {
+	tab := action.MainTab()
+	if tab == nil {
+		return
+	}
+
+	for _, pane := range tab.Panes {
+		if bp, ok := pane.(*action.BufPane); ok {
+			// Check for unsaved changes
+			if bp.Buf.Modified() {
+				bufName := bp.Buf.GetName()
+				if bufName == "" {
+					bufName = "Untitled"
+				}
+				lm.ShowModal("Unsaved Changes",
+					"Discard changes to "+bufName+"?",
+					func(yes, canceled bool) {
+						if canceled || !yes {
+							return
+						}
+						lm.closeTabAndReset(bp)
+					})
+				return
+			}
+
+			lm.closeTabAndReset(bp)
+			return
+		}
+	}
+}
+
+// closeTabAndReset performs the actual tab close: resets editor and deselects tree
+func (lm *LayoutManager) closeTabAndReset(bp *action.BufPane) {
+	log.Println("THOCK: Closing tab and resetting to empty buffer")
+
+	// Create a new empty buffer
+	newBuf := buffer.NewBufferFromString("", "", buffer.BTDefault)
+	bp.OpenBuffer(newBuf)
+
+	// Keep tree selection at 0 (first item) - don't use -1 as it causes slice bounds issues
+	if lm.FileBrowser != nil {
+		lm.FileBrowser.Selected = 0
+		lm.FileBrowser.TopLine = 0
+	}
+
+	lm.triggerRedraw()
 }
 
 // SaveCurrentBuffer saves the current buffer, showing modal for new files
