@@ -1,13 +1,11 @@
 package terminal
 
 import (
-	"log"
+	"reflect"
 
 	"github.com/hinshun/vt10x"
 	"github.com/micro-editor/tcell/v2"
 )
-
-var debugOnce = true
 
 // BorderStyle is the style for focus borders (pink for Spider-Verse vibe)
 var BorderStyle = tcell.StyleDefault.Foreground(tcell.Color205) // Hot pink
@@ -17,12 +15,19 @@ func (p *Panel) Render(screen tcell.Screen) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
-	// Clear the entire region first
+	// Only clear border areas (content will be overwritten by VT cells)
 	clearStyle := tcell.StyleDefault.Background(tcell.ColorBlack)
-	for y := 0; y < p.Region.Height; y++ {
-		for x := 0; x < p.Region.Width; x++ {
-			screen.SetContent(p.Region.X+x, p.Region.Y+y, ' ', nil, clearStyle)
-		}
+
+	// Top and bottom borders
+	for x := 0; x < p.Region.Width; x++ {
+		screen.SetContent(p.Region.X+x, p.Region.Y, ' ', nil, clearStyle)
+		screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, ' ', nil, clearStyle)
+	}
+
+	// Left and right borders (skip corners already done)
+	for y := 1; y < p.Region.Height-1; y++ {
+		screen.SetContent(p.Region.X, p.Region.Y+y, ' ', nil, clearStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, ' ', nil, clearStyle)
 	}
 
 	// Content area is inside the border (1 cell margin on each side)
@@ -34,23 +39,21 @@ func (p *Panel) Render(screen tcell.Screen) {
 	// Get terminal size from VT emulator
 	cols, rows := p.VT.Size()
 
-	// Debug: log first line characters once
-	if debugOnce {
-		debugOnce = false
-		var chars []rune
-		for x := 0; x < cols && x < 40; x++ {
-			g := p.VT.Cell(x, 0)
-			chars = append(chars, g.Char)
-		}
-		log.Printf("THOCK TERM DEBUG: First line chars: %v", chars)
-		log.Printf("THOCK TERM DEBUG: First line string: %s", string(chars))
-	}
+	// Check if we're in alternate screen mode
+	mode := p.VT.Mode()
+	useAltScreen := mode&vt10x.ModeAltScreen != 0
 
-	// Render each cell from VT to tcell (in content area)
+	// Render each cell from the active buffer (in content area)
 	for y := 0; y < contentH && y < rows; y++ {
 		for x := 0; x < contentW && x < cols; x++ {
-			// Get cell from VT
-			glyph := p.VT.Cell(x, y)
+			// Get cell from active buffer
+			var glyph vt10x.Glyph
+
+			if useAltScreen {
+				glyph = p.getAltCell(x, y)
+			} else {
+				glyph = p.VT.Cell(x, y)
+			}
 
 			// Convert VT cell to tcell
 			r := glyph.Char
@@ -82,6 +85,40 @@ func (p *Panel) Render(screen tcell.Screen) {
 
 	// Draw border (always draw, but style changes based on focus)
 	p.drawBorder(screen)
+}
+
+// getAltCell retrieves a cell from the alternate screen buffer using reflection
+func (p *Panel) getAltCell(x, y int) vt10x.Glyph {
+	// Try to access altLines via reflection (vt10x doesn't expose it publicly)
+	v := reflect.ValueOf(p.VT)
+	if v.Kind() == reflect.Ptr {
+		v = v.Elem()
+	}
+
+	// Get altLines field
+	altLinesField := v.FieldByName("altLines")
+	if !altLinesField.IsValid() || !altLinesField.CanInterface() {
+		// Fallback to primary buffer if reflection fails
+		return p.VT.Cell(x, y)
+	}
+
+	// Access altLines as [][]Glyph
+	altLines := altLinesField.Interface()
+	linesVal := reflect.ValueOf(altLines)
+
+	if y >= linesVal.Len() {
+		return vt10x.Glyph{}
+	}
+
+	lineVal := linesVal.Index(y)
+	if x >= lineVal.Len() {
+		return vt10x.Glyph{}
+	}
+
+	glyphVal := lineVal.Index(x)
+	glyph := glyphVal.Interface().(vt10x.Glyph)
+
+	return glyph
 }
 
 // drawBorder draws a border around the terminal panel
@@ -155,14 +192,36 @@ func (p *Panel) ShowCursor(screen tcell.Screen) {
 func glyphToTcellStyle(glyph vt10x.Glyph) tcell.Style {
 	style := tcell.StyleDefault
 
-	// Foreground color - use PaletteColor for 256-color support
+	// Foreground color
 	if glyph.FG != vt10x.DefaultFG {
-		style = style.Foreground(tcell.PaletteColor(int(glyph.FG)))
+		// vt10x stores colors as:
+		// - 0-255: palette colors
+		// - >255: 24-bit RGB as (r<<16 | g<<8 | b)
+		if glyph.FG > 255 {
+			// Extract RGB components
+			r := int32((glyph.FG >> 16) & 0xFF)
+			g := int32((glyph.FG >> 8) & 0xFF)
+			b := int32(glyph.FG & 0xFF)
+			style = style.Foreground(tcell.NewRGBColor(r, g, b))
+		} else {
+			// Palette color (0-255)
+			style = style.Foreground(tcell.PaletteColor(int(glyph.FG)))
+		}
 	}
 
-	// Background color - use PaletteColor for 256-color support
+	// Background color
 	if glyph.BG != vt10x.DefaultBG {
-		style = style.Background(tcell.PaletteColor(int(glyph.BG)))
+		// Same logic as foreground
+		if glyph.BG > 255 {
+			// Extract RGB components
+			r := int32((glyph.BG >> 16) & 0xFF)
+			g := int32((glyph.BG >> 8) & 0xFF)
+			b := int32(glyph.BG & 0xFF)
+			style = style.Background(tcell.NewRGBColor(r, g, b))
+		} else {
+			// Palette color (0-255)
+			style = style.Background(tcell.PaletteColor(int(glyph.BG)))
+		}
 	}
 
 	// Text attributes (Mode is int16 with bitflags)

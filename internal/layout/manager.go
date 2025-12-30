@@ -368,9 +368,32 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		return lm.ConfirmModal.HandleEvent(event)
 	}
 
-	// Handle paste for terminal BEFORE other routing
-	// This intercepts Cmd-V, Ctrl-V, and EventPaste when terminal has focus
+	// CRITICAL: Terminal gets ALL keyboard events when focused (except global shortcuts)
+	// This must happen BEFORE global key handlers to prevent editor from intercepting keys like Esc
 	if lm.ActivePanel == 2 {
+		if ev, ok := event.(*tcell.EventKey); ok {
+			// Allow global shortcuts to pass through: Ctrl+Q, Ctrl+T, Ctrl+W, Ctrl+[, Ctrl+], Alt+Arrow
+			isGlobalShortcut := ev.Key() == tcell.KeyCtrlQ ||
+				ev.Key() == tcell.KeyCtrlT ||
+				ev.Key() == tcell.KeyCtrlW ||
+				(ev.Key() == tcell.KeyRight && ev.Modifiers()&tcell.ModAlt != 0) ||
+				(ev.Key() == tcell.KeyLeft && ev.Modifiers()&tcell.ModAlt != 0) ||
+				(ev.Rune() == ']' && ev.Modifiers()&tcell.ModCtrl != 0) ||
+				(ev.Rune() == '[' && ev.Modifiers()&tcell.ModCtrl != 0)
+
+			if !isGlobalShortcut {
+				lm.mu.RLock()
+				term := lm.Terminal
+				lm.mu.RUnlock()
+
+				if term != nil {
+					term.HandleEvent(event)
+					return true // Always consume keyboard events for terminal
+				}
+			}
+		}
+
+		// Handle paste for terminal
 		if lm.handleTerminalPaste(event) {
 			return true
 		}

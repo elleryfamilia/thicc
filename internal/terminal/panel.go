@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"sync"
+	"time"
 
 	"github.com/creack/pty"
 	"github.com/hinshun/vt10x"
@@ -30,6 +31,11 @@ type Panel struct {
 
 	// OnRedraw is called when new data arrives and screen needs refresh
 	OnRedraw func()
+
+	// Render throttling
+	pendingRedraw bool
+	redrawTimer   *time.Timer
+	throttleDelay time.Duration
 }
 
 // NewPanel creates a new terminal panel
@@ -55,7 +61,8 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	}
 
 	// Create VT emulator with content size (not full region)
-	vt := vt10x.New(vt10x.WithSize(contentW, contentH))
+	// IMPORTANT: Must create command/PTY first, then pass PTY as writer to vt10x
+	// This is a two-step process due to initialization order
 
 	// Create command
 	cmd := exec.Command(cmdArgs[0], cmdArgs[1:]...)
@@ -71,6 +78,9 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 		return nil, err
 	}
 
+	// NOW create VT emulator with PTY as writer (enables DSR/CPR responses)
+	vt := vt10x.New(vt10x.WithSize(contentW, contentH), vt10x.WithWriter(ptmx))
+
 	// Set initial PTY size (content area, not full region)
 	_ = pty.Setsize(ptmx, &pty.Winsize{
 		Rows: uint16(contentH),
@@ -78,12 +88,13 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	})
 
 	p := &Panel{
-		VT:      vt,
-		PTY:     ptmx,
-		Cmd:     cmd,
-		Region:  Region{X: x, Y: y, Width: w, Height: h},
-		Running: true,
-		Focus:   false,
+		VT:            vt,
+		PTY:           ptmx,
+		Cmd:           cmd,
+		Region:        Region{X: x, Y: y, Width: w, Height: h},
+		Running:       true,
+		Focus:         false,
+		throttleDelay: 16 * time.Millisecond, // 60fps max
 	}
 
 	// Start reading from PTY in background
@@ -112,11 +123,32 @@ func (p *Panel) readLoop() {
 			// Write to VT emulator
 			p.VT.Write(buf[:n])
 
-			// Trigger screen refresh
-			if p.OnRedraw != nil {
-				p.OnRedraw()
-			}
+			// Schedule throttled redraw
+			p.scheduleRedraw()
 		}
+	}
+}
+
+// scheduleRedraw batches rapid redraw requests using a timer
+func (p *Panel) scheduleRedraw() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.pendingRedraw = true
+
+	if p.redrawTimer == nil {
+		p.redrawTimer = time.AfterFunc(p.throttleDelay, func() {
+			p.mu.Lock()
+			if p.pendingRedraw && p.OnRedraw != nil {
+				p.pendingRedraw = false
+				p.mu.Unlock()
+				p.OnRedraw()
+			} else {
+				p.mu.Unlock()
+			}
+		})
+	} else {
+		p.redrawTimer.Reset(p.throttleDelay)
 	}
 }
 
@@ -170,6 +202,10 @@ func (p *Panel) Close() {
 	defer p.mu.Unlock()
 
 	p.Running = false
+
+	if p.redrawTimer != nil {
+		p.redrawTimer.Stop()
+	}
 
 	if p.PTY != nil {
 		p.PTY.Close()
