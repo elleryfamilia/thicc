@@ -23,6 +23,7 @@ import (
 	"github.com/ellery/thock/internal/buffer"
 	"github.com/ellery/thock/internal/clipboard"
 	"github.com/ellery/thock/internal/config"
+	"github.com/ellery/thock/internal/dashboard"
 	"github.com/ellery/thock/internal/layout"
 	"github.com/ellery/thock/internal/screen"
 	"github.com/ellery/thock/internal/shell"
@@ -46,6 +47,10 @@ var (
 
 	// THOCK: Global layout manager
 	thockLayout *layout.LayoutManager
+
+	// THOCK: Dashboard state
+	thockDashboard *dashboard.Dashboard
+	showDashboard  bool
 )
 
 func InitFlags() {
@@ -424,24 +429,37 @@ func main() {
 	buffer.SetMessager(action.InfoBar)
 	args := flag.Args()
 	log.Println("THOCK: Before LoadInput, args:", args)
-	b := LoadInput(args)
-	log.Println("THOCK: After LoadInput, buffers:", len(b))
 
-	// THOCK: Always open at least an empty buffer
-	if len(b) == 0 {
-		log.Println("THOCK: No buffers, creating empty buffer")
-		b = append(b, buffer.NewBufferFromString("", "", buffer.BTDefault))
+	// THOCK: Check if we should show the dashboard (no args and interactive terminal)
+	if len(args) == 0 && isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd()) {
+		log.Println("THOCK: No args provided, showing dashboard")
+		showDashboard = true
 	}
-	log.Println("THOCK: Buffers count:", len(b))
 
-	log.Println("THOCK: Calling InitTabs")
-	action.InitTabs(b)
-	log.Println("THOCK: InitTabs completed")
+	var b []*buffer.Buffer
+	if !showDashboard {
+		b = LoadInput(args)
+		log.Println("THOCK: After LoadInput, buffers:", len(b))
+
+		// THOCK: Always open at least an empty buffer
+		if len(b) == 0 {
+			log.Println("THOCK: No buffers, creating empty buffer")
+			b = append(b, buffer.NewBufferFromString("", "", buffer.BTDefault))
+		}
+		log.Println("THOCK: Buffers count:", len(b))
+
+		log.Println("THOCK: Calling InitTabs")
+		action.InitTabs(b)
+		log.Println("THOCK: InitTabs completed")
+	}
 
 	// THOCK: Create layout manager (panels will be initialized later after screen size is known)
-	log.Println("THOCK: About to call InitThockLayout")
-	InitThockLayout()
-	log.Println("THOCK: InitThockLayout completed")
+	// Skip if showing dashboard - will be initialized after dashboard exits
+	if !showDashboard {
+		log.Println("THOCK: About to call InitThockLayout")
+		InitThockLayout()
+		log.Println("THOCK: InitThockLayout completed")
+	}
 
 	err = config.RunPluginFn("init")
 	if err != nil {
@@ -497,13 +515,32 @@ func main() {
 	// wait for initial resize event
 	select {
 	case event := <-screen.Events:
-		action.Tabs.HandleEvent(event)
+		if !showDashboard {
+			action.Tabs.HandleEvent(event)
+		}
 	case <-time.After(10 * time.Millisecond):
 		// time out after 10ms
 	}
 
+	// THOCK: Show dashboard if no files were specified
+	dashboardWasShown := false
+	if showDashboard {
+		log.Println("THOCK: Starting dashboard")
+		dashboardWasShown = true
+		InitDashboard()
+
+		// Run dashboard event loop
+		for showDashboard {
+			DoDashboardEvent()
+		}
+
+		log.Println("THOCK: Dashboard exited, transitioning to editor")
+		// TransitionToEditor already initialized the layout, so skip below
+	}
+
 	// THOCK: Initialize layout panels now that screen size is known
-	if thockLayout != nil {
+	// Skip if we just came from dashboard (TransitionToEditor already did this)
+	if thockLayout != nil && !dashboardWasShown {
 		log.Println("THOCK: Initializing layout panels")
 		if err := thockLayout.Initialize(screen.Screen); err != nil {
 			log.Printf("THOCK: Failed to initialize layout: %v", err)
@@ -687,4 +724,125 @@ func registerThockActions() {
 	}, nil)
 
 	action.InfoBar.Message("THOCK initialized - Ctrl+Space to switch panels | Ctrl-Q to quit")
+}
+
+// InitDashboard initializes the dashboard screen
+func InitDashboard() {
+	log.Println("THOCK: InitDashboard started")
+
+	thockDashboard = dashboard.NewDashboard(screen.Screen)
+
+	// Set up callbacks
+	thockDashboard.OnNewFile = func() {
+		log.Println("THOCK Dashboard: New File selected")
+		showDashboard = false
+		TransitionToEditor(nil, "")
+	}
+
+	thockDashboard.OnOpenProject = func(path string) {
+		log.Println("THOCK Dashboard: Opening project:", path)
+		showDashboard = false
+		// Change to the project folder
+		if err := os.Chdir(path); err != nil {
+			log.Printf("THOCK Dashboard: Failed to chdir to %s: %v", path, err)
+		}
+		TransitionToEditor(nil, "")
+		// Add to recent projects
+		thockDashboard.RecentStore.AddProject(path, true)
+		// Focus the file browser so user can see the project
+		if thockLayout != nil {
+			thockLayout.FocusTree()
+		}
+	}
+
+	thockDashboard.OnOpenFile = func(path string) {
+		log.Println("THOCK Dashboard: Opening file:", path)
+		showDashboard = false
+		TransitionToEditor(nil, path)
+		// Add to recent projects
+		thockDashboard.RecentStore.AddProject(path, false)
+	}
+
+	thockDashboard.OnOpenFolder = func(path string) {
+		log.Println("THOCK Dashboard: Opening folder:", path)
+		showDashboard = false
+		// Change to the folder
+		if err := os.Chdir(path); err != nil {
+			log.Printf("THOCK Dashboard: Failed to chdir to %s: %v", path, err)
+		}
+		TransitionToEditor(nil, "")
+		// Add to recent projects
+		thockDashboard.RecentStore.AddProject(path, true)
+	}
+
+	thockDashboard.OnExit = func() {
+		log.Println("THOCK Dashboard: Exit selected")
+		exit(0)
+	}
+
+	log.Println("THOCK: InitDashboard completed")
+}
+
+// DoDashboardEvent runs a single iteration of the dashboard event loop
+func DoDashboardEvent() {
+	// Clear and render dashboard
+	screen.Screen.Fill(' ', config.DefStyle)
+	screen.Screen.HideCursor()
+
+	thockDashboard.Render(screen.Screen)
+	screen.Screen.Show()
+
+	// Wait for event
+	select {
+	case event := <-screen.Events:
+		if e, ok := event.(*tcell.EventResize); ok {
+			w, h := e.Size()
+			thockDashboard.Resize(w, h)
+		} else {
+			thockDashboard.HandleEvent(event)
+		}
+	case <-util.Sigterm:
+		exit(0)
+	case <-sighup:
+		exit(0)
+	}
+}
+
+// TransitionToEditor switches from dashboard to editor mode
+func TransitionToEditor(buffers []*buffer.Buffer, filePath string) {
+	log.Println("THOCK: TransitionToEditor started")
+
+	// Create buffer(s) if needed
+	if len(buffers) == 0 {
+		if filePath != "" {
+			// Open the specified file
+			buf, err := buffer.NewBufferFromFile(filePath, buffer.BTDefault)
+			if err != nil {
+				log.Printf("THOCK: Failed to open file %s: %v", filePath, err)
+				// Fall back to empty buffer
+				buffers = append(buffers, buffer.NewBufferFromString("", "", buffer.BTDefault))
+			} else {
+				buffers = append(buffers, buf)
+			}
+		} else {
+			// Create empty buffer
+			buffers = append(buffers, buffer.NewBufferFromString("", "", buffer.BTDefault))
+		}
+	}
+
+	// Initialize tabs with the new buffers
+	action.InitTabs(buffers)
+
+	// Initialize the layout
+	InitThockLayout()
+
+	// Initialize layout panels
+	if thockLayout != nil {
+		if err := thockLayout.Initialize(screen.Screen); err != nil {
+			log.Printf("THOCK: Failed to initialize layout: %v", err)
+			thockLayout = nil
+		}
+	}
+
+	log.Println("THOCK: TransitionToEditor completed")
 }
