@@ -317,28 +317,22 @@ func (lm *LayoutManager) RenderFrame(screen tcell.Screen) {
 
 // RenderOverlay draws elements that should appear ON TOP of the editor (called AFTER editor renders)
 func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
+	// Sync initial buffer to tab bar (ensures Untitled tab shows on startup)
+	lm.SyncInitialTab()
+
 	// Always draw editor border (bright when focused, dim when not)
 	lm.drawEditorBorder(screen, lm.ActivePanel == 1)
 
 	// Draw tab bar below top border
 	if lm.TabBar != nil {
-		tab := action.MainTab()
-		if tab != nil {
-			for _, pane := range tab.Panes {
-				if bp, ok := pane.(*action.BufPane); ok {
-					tabInfo := lm.TabBar.GetCurrentTab(bp)
-					lm.TabBar.Region = Region{
-						X:      lm.getTreeWidth() + 1,
-						Y:      1, // Below top border
-						Width:  lm.getEditorWidth() - 2,
-						Height: 1,
-					}
-					lm.TabBar.Focused = (lm.ActivePanel == 1)
-					lm.TabBar.Render(screen, tabInfo)
-					break
-				}
-			}
+		lm.TabBar.Region = Region{
+			X:      lm.getTreeWidth() + 1,
+			Y:      1, // Below top border
+			Width:  lm.getEditorWidth() - 2,
+			Height: 1,
 		}
+		lm.TabBar.Focused = (lm.ActivePanel == 1)
+		lm.TabBar.Render(screen)
 	}
 
 	// Draw modal dialog on top of everything
@@ -386,10 +380,36 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 	if ev, ok := event.(*tcell.EventMouse); ok {
 		if ev.Buttons() == tcell.Button1 {
 			x, y := ev.Position()
-			if lm.TabBar != nil && lm.TabBar.IsCloseButtonClick(x, y) {
-				log.Println("THOCK: Tab close button clicked")
-				lm.CloseCurrentTab()
-				return true
+			if lm.TabBar != nil && lm.TabBar.IsInTabBar(x, y) {
+				// Check for overflow indicator clicks first (for scrolling)
+				if lm.TabBar.IsLeftOverflowClick(x, y) {
+					log.Println("THOCK: Left overflow clicked, scrolling left")
+					lm.TabBar.ScrollLeft()
+					lm.triggerRedraw()
+					return true
+				}
+				if lm.TabBar.IsRightOverflowClick(x, y) {
+					log.Println("THOCK: Right overflow clicked, scrolling right")
+					lm.TabBar.ScrollRight()
+					lm.triggerRedraw()
+					return true
+				}
+
+				// Check for close button click
+				closeIdx := lm.TabBar.IsCloseButtonClick(x, y)
+				if closeIdx >= 0 {
+					log.Printf("THOCK: Tab %d close button clicked", closeIdx)
+					lm.CloseTabAtIndex(closeIdx)
+					return true
+				}
+
+				// Check for tab click (to switch tabs)
+				tabIdx := lm.TabBar.GetClickedTab(x, y)
+				if tabIdx >= 0 && tabIdx != lm.TabBar.ActiveIndex {
+					log.Printf("THOCK: Tab %d clicked, switching", tabIdx)
+					lm.switchToTab(tabIdx)
+					return true
+				}
 			}
 		}
 	}
@@ -434,6 +454,39 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 				lm.FileBrowser.RenameSelected()
 				return true
 			}
+		}
+
+		// Tab switching shortcuts:
+		// Ctrl+] or Option+Right = next tab
+		// Ctrl+[ or Option+Left = previous tab
+		// Note: Ctrl+] sends ASCII 29 (KeyCtrlRightSq), Ctrl+[ sends ESC (KeyCtrlLeftSq)
+		if ev.Key() == tcell.KeyCtrlRightSq {
+			log.Println("THOCK: Ctrl+] detected, next tab")
+			lm.NextTab()
+			return true
+		}
+		if ev.Key() == tcell.KeyCtrlLeftSq && ev.Modifiers() == 0 {
+			// Only handle bare Ctrl+[ (ESC), not Escape sequences with modifiers
+			log.Println("THOCK: Ctrl+[ detected, previous tab")
+			lm.PreviousTab()
+			return true
+		}
+		if ev.Key() == tcell.KeyRight && ev.Modifiers()&tcell.ModAlt != 0 {
+			log.Println("THOCK: Option+Right detected, next tab")
+			lm.NextTab()
+			return true
+		}
+		if ev.Key() == tcell.KeyLeft && ev.Modifiers()&tcell.ModAlt != 0 {
+			log.Println("THOCK: Option+Left detected, previous tab")
+			lm.PreviousTab()
+			return true
+		}
+
+		// Ctrl+W closes the active tab
+		if ev.Key() == tcell.KeyCtrlW {
+			log.Println("THOCK: Ctrl+W detected, closing active tab")
+			lm.CloseActiveTab()
+			return true
 		}
 	}
 
@@ -491,6 +544,25 @@ func (lm *LayoutManager) handleFocusSwitch(event tcell.Event) bool {
 	ev, ok := event.(*tcell.EventKey)
 	if !ok {
 		return false
+	}
+
+	// Tab key: tree → editor (only when no modifiers)
+	if ev.Key() == tcell.KeyTab && ev.Modifiers() == 0 {
+		if lm.ActivePanel == 0 { // Tree has focus
+			log.Println("THOCK: Tab pressed in tree, switching to editor")
+			lm.FocusEditor()
+			return true // Consume the event to prevent insertion
+		}
+	}
+
+	// Shift+Tab: editor → tree
+	if ev.Key() == tcell.KeyBacktab ||
+		(ev.Key() == tcell.KeyTab && ev.Modifiers()&tcell.ModShift != 0) {
+		if lm.ActivePanel == 1 { // Editor has focus
+			log.Println("THOCK: Shift+Tab pressed in editor, switching to tree")
+			lm.FocusTree()
+			return true // Consume the event
+		}
 	}
 
 	// Ctrl+Space cycles focus: tree → editor → terminal → tree
@@ -585,35 +657,184 @@ func (lm *LayoutManager) cycleFocus() {
 }
 
 // previewFileInEditor opens a file in the editor panel WITHOUT switching focus
+// Uses lazy loading - creates a stub tab first, then loads the buffer
 func (lm *LayoutManager) previewFileInEditor(path string) {
 	log.Printf("THOCK: Previewing file: %s", path)
 
-	// Load file into micro's buffer system
-	buf, err := buffer.NewBufferFromFile(path, buffer.BTDefault)
+	// Make path absolute for dedup check
+	absPath, err := filepath.Abs(path)
 	if err != nil {
-		log.Printf("THOCK: Error opening file: %v", err)
-		action.InfoBar.Error("Error opening file: " + err.Error())
+		absPath = path
+	}
+
+	// Check if file is already open in a tab
+	if lm.TabBar != nil {
+		existingIdx := lm.TabBar.FindTabByPath(absPath)
+		if existingIdx >= 0 {
+			log.Printf("THOCK: File already open in tab %d, switching to it", existingIdx)
+			lm.switchToTab(existingIdx)
+			return
+		}
+	}
+
+	// Create stub tab first (instant UI feedback)
+	if lm.TabBar != nil {
+		lm.TabBar.AddTabStub(absPath)
+		log.Printf("THOCK: Created stub tab, now have %d tabs, active=%d", len(lm.TabBar.Tabs), lm.TabBar.ActiveIndex)
+	}
+
+	// Load and display the active tab
+	lm.loadAndDisplayActiveTab()
+
+	log.Printf("THOCK: File previewed in editor, focus stays on tree")
+}
+
+// loadAndDisplayActiveTab loads the buffer for the active tab (if not loaded) and displays it
+func (lm *LayoutManager) loadAndDisplayActiveTab() {
+	if lm.TabBar == nil {
 		return
 	}
 
-	// Add to current tab
+	tab := lm.TabBar.GetActiveTab()
+	if tab == nil {
+		log.Println("THOCK: No active tab to load")
+		return
+	}
+
+	// If already loaded, just display the buffer
+	if tab.Loaded && tab.Buffer != nil {
+		log.Printf("THOCK: Tab already loaded, displaying buffer")
+		lm.displayBufferInEditor(tab.Buffer)
+		return
+	}
+
+	// Load the buffer
+	log.Printf("THOCK: Loading buffer for %s (currently %d buffers open)", tab.Path, len(buffer.OpenBuffers))
+	buf, err := buffer.NewBufferFromFile(tab.Path, buffer.BTDefault)
+	if err != nil {
+		log.Printf("THOCK: Error loading file: %v", err)
+		action.InfoBar.Error(err.Error())
+		// Close the stub tab since loading failed
+		lm.CloseTabAtIndex(lm.TabBar.ActiveIndex)
+		return
+	}
+	log.Printf("THOCK: Buffer loaded successfully, now %d buffers open", len(buffer.OpenBuffers))
+
+	// Mark tab as loaded
+	lm.TabBar.MarkTabLoaded(lm.TabBar.ActiveIndex, buf)
+
+	// Display in editor
+	lm.displayBufferInEditor(buf)
+}
+
+// displayBufferInEditor switches the BufPane to show the given buffer
+func (lm *LayoutManager) displayBufferInEditor(buf *buffer.Buffer) {
+	if buf == nil {
+		return
+	}
+
 	tab := action.MainTab()
 	if tab == nil {
 		log.Println("THOCK: No main tab found")
 		return
 	}
 
-	// Find first BufPane in tab and open buffer there
 	for _, pane := range tab.Panes {
 		if bp, ok := pane.(*action.BufPane); ok {
-			bp.OpenBuffer(buf)
-			// Don't switch focus - stay in tree browser
-			log.Printf("THOCK: File previewed in editor, focus stays on tree")
+			bp.SwitchBuffer(buf)
 			return
 		}
 	}
 
 	log.Println("THOCK: No BufPane found in tab")
+}
+
+// switchToTab switches to the tab at the given index
+// Uses lazy loading - loads the buffer if not already loaded
+func (lm *LayoutManager) switchToTab(index int) {
+	if lm.TabBar == nil || index < 0 || index >= len(lm.TabBar.Tabs) {
+		return
+	}
+
+	lm.TabBar.ActiveIndex = index
+	log.Printf("THOCK: Switching to tab %d (%s)", index, lm.TabBar.Tabs[index].Name)
+
+	// Load and display the buffer (lazy loading handles unloaded tabs)
+	lm.loadAndDisplayActiveTab()
+
+	// Sync file browser selection
+	openTab := lm.TabBar.GetActiveTab()
+	if lm.FileBrowser != nil && openTab != nil && openTab.Path != "" {
+		lm.FileBrowser.SelectFile(openTab.Path)
+	}
+
+	lm.triggerRedraw()
+}
+
+// NextTab switches to the next tab (cycles around)
+func (lm *LayoutManager) NextTab() {
+	if lm.TabBar == nil || len(lm.TabBar.Tabs) <= 1 {
+		return
+	}
+	newIdx := (lm.TabBar.ActiveIndex + 1) % len(lm.TabBar.Tabs)
+	lm.switchToTab(newIdx)
+}
+
+// PreviousTab switches to the previous tab (cycles around)
+func (lm *LayoutManager) PreviousTab() {
+	if lm.TabBar == nil || len(lm.TabBar.Tabs) <= 1 {
+		return
+	}
+	newIdx := lm.TabBar.ActiveIndex - 1
+	if newIdx < 0 {
+		newIdx = len(lm.TabBar.Tabs) - 1
+	}
+	lm.switchToTab(newIdx)
+}
+
+// CloseActiveTab closes the currently active tab
+// If it's the last tab and it's Untitled, don't close
+// If closing the last real file, create a new Untitled buffer
+func (lm *LayoutManager) CloseActiveTab() {
+	if lm.TabBar == nil || len(lm.TabBar.Tabs) == 0 {
+		return
+	}
+
+	activeTab := lm.TabBar.GetActiveTab()
+	if activeTab == nil {
+		return
+	}
+
+	// Don't close if it's the only tab AND it's Untitled
+	if len(lm.TabBar.Tabs) == 1 && activeTab.Name == "Untitled" {
+		log.Println("THOCK: Can't close the only Untitled tab")
+		return
+	}
+
+	// Remember the index we're closing
+	closingIdx := lm.TabBar.ActiveIndex
+
+	// Close the buffer if it's loaded
+	if activeTab.Loaded && activeTab.Buffer != nil {
+		activeTab.Buffer.Close()
+	}
+
+	// Remove from tab bar
+	lm.TabBar.CloseTab(closingIdx)
+	log.Printf("THOCK: Closed tab %d, now have %d tabs", closingIdx, len(lm.TabBar.Tabs))
+
+	// If no tabs left, create a new Untitled buffer
+	if len(lm.TabBar.Tabs) == 0 {
+		log.Println("THOCK: No tabs left, creating new Untitled buffer")
+		newBuf := buffer.NewBufferFromString("", "", buffer.BTDefault)
+		lm.TabBar.AddTab(newBuf)
+		lm.displayBufferInEditor(newBuf)
+	} else {
+		// Switch to the new active tab (CloseTab already adjusted ActiveIndex)
+		lm.loadAndDisplayActiveTab()
+	}
+
+	lm.triggerRedraw()
 }
 
 // drawDividers draws vertical lines between panels
@@ -773,6 +994,27 @@ func (lm *LayoutManager) FocusTerminal() {
 	if hasTerminal {
 		lm.setActivePanel(2)
 		log.Println("THOCK: Focus set to terminal")
+	}
+}
+
+// SyncInitialTab ensures the TabBar has the initial buffer as a tab
+// Called on each render to ensure Untitled tab shows on startup
+func (lm *LayoutManager) SyncInitialTab() {
+	if lm.TabBar == nil {
+		return
+	}
+	// If no tabs, add the current buffer
+	if len(lm.TabBar.Tabs) == 0 {
+		tab := action.MainTab()
+		if tab != nil {
+			for _, pane := range tab.Panes {
+				if bp, ok := pane.(*action.BufPane); ok {
+					lm.TabBar.AddTab(bp.Buf)
+					log.Println("THOCK: Synced initial buffer to tab bar")
+					break
+				}
+			}
+		}
 	}
 }
 
@@ -954,45 +1196,114 @@ func (lm *LayoutManager) ShowTimedMessage(msg string, duration time.Duration) {
 	})
 }
 
-// clearEditorIfPathDeleted clears the editor if the deleted path was open
+// clearEditorIfPathDeleted closes any tabs that have the deleted path open
 func (lm *LayoutManager) clearEditorIfPathDeleted(deletedPath string, isDir bool) {
-	tab := action.MainTab()
-	if tab == nil {
+	if lm.TabBar == nil {
 		return
 	}
 
-	for _, pane := range tab.Panes {
-		if bp, ok := pane.(*action.BufPane); ok {
-			bufPath := bp.Buf.AbsPath
-			if bufPath == "" {
-				continue
-			}
+	// Find and close any tabs with the deleted file (iterate backwards to handle index shifts)
+	for i := len(lm.TabBar.Tabs) - 1; i >= 0; i-- {
+		tabPath := lm.TabBar.Tabs[i].Path
+		if tabPath == "" {
+			continue
+		}
 
-			shouldClear := false
-			if isDir {
-				// Check if buffer path is inside the deleted directory
-				if strings.HasPrefix(bufPath, deletedPath+string(filepath.Separator)) {
-					shouldClear = true
-				}
-			} else {
-				// Check if buffer path matches the deleted file
-				if bufPath == deletedPath {
-					shouldClear = true
-				}
+		shouldClose := false
+		if isDir {
+			// Check if tab path is inside the deleted directory
+			if strings.HasPrefix(tabPath, deletedPath+string(filepath.Separator)) {
+				shouldClose = true
 			}
+		} else {
+			// Check if tab path matches the deleted file
+			if tabPath == deletedPath {
+				shouldClose = true
+			}
+		}
 
-			if shouldClear {
-				log.Printf("THOCK: Clearing editor - deleted file was open: %s", bufPath)
-				// Create a new empty buffer to replace the deleted file's buffer
-				newBuf := buffer.NewBufferFromString("", "", buffer.BTDefault)
-				bp.OpenBuffer(newBuf)
-			}
+		if shouldClose {
+			log.Printf("THOCK: Closing tab - deleted file was open: %s", tabPath)
+			lm.doCloseTab(i)
 		}
 	}
 }
 
-// CloseCurrentTab closes the current tab, deselects the file in tree, and opens an empty buffer
+// CloseCurrentTab closes the current tab
 func (lm *LayoutManager) CloseCurrentTab() {
+	lm.CloseTabAtIndex(lm.TabBar.ActiveIndex)
+}
+
+// CloseTabAtIndex closes the tab at the given index
+func (lm *LayoutManager) CloseTabAtIndex(index int) {
+	if lm.TabBar == nil || index < 0 || index >= len(lm.TabBar.Tabs) {
+		return
+	}
+
+	openTab := lm.TabBar.Tabs[index]
+
+	// Don't close if it's the only tab AND it's Untitled
+	if len(lm.TabBar.Tabs) == 1 && openTab.Name == "Untitled" {
+		log.Println("THOCK: Can't close the only Untitled tab")
+		return
+	}
+
+	// Check for unsaved changes
+	if openTab.Buffer != nil && openTab.Buffer.Modified() {
+		bufName := openTab.Name
+		lm.ShowModal("Unsaved Changes",
+			"Discard changes to "+bufName+"?",
+			func(yes, canceled bool) {
+				if canceled || !yes {
+					return
+				}
+				lm.doCloseTab(index)
+			})
+		return
+	}
+
+	lm.doCloseTab(index)
+}
+
+// doCloseTab performs the actual tab close
+func (lm *LayoutManager) doCloseTab(index int) {
+	if lm.TabBar == nil || index < 0 || index >= len(lm.TabBar.Tabs) {
+		return
+	}
+
+	log.Printf("THOCK: Closing tab %d", index)
+
+	// Close the buffer
+	openTab := lm.TabBar.Tabs[index]
+	if openTab.Buffer != nil {
+		openTab.Buffer.Close()
+	}
+
+	// Remove from tab list
+	lm.TabBar.CloseTab(index)
+
+	// Switch to appropriate tab or reset to empty
+	if len(lm.TabBar.Tabs) == 0 {
+		// No tabs left - create empty buffer
+		log.Println("THOCK: No tabs left, creating empty buffer")
+		lm.resetToEmptyBuffer()
+	} else {
+		// Switch to the new active tab
+		lm.switchToTab(lm.TabBar.ActiveIndex)
+	}
+
+	lm.triggerRedraw()
+}
+
+// resetToEmptyBuffer creates a new empty buffer when all tabs are closed
+func (lm *LayoutManager) resetToEmptyBuffer() {
+	newBuf := buffer.NewBufferFromString("", "", buffer.BTDefault)
+
+	// Add to tab bar
+	if lm.TabBar != nil {
+		lm.TabBar.AddTab(newBuf)
+	}
+
 	tab := action.MainTab()
 	if tab == nil {
 		return
@@ -1000,44 +1311,16 @@ func (lm *LayoutManager) CloseCurrentTab() {
 
 	for _, pane := range tab.Panes {
 		if bp, ok := pane.(*action.BufPane); ok {
-			// Check for unsaved changes
-			if bp.Buf.Modified() {
-				bufName := bp.Buf.GetName()
-				if bufName == "" {
-					bufName = "Untitled"
-				}
-				lm.ShowModal("Unsaved Changes",
-					"Discard changes to "+bufName+"?",
-					func(yes, canceled bool) {
-						if canceled || !yes {
-							return
-						}
-						lm.closeTabAndReset(bp)
-					})
-				return
-			}
-
-			lm.closeTabAndReset(bp)
-			return
+			bp.OpenBuffer(newBuf) // Use OpenBuffer to close any remaining buffer
+			break
 		}
 	}
-}
 
-// closeTabAndReset performs the actual tab close: resets editor and deselects tree
-func (lm *LayoutManager) closeTabAndReset(bp *action.BufPane) {
-	log.Println("THOCK: Closing tab and resetting to empty buffer")
-
-	// Create a new empty buffer
-	newBuf := buffer.NewBufferFromString("", "", buffer.BTDefault)
-	bp.OpenBuffer(newBuf)
-
-	// Keep tree selection at 0 (first item) - don't use -1 as it causes slice bounds issues
+	// Keep tree selection at 0
 	if lm.FileBrowser != nil {
 		lm.FileBrowser.Selected = 0
 		lm.FileBrowser.TopLine = 0
 	}
-
-	lm.triggerRedraw()
 }
 
 // SaveCurrentBuffer saves the current buffer, showing modal for new files
@@ -1067,6 +1350,11 @@ func (lm *LayoutManager) SaveCurrentBuffer() bool {
 					}
 					lm.ShowTimedMessage("Saved "+filename, 3*time.Second)
 
+					// Update tab name and path
+					if lm.TabBar != nil {
+						lm.TabBar.UpdateTabName(lm.TabBar.ActiveIndex, bp.Buf)
+					}
+
 					// Notify tree to refresh and select the file
 					if lm.FileBrowser != nil && lm.FileBrowser.OnFileSaved != nil {
 						lm.FileBrowser.OnFileSaved(filename)
@@ -1077,6 +1365,11 @@ func (lm *LayoutManager) SaveCurrentBuffer() bool {
 				// Existing file - just save
 				log.Printf("THOCK: Saving existing file: %s", bp.Buf.Path)
 				bp.Save()
+
+				// Update tab name (in case it changed)
+				if lm.TabBar != nil {
+					lm.TabBar.UpdateTabName(lm.TabBar.ActiveIndex, bp.Buf)
+				}
 
 				// Notify tree (in case it needs to update)
 				if lm.FileBrowser != nil && lm.FileBrowser.OnFileSaved != nil {

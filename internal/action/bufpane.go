@@ -357,6 +357,19 @@ func (h *BufPane) OpenBuffer(b *buffer.Buffer) {
 	h.lastClickTime = time.Time{}
 }
 
+// SwitchBuffer switches to a different buffer without closing the current one.
+// Used for multi-tab support where we want to preserve all open buffers.
+func (h *BufPane) SwitchBuffer(b *buffer.Buffer) {
+	// Don't close old buffer - it stays in OpenBuffers list for multi-tab
+	h.Buf = b
+	h.BWindow.SetBuffer(b)
+	h.Cursor = b.GetActiveCursor()
+	h.Resize(h.GetView().Width, h.GetView().Height)
+	h.initialRelocate()
+	h.resetMouse()
+	h.lastClickTime = time.Time{}
+}
+
 // GotoLoc moves the cursor to a new location and adjusts the view accordingly.
 // Use GotoLoc when the new location may be far away from the current location.
 func (h *BufPane) GotoLoc(loc buffer.Loc) {

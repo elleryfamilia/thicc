@@ -63,6 +63,29 @@ var (
 	BTStdout = BufType{6, false, true, true}
 )
 
+// isBinaryFile checks if the file appears to be binary by looking for null bytes
+// in the first 8KB of the file. Returns true if binary, false if text.
+func isBinaryFile(file *os.File) bool {
+	// Read up to 8KB from the beginning
+	buf := make([]byte, 8192)
+	n, err := file.Read(buf)
+	if err != nil && err != io.EOF {
+		return false // If we can't read, assume it's not binary
+	}
+
+	// Seek back to the beginning for subsequent reads
+	file.Seek(0, io.SeekStart)
+
+	// Check for null bytes (common indicator of binary content)
+	for i := 0; i < n; i++ {
+		if buf[i] == 0 {
+			return true
+		}
+	}
+
+	return false
+}
+
 // SharedBuffer is a struct containing info that is shared among buffers
 // that have the same file open
 type SharedBuffer struct {
@@ -307,6 +330,11 @@ func NewBufferFromFileWithCommand(path string, btype BufType, cmd Command) (*Buf
 	file, err := os.Open(filename)
 	if err == nil {
 		defer file.Close()
+
+		// Check if file is binary
+		if isBinaryFile(file) {
+			return nil, errors.New("Binary file detected: " + filepath.Base(filename) + " cannot be opened in THOCK. Binary files (executables, images, etc.) are not supported.")
+		}
 	}
 
 	var buf *Buffer
@@ -540,7 +568,7 @@ func (b *Buffer) GetName() string {
 	name := b.name
 	if name == "" {
 		if b.Path == "" {
-			return "No name"
+			return "Untitled"
 		}
 		name = b.Path
 	}
