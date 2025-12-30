@@ -23,6 +23,50 @@ You can also check out the website for Micro at https://micro-editor.github.io.
 
 - - -
 
+## THOCK-Specific Requirements
+
+**Note**: This is a hard fork of micro v2.0.14 with IDE-like features including a file browser and integrated terminal.
+
+### Nerd Font (Required for Icons)
+
+THOCK uses **Nerd Font** icons in the file browser and terminal output. To see icons properly instead of boxes/blanks, you need to install a Nerd Font and configure your terminal emulator to use it.
+
+**Install a Nerd Font:**
+
+macOS (Homebrew):
+```sh
+brew install --cask font-jetbrains-mono-nerd-font
+```
+
+Linux:
+```sh
+# Download and install JetBrains Mono Nerd Font
+mkdir -p ~/.local/share/fonts
+cd ~/.local/share/fonts
+curl -fLo "JetBrains Mono Nerd Font Complete.ttf" \
+  https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBrainsMono.zip
+unzip JetBrainsMono.zip
+fc-cache -fv
+```
+
+**Configure your terminal to use the Nerd Font:**
+- **iTerm2** (macOS): Preferences → Profiles → Text → Font → Select "JetBrainsMono Nerd Font"
+- **Terminal.app** (macOS): Preferences → Profiles → Font → Change → Select "JetBrainsMono Nerd Font"
+- **Alacritty**: Edit `~/.config/alacritty/alacritty.toml`:
+  ```toml
+  [font]
+  normal = { family = "JetBrainsMono Nerd Font", style = "Regular" }
+  ```
+- **Kitty**: Edit `~/.config/kitty/kitty.conf`:
+  ```
+  font_family JetBrainsMono Nerd Font
+  ```
+- **GNOME Terminal**: Edit → Preferences → Profiles → Text → Custom font → Select "JetBrainsMono Nerd Font"
+
+After installing and configuring, restart your terminal and run THOCK again.
+
+- - -
+
 ## Features
 
 - Easy to use and install.
