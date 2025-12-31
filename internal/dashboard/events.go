@@ -35,12 +35,7 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 		return true
 
 	case tcell.KeyEsc:
-		// If in recent pane, go back to menu
-		if d.InRecentPane {
-			d.SwitchToMenuPane()
-			return true
-		}
-		// Otherwise exit
+		// Exit
 		if d.OnExit != nil {
 			d.OnExit()
 		}
@@ -88,37 +83,12 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 		d.MoveNext()
 		return true
 
-	case tcell.KeyLeft:
-		if d.InRecentPane {
-			d.SwitchToMenuPane()
-		}
-		return true
-
-	case tcell.KeyRight:
-		if !d.InRecentPane && len(d.RecentStore.Projects) > 0 {
-			d.SwitchToRecentPane()
-		}
-		return true
-
-	case tcell.KeyTab:
-		// Tab cycles: menu -> recent -> menu
-		if d.InRecentPane {
-			d.SwitchToMenuPane()
-		} else if len(d.RecentStore.Projects) > 0 {
-			d.SwitchToRecentPane()
-		}
-		return true
-
-	case tcell.KeyBacktab:
-		// Shift+Tab cycles in reverse
-		if d.InRecentPane {
-			d.SwitchToMenuPane()
-		} else if len(d.RecentStore.Projects) > 0 {
-			d.SwitchToRecentPane()
-		}
-		return true
-
 	case tcell.KeyEnter:
+		// In AI tools pane, Enter toggles selection
+		if d.InAIToolsPane {
+			d.ToggleAIToolSelection()
+			return true
+		}
 		d.ActivateSelection()
 		return true
 
@@ -130,20 +100,19 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 		return true
 
 	case tcell.KeyHome:
-		// Go to first item
-		if d.InRecentPane {
-			d.RecentIdx = 0
-		} else {
-			d.SelectedIdx = 0
-		}
+		// Go to first item (top of menu)
+		d.SwitchToMenuPane()
+		d.SelectedIdx = 0
 		return true
 
 	case tcell.KeyEnd:
-		// Go to last item
-		if d.InRecentPane {
-			if len(d.RecentStore.Projects) > 0 {
-				d.RecentIdx = len(d.RecentStore.Projects) - 1
-			}
+		// Go to last item (bottom of list)
+		if len(d.RecentStore.Projects) > 0 {
+			d.SwitchToRecentPane()
+			d.RecentIdx = len(d.RecentStore.Projects) - 1
+		} else if len(d.AITools) > 0 {
+			d.SwitchToAIToolsPane()
+			d.AIToolsIdx = len(d.AITools) - 1
 		} else {
 			d.SelectedIdx = len(d.MenuItems) - 1
 		}
@@ -158,32 +127,27 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 	case 'k':
 		d.MovePrevious()
 		return true
-	case 'h':
-		if d.InRecentPane {
-			d.SwitchToMenuPane()
-		}
-		return true
-	case 'l':
-		if !d.InRecentPane && len(d.RecentStore.Projects) > 0 {
-			d.SwitchToRecentPane()
-		}
-		return true
 	case 'g':
-		// gg - go to first item (simplified: just g)
-		if d.InRecentPane {
-			d.RecentIdx = 0
-		} else {
-			d.SelectedIdx = 0
-		}
+		// g - go to first item (top of menu)
+		d.SwitchToMenuPane()
+		d.SelectedIdx = 0
 		return true
 	case 'G':
-		// G - go to last item
-		if d.InRecentPane {
-			if len(d.RecentStore.Projects) > 0 {
-				d.RecentIdx = len(d.RecentStore.Projects) - 1
-			}
+		// G - go to last item (bottom of recent or AI tools)
+		if len(d.RecentStore.Projects) > 0 {
+			d.SwitchToRecentPane()
+			d.RecentIdx = len(d.RecentStore.Projects) - 1
+		} else if len(d.AITools) > 0 {
+			d.SwitchToAIToolsPane()
+			d.AIToolsIdx = len(d.AITools) - 1
 		} else {
 			d.SelectedIdx = len(d.MenuItems) - 1
+		}
+		return true
+	case ' ':
+		// Space toggles AI tool selection when in AI tools pane
+		if d.InAIToolsPane {
+			d.ToggleAIToolSelection()
 		}
 		return true
 	}
@@ -219,7 +183,17 @@ func (d *Dashboard) handleLeftClick(x, y int) bool {
 	if itemIdx := d.GetMenuItemAtPosition(x, y); itemIdx >= 0 {
 		d.SelectedIdx = itemIdx
 		d.InRecentPane = false
+		d.InAIToolsPane = false
 		d.ActivateSelection()
+		return true
+	}
+
+	// Check if click is on an AI tool item
+	if toolIdx := d.GetAIToolItemAtPosition(x, y); toolIdx >= 0 {
+		d.AIToolsIdx = toolIdx
+		d.InAIToolsPane = true
+		d.InRecentPane = false
+		d.ToggleAIToolSelection()
 		return true
 	}
 
@@ -227,6 +201,7 @@ func (d *Dashboard) handleLeftClick(x, y int) bool {
 	if recentIdx := d.GetRecentItemAtPosition(x, y); recentIdx >= 0 {
 		d.RecentIdx = recentIdx
 		d.InRecentPane = true
+		d.InAIToolsPane = false
 		d.ActivateSelection()
 		return true
 	}

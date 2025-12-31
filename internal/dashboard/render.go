@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/micro-editor/tcell/v2"
+	"github.com/ellery/thock/internal/aiterminal"
 	"github.com/ellery/thock/internal/util"
+	"github.com/micro-editor/tcell/v2"
 )
 
 // Layout constants
@@ -62,11 +63,16 @@ func (d *Dashboard) calculateLayout() {
 	}
 	menuHeight := 4 + len(d.MenuItems) + 1 // header + items + spacing
 
+	// AI Tools section height
+	if len(d.AITools) > 0 {
+		menuHeight += 3 + len(d.AITools) // section header + separator + tools
+	}
+
 	if recentCount > 0 {
 		menuHeight += 3 + recentCount // section header + items
 	}
 
-	menuHeight += 2 // Exit + bottom border
+	menuHeight += 1 // bottom border padding
 
 	if menuHeight < MenuPanelMinHeight {
 		menuHeight = MenuPanelMinHeight
@@ -190,17 +196,41 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 	// Draw border
 	d.drawBorder(screen, r.X, r.Y, r.Width, r.Height)
 
-	// Draw menu items
+	// Draw all menu items (linear order)
 	y := r.Y + 2
 	for i, item := range d.MenuItems {
-		// Skip Exit - we'll draw it at the bottom
-		if item.ID == MenuExit {
-			continue
-		}
-
-		isSelected := !d.InRecentPane && d.SelectedIdx == i
+		isSelected := !d.InRecentPane && !d.InAIToolsPane && d.SelectedIdx == i
 		d.drawMenuItem(screen, r.X+2, y, r.Width-4, item, isSelected)
 		y++
+	}
+
+	// Draw AI Tools section if there are any available
+	if len(d.AITools) > 0 {
+		y++ // spacing
+
+		// Store the start of AI tools region for click detection
+		d.aiToolsRegion = Region{X: r.X + 2, Y: y, Width: r.Width - 4, Height: len(d.AITools) + 2}
+
+		// Section header
+		header := "AI Tools"
+		headerX := r.X + (r.Width-len(header))/2
+		d.drawText(screen, headerX, y, header, StyleSectionHeader)
+		y++
+
+		// Separator line (cyan to match border)
+		separatorStyle := tcell.StyleDefault.Foreground(ColorCyan)
+		for x := r.X + 2; x < r.X+r.Width-2; x++ {
+			screen.SetContent(x, y, '─', nil, separatorStyle)
+		}
+		y++
+
+		// AI tool items with radio buttons
+		for i, tool := range d.AITools {
+			isFocused := d.InAIToolsPane && d.AIToolsIdx == i
+			isToolSelected := d.IsAIToolSelected(tool.Command)
+			d.drawAIToolItem(screen, r.X+2, y, r.Width-4, tool, isFocused, isToolSelected)
+			y++
+		}
 	}
 
 	// Draw recent projects section if there are any
@@ -238,23 +268,6 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 			moreText := fmt.Sprintf("  ... and %d more", len(d.RecentStore.Projects)-RecentMaxVisible)
 			d.drawText(screen, r.X+2, y, moreText, StyleVersion)
 			y++
-		}
-	}
-
-	// Draw Exit at the bottom
-	y = r.Y + r.Height - 3
-	for _, item := range d.MenuItems {
-		if item.ID == MenuExit {
-			exitIdx := -1
-			for idx, mi := range d.MenuItems {
-				if mi.ID == MenuExit {
-					exitIdx = idx
-					break
-				}
-			}
-			isSelected := !d.InRecentPane && d.SelectedIdx == exitIdx
-			d.drawMenuItem(screen, r.X+2, y, r.Width-4, item, isSelected)
-			break
 		}
 	}
 }
@@ -342,20 +355,89 @@ func (d *Dashboard) drawRecentItem(screen tcell.Screen, x, y, width int, num int
 		style = StyleRecentFolder
 	}
 
-	// Format: "1. project-name/"
+	// Format: "  project-name/                    1" (shortcut on right like menu items)
 	suffix := ""
 	if proj.IsFolder {
 		suffix = "/"
 	}
 
+	// Build the line like menu items: prefix + label + padding + shortcut
+	prefix := "  "
+	if selected {
+		prefix = "> "
+	}
+
 	name := proj.Name + suffix
+	shortcut := fmt.Sprintf("%d", num)
+
+	// Calculate spacing
+	labelText := prefix + name
+	padding := width - len(labelText) - len(shortcut)
+	if padding < 1 {
+		padding = 1
+	}
+
+	// Truncate name if needed
+	if padding < 1 {
+		maxNameLen := width - len(prefix) - len(shortcut) - 1
+		if maxNameLen > 0 && len(name) > maxNameLen {
+			name = name[:maxNameLen-1] + "…"
+			labelText = prefix + name
+			padding = width - len(labelText) - len(shortcut)
+		}
+	}
+
+	line := labelText + strings.Repeat(" ", padding) + shortcut
+
+	// Truncate if needed
+	if len(line) > width {
+		line = line[:width]
+	}
+
+	// Draw the line
+	for i, ch := range line {
+		if x+i < d.ScreenW {
+			// Color the shortcut differently when not selected
+			charStyle := style
+			if !selected && i >= len(line)-len(shortcut) {
+				charStyle = StyleShortcut
+			}
+			screen.SetContent(x+i, y, ch, nil, charStyle)
+		}
+	}
+
+	// Fill remaining width if selected (for highlight bar)
+	if selected {
+		for i := len(line); i < width; i++ {
+			if x+i < d.ScreenW {
+				screen.SetContent(x+i, y, ' ', nil, style)
+			}
+		}
+	}
+}
+
+// drawAIToolItem renders a single AI tool item with radio button
+func (d *Dashboard) drawAIToolItem(screen tcell.Screen, x, y, width int, tool aiterminal.AITool, focused bool, selected bool) {
+	style := StyleRecentItem
+	if focused {
+		style = StyleMenuSelected
+	}
+
+	// Radio button character
+	radioChar := "( )"
+	if selected {
+		radioChar = "(*)"
+	}
+
+	// Format: "(*) Tool Name"
+	name := tool.Name
 	// Truncate name if too long
-	maxNameLen := width - 4 // "N. " prefix
+	maxNameLen := width - 5 // "(*) " prefix + space
 	if len(name) > maxNameLen {
 		name = name[:maxNameLen-1] + "…"
 	}
 
-	line := fmt.Sprintf("%d. %s", num, name)
+	line := radioChar + " " + name
 
 	// Pad to width
 	if len(line) < width {
@@ -365,7 +447,15 @@ func (d *Dashboard) drawRecentItem(screen tcell.Screen, x, y, width int, num int
 	// Draw the line
 	for i, ch := range line {
 		if x+i < d.ScreenW {
-			screen.SetContent(x+i, y, ch, nil, style)
+			charStyle := style
+			// Highlight the radio button when selected
+			if selected && i < 3 {
+				charStyle = tcell.StyleDefault.Foreground(ColorMagenta).Bold(true)
+				if focused {
+					charStyle = style // Keep the focused highlight
+				}
+			}
+			screen.SetContent(x+i, y, ch, nil, charStyle)
 		}
 	}
 }
@@ -444,23 +534,12 @@ func (d *Dashboard) GetMenuItemAtPosition(x, y int) int {
 
 	itemY := r.Y + 2
 
-	// Check main menu items (excluding Exit)
-	for i, item := range d.MenuItems {
-		if item.ID == MenuExit {
-			continue
-		}
+	// Check all menu items (linear order)
+	for i := range d.MenuItems {
 		if y == itemY {
 			return i
 		}
 		itemY++
-	}
-
-	// Check Exit at bottom
-	exitY := r.Y + r.Height - 3
-	for i, item := range d.MenuItems {
-		if item.ID == MenuExit && y == exitY {
-			return i
-		}
 	}
 
 	return -1
@@ -475,8 +554,12 @@ func (d *Dashboard) GetRecentItemAtPosition(x, y int) int {
 		return -1
 	}
 
-	// Calculate where recent items start
-	recentStartY := r.Y + 2 + len(d.MenuItems) - 1 + 3 // menu items (minus Exit) + spacing + header + separator
+	// Calculate where recent items start (after menu and AI tools section)
+	recentStartY := r.Y + 2 + len(d.MenuItems) // menu items
+	if len(d.AITools) > 0 {
+		recentStartY += 1 + 2 + len(d.AITools) // spacing + header + separator + tools
+	}
+	recentStartY += 3 // spacing + header + separator for recent
 
 	visibleCount := len(d.RecentStore.Projects)
 	if visibleCount > RecentMaxVisible {
@@ -485,6 +568,31 @@ func (d *Dashboard) GetRecentItemAtPosition(x, y int) int {
 
 	for i := 0; i < visibleCount; i++ {
 		if y == recentStartY+i {
+			return i
+		}
+	}
+
+	return -1
+}
+
+// GetAIToolItemAtPosition returns the AI tool index at the given screen position, or -1
+func (d *Dashboard) GetAIToolItemAtPosition(x, y int) int {
+	r := d.menuRegion
+
+	// Check if within bounds
+	if x < r.X+2 || x >= r.X+r.Width-2 {
+		return -1
+	}
+
+	if len(d.AITools) == 0 {
+		return -1
+	}
+
+	// Calculate where AI tools items start
+	aiToolsStartY := r.Y + 2 + len(d.MenuItems) + 1 + 2 // menu items + spacing + header + separator
+
+	for i := 0; i < len(d.AITools); i++ {
+		if y == aiToolsStartY+i {
 			return i
 		}
 	}

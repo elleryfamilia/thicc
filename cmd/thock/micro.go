@@ -20,6 +20,7 @@ import (
 	"github.com/micro-editor/tcell/v2"
 	lua "github.com/yuin/gopher-lua"
 	"github.com/ellery/thock/internal/action"
+	"github.com/ellery/thock/internal/aiterminal"
 	"github.com/ellery/thock/internal/buffer"
 	"github.com/ellery/thock/internal/clipboard"
 	"github.com/ellery/thock/internal/config"
@@ -541,6 +542,21 @@ func main() {
 	// THOCK: Initialize layout panels now that screen size is known
 	// Skip if we just came from dashboard (TransitionToEditor already did this)
 	if thockLayout != nil && !dashboardWasShown {
+		// Load AI tool preference for non-dashboard startup
+		prefsStore := dashboard.NewPreferencesStore()
+		prefsStore.Load()
+		if selectedTool := prefsStore.GetSelectedAITool(); selectedTool != "" {
+			// Find matching tool and get command line
+			tools := aiterminal.GetAvailableToolsOnly()
+			for _, t := range tools {
+				if t.Command == selectedTool {
+					log.Printf("THOCK: Setting AI tool command from preferences: %v", t.GetCommandLine())
+					thockLayout.SetAIToolCommand(t.GetCommandLine())
+					break
+				}
+			}
+		}
+
 		log.Println("THOCK: Initializing layout panels")
 		if err := thockLayout.Initialize(screen.Screen); err != nil {
 			log.Printf("THOCK: Failed to initialize layout: %v", err)
@@ -835,6 +851,14 @@ func TransitionToEditor(buffers []*buffer.Buffer, filePath string) {
 
 	// Initialize the layout
 	InitThockLayout()
+
+	// Configure AI tool auto-launch from dashboard preferences
+	if thockLayout != nil && thockDashboard != nil {
+		if cmd := thockDashboard.GetSelectedAIToolCommand(); cmd != nil {
+			log.Printf("THOCK: Setting AI tool command from dashboard: %v", cmd)
+			thockLayout.SetAIToolCommand(cmd)
+		}
+	}
 
 	// Initialize layout panels
 	if thockLayout != nil {

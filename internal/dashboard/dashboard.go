@@ -1,6 +1,7 @@
 package dashboard
 
 import (
+	"github.com/ellery/thock/internal/aiterminal"
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -33,24 +34,31 @@ type Dashboard struct {
 	SelectedIdx int
 
 	// Recent projects
-	RecentStore    *RecentStore
-	RecentIdx      int  // Selected index in recent list (-1 if not in recent pane)
-	InRecentPane   bool // True if focus is on recent projects list
-	RecentScrollOffset int // Scroll offset for recent projects
+	RecentStore        *RecentStore
+	RecentIdx          int  // Selected index in recent list (-1 if not in recent pane)
+	InRecentPane       bool // True if focus is on recent projects list
+	RecentScrollOffset int  // Scroll offset for recent projects
+
+	// AI Tools section
+	PrefsStore    *PreferencesStore      // Persistent preferences
+	AITools       []aiterminal.AITool    // Available AI tools (cached)
+	AIToolsIdx    int                    // Selected index in AI tools list
+	InAIToolsPane bool                   // True if focus is on AI tools section
 
 	// Layout regions (calculated during render)
-	menuRegion   Region
-	recentRegion Region
+	menuRegion    Region
+	aiToolsRegion Region
+	recentRegion  Region
 
 	// Project Picker modal
 	ProjectPicker *ProjectPicker
 
 	// Callbacks - set by the caller to handle actions
-	OnNewFile    func()             // Create new empty file
-	OnOpenProject func(path string) // Open a project folder
-	OnOpenFile   func(path string)  // Open specific file
-	OnOpenFolder func(path string)  // Open specific folder
-	OnExit       func()             // Exit application
+	OnNewFile     func()             // Create new empty file
+	OnOpenProject func(path string)  // Open a project folder
+	OnOpenFile    func(path string)  // Open specific file
+	OnOpenFolder  func(path string)  // Open specific folder
+	OnExit        func()             // Exit application
 }
 
 // Region defines a rectangular screen area
@@ -86,12 +94,44 @@ func NewDashboard(screen tcell.Screen) *Dashboard {
 		RecentStore:  NewRecentStore(),
 		RecentIdx:    -1,
 		InRecentPane: false,
+
+		PrefsStore:    NewPreferencesStore(),
+		AITools:       aiterminal.GetAvailableToolsOnly(),
+		AIToolsIdx:    0,
+		InAIToolsPane: false,
 	}
 
 	// Load recent projects from disk
 	d.RecentStore.Load()
 
+	// Load preferences from disk
+	d.PrefsStore.Load()
+
+	// Initialize AIToolsIdx based on saved preference
+	d.initAIToolsIdx()
+
 	return d
+}
+
+// initAIToolsIdx sets AIToolsIdx based on the saved preference
+func (d *Dashboard) initAIToolsIdx() {
+	savedTool := d.PrefsStore.GetSelectedAITool()
+	if savedTool == "" {
+		// No tool selected, default to first (which should be Shell)
+		d.AIToolsIdx = 0
+		return
+	}
+
+	// Find the index of the saved tool
+	for i, tool := range d.AITools {
+		if tool.Command == savedTool {
+			d.AIToolsIdx = i
+			return
+		}
+	}
+
+	// Saved tool not found (maybe uninstalled), reset to first
+	d.AIToolsIdx = 0
 }
 
 // Resize updates the dashboard dimensions
@@ -152,36 +192,92 @@ func (d *Dashboard) ActivateSelection() {
 	}
 }
 
-// MoveNext moves selection to the next item
+// MoveNext moves selection to the next item (seamlessly across all sections)
 func (d *Dashboard) MoveNext() {
 	if d.InRecentPane {
+		// In recent pane - move down or wrap to menu
 		if len(d.RecentStore.Projects) > 0 {
 			d.RecentIdx++
 			if d.RecentIdx >= len(d.RecentStore.Projects) {
-				d.RecentIdx = 0
+				// Wrap to menu
+				d.SwitchToMenuPane()
+				d.SelectedIdx = 0
+			}
+		}
+	} else if d.InAIToolsPane {
+		// In AI tools pane - move down or go to recent/menu
+		if len(d.AITools) > 0 {
+			d.AIToolsIdx++
+			if d.AIToolsIdx >= len(d.AITools) {
+				// Move to recent projects if available, else wrap to menu
+				if len(d.RecentStore.Projects) > 0 {
+					d.SwitchToRecentPane()
+					d.RecentIdx = 0
+				} else {
+					d.SwitchToMenuPane()
+					d.SelectedIdx = 0
+				}
 			}
 		}
 	} else {
+		// In menu pane - move down or go to AI tools/recent
 		d.SelectedIdx++
 		if d.SelectedIdx >= len(d.MenuItems) {
-			d.SelectedIdx = 0
+			// Move to AI tools if available
+			if len(d.AITools) > 0 {
+				d.SwitchToAIToolsPane()
+				d.AIToolsIdx = 0
+			} else if len(d.RecentStore.Projects) > 0 {
+				d.SwitchToRecentPane()
+				d.RecentIdx = 0
+			} else {
+				d.SelectedIdx = 0 // Wrap within menu
+			}
 		}
 	}
 }
 
-// MovePrevious moves selection to the previous item
+// MovePrevious moves selection to the previous item (seamlessly across all sections)
 func (d *Dashboard) MovePrevious() {
 	if d.InRecentPane {
+		// In recent pane - move up or go to AI tools/menu
 		if len(d.RecentStore.Projects) > 0 {
 			d.RecentIdx--
 			if d.RecentIdx < 0 {
-				d.RecentIdx = len(d.RecentStore.Projects) - 1
+				// Move to AI tools if available, else menu
+				if len(d.AITools) > 0 {
+					d.SwitchToAIToolsPane()
+					d.AIToolsIdx = len(d.AITools) - 1
+				} else {
+					d.SwitchToMenuPane()
+					d.SelectedIdx = len(d.MenuItems) - 1
+				}
+			}
+		}
+	} else if d.InAIToolsPane {
+		// In AI tools pane - move up or go to menu
+		if len(d.AITools) > 0 {
+			d.AIToolsIdx--
+			if d.AIToolsIdx < 0 {
+				// Move to menu
+				d.SwitchToMenuPane()
+				d.SelectedIdx = len(d.MenuItems) - 1
 			}
 		}
 	} else {
+		// In menu pane - move up or wrap to recent/AI tools
 		d.SelectedIdx--
 		if d.SelectedIdx < 0 {
-			d.SelectedIdx = len(d.MenuItems) - 1
+			// Wrap to bottom of list (recent > AI tools > menu)
+			if len(d.RecentStore.Projects) > 0 {
+				d.SwitchToRecentPane()
+				d.RecentIdx = len(d.RecentStore.Projects) - 1
+			} else if len(d.AITools) > 0 {
+				d.SwitchToAIToolsPane()
+				d.AIToolsIdx = len(d.AITools) - 1
+			} else {
+				d.SelectedIdx = len(d.MenuItems) - 1 // Wrap within menu
+			}
 		}
 	}
 }
@@ -190,6 +286,7 @@ func (d *Dashboard) MovePrevious() {
 func (d *Dashboard) SwitchToRecentPane() {
 	if len(d.RecentStore.Projects) > 0 {
 		d.InRecentPane = true
+		d.InAIToolsPane = false
 		if d.RecentIdx < 0 {
 			d.RecentIdx = 0
 		}
@@ -199,7 +296,71 @@ func (d *Dashboard) SwitchToRecentPane() {
 // SwitchToMenuPane switches focus to the menu pane
 func (d *Dashboard) SwitchToMenuPane() {
 	d.InRecentPane = false
+	d.InAIToolsPane = false
 	d.RecentIdx = -1
+}
+
+// SwitchToAIToolsPane switches focus to the AI tools pane
+func (d *Dashboard) SwitchToAIToolsPane() {
+	if len(d.AITools) > 0 {
+		d.InAIToolsPane = true
+		d.InRecentPane = false
+		d.RecentIdx = -1
+		// Ensure AIToolsIdx is valid
+		if d.AIToolsIdx < 0 || d.AIToolsIdx >= len(d.AITools) {
+			d.AIToolsIdx = 0
+		}
+	}
+}
+
+// ToggleAIToolSelection toggles the selection of the current AI tool
+// This implements radio-button behavior - selecting one deselects others
+func (d *Dashboard) ToggleAIToolSelection() {
+	if !d.InAIToolsPane || len(d.AITools) == 0 {
+		return
+	}
+
+	selectedTool := &d.AITools[d.AIToolsIdx]
+
+	// Check if this tool is already selected
+	currentSelected := d.PrefsStore.GetSelectedAITool()
+	if currentSelected == selectedTool.Command {
+		// Deselect (go back to shell/none)
+		d.PrefsStore.ClearSelectedAITool()
+	} else {
+		// Select this tool
+		d.PrefsStore.SetSelectedAITool(selectedTool.Command)
+	}
+}
+
+// GetSelectedAITool returns the currently selected AI tool, or nil if none selected
+func (d *Dashboard) GetSelectedAITool() *aiterminal.AITool {
+	selectedCmd := d.PrefsStore.GetSelectedAITool()
+	if selectedCmd == "" {
+		return nil
+	}
+
+	for i := range d.AITools {
+		if d.AITools[i].Command == selectedCmd {
+			return &d.AITools[i]
+		}
+	}
+	return nil
+}
+
+// GetSelectedAIToolCommand returns the command line for the selected AI tool
+// Returns nil if no tool is selected (should use default shell)
+func (d *Dashboard) GetSelectedAIToolCommand() []string {
+	tool := d.GetSelectedAITool()
+	if tool == nil {
+		return nil
+	}
+	return tool.GetCommandLine()
+}
+
+// IsAIToolSelected returns true if the given tool command is currently selected
+func (d *Dashboard) IsAIToolSelected(command string) bool {
+	return d.PrefsStore.GetSelectedAITool() == command
 }
 
 // OpenRecentByNumber opens a recent project by its displayed number (1-9)

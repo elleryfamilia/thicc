@@ -36,18 +36,21 @@ type Panel struct {
 	pendingRedraw bool
 	redrawTimer   *time.Timer
 	throttleDelay time.Duration
+
+	// Auto-respawn shell when process exits
+	autoRespawn bool
 }
 
 // NewPanel creates a new terminal panel
 // cmdArgs is the command to run (defaults to user's shell if nil/empty)
 func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
+	// Determine if we should auto-respawn shell when process exits
+	// (true when running an AI tool, false when running default shell)
+	autoRespawn := cmdArgs != nil && len(cmdArgs) > 0
+
 	// Default to user's shell if no command specified
 	if cmdArgs == nil || len(cmdArgs) == 0 {
-		shell := os.Getenv("SHELL")
-		if shell == "" {
-			shell = "/bin/bash"
-		}
-		cmdArgs = []string{shell}
+		cmdArgs = []string{getDefaultShell()}
 	}
 
 	// Content area is inside the border (1 cell on each side)
@@ -95,6 +98,7 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 		Running:       true,
 		Focus:         false,
 		throttleDelay: 16 * time.Millisecond, // 60fps max
+		autoRespawn:   autoRespawn,
 	}
 
 	// Start reading from PTY in background
@@ -103,19 +107,33 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	return p, nil
 }
 
+// getDefaultShell returns the user's default shell
+func getDefaultShell() string {
+	shell := os.Getenv("SHELL")
+	if shell == "" {
+		shell = "/bin/bash"
+	}
+	return shell
+}
+
 // readLoop continuously reads from PTY and writes to VT emulator
 func (p *Panel) readLoop() {
-	defer func() {
-		p.mu.Lock()
-		p.Running = false
-		p.mu.Unlock()
-	}()
-
 	buf := make([]byte, 4096)
 	for {
 		n, err := p.PTY.Read(buf)
 		if err != nil {
 			// EOF or error - terminal closed
+			p.mu.Lock()
+			shouldRespawn := p.autoRespawn
+			p.Running = false
+			p.mu.Unlock()
+
+			// If auto-respawn is enabled (AI tool was running), spawn a new shell
+			if shouldRespawn {
+				// Small delay to let the process fully exit
+				time.Sleep(100 * time.Millisecond)
+				p.RespawnShell()
+			}
 			return
 		}
 
@@ -127,6 +145,65 @@ func (p *Panel) readLoop() {
 			p.scheduleRedraw()
 		}
 	}
+}
+
+// RespawnShell starts a new shell in the terminal after the previous process exited
+func (p *Panel) RespawnShell() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	// Close old PTY if still open
+	if p.PTY != nil {
+		p.PTY.Close()
+		p.PTY = nil
+	}
+
+	// Get content dimensions
+	contentW := p.Region.Width - 2
+	contentH := p.Region.Height - 2
+	if contentW < 10 {
+		contentW = 10
+	}
+	if contentH < 5 {
+		contentH = 5
+	}
+
+	// Create new shell command
+	shell := getDefaultShell()
+	cmd := exec.Command(shell)
+	cmd.Env = os.Environ()
+	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
+	cmd.Env = append(cmd.Env, "THOCK_TERM=1")
+
+	// Start with new PTY
+	ptmx, err := pty.Start(cmd)
+	if err != nil {
+		return err
+	}
+
+	// Set PTY size
+	_ = pty.Setsize(ptmx, &pty.Winsize{
+		Rows: uint16(contentH),
+		Cols: uint16(contentW),
+	})
+
+	// Create new VT emulator (clear screen for fresh start)
+	p.VT = vt10x.New(vt10x.WithSize(contentW, contentH), vt10x.WithWriter(ptmx))
+
+	p.PTY = ptmx
+	p.Cmd = cmd
+	p.Running = true
+	p.autoRespawn = false // Don't auto-respawn again (now running shell)
+
+	// Start new read loop
+	go p.readLoop()
+
+	// Trigger redraw
+	if p.OnRedraw != nil {
+		p.OnRedraw()
+	}
+
+	return nil
 }
 
 // scheduleRedraw batches rapid redraw requests using a timer
