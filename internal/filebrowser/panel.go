@@ -21,7 +21,8 @@ type Panel struct {
 	OnFileOpen      func(path string)                                      // Called when user previews/opens a file
 	OnTreeReady     func()                                                 // Called when tree finishes loading
 	OnFocusEditor   func()                                                 // Called when user wants to focus the editor (Enter on file)
-	OnFileSaved     func(path string)                                      // Called when a file is saved (for tree refresh)
+	OnFileSaved        func(path string)                                      // Called when a file is saved (for tree refresh)
+	OnProjectPathClick func()                                                 // Called when user clicks the project path header
 	OnDeleteRequest    func(path string, isDir bool, callback func(confirmed bool)) // Called when user wants to delete a file/folder
 	OnRenameRequest    func(oldPath string, callback func(newName string))          // Called when user wants to rename a file/folder
 	OnNewFileRequest   func(dirPath string, callback func(fileName string))         // Called when user wants to create a new file
@@ -85,12 +86,14 @@ func (p *Panel) GetVisibleNodes() []*filemanager.TreeNode {
 		p.TopLine = 0
 	}
 
-	// Ensure selected is visible
-	if p.Selected < p.TopLine {
-		p.TopLine = p.Selected
-	}
-	if p.Selected >= p.TopLine+contentHeight {
-		p.TopLine = p.Selected - contentHeight + 1
+	// Ensure selected is visible (skip if header is selected)
+	if p.Selected >= 0 {
+		if p.Selected < p.TopLine {
+			p.TopLine = p.Selected
+		}
+		if p.Selected >= p.TopLine+contentHeight {
+			p.TopLine = p.Selected - contentHeight + 1
+		}
 	}
 
 	// Extract visible slice

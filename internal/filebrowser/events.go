@@ -1,6 +1,8 @@
 package filebrowser
 
 import (
+	"log"
+
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -97,9 +99,18 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 
 	// Handle left click
 	if ev.Buttons() == tcell.Button1 {
-		// Check if click is on a node (after header)
-		if localY >= 2 {
-			nodeIndex := p.TopLine + (localY - 2)
+		// Check if click is on header (line 1 - line 0 is for border)
+		if localY == 1 {
+			log.Println("THOCK FileBrowser: Header clicked, opening project picker")
+			if p.OnProjectPathClick != nil {
+				p.OnProjectPathClick()
+				return true
+			}
+		}
+
+		// Check if click is on a node (line 3+, after header at line 1 and separator at line 2)
+		if localY >= 3 {
+			nodeIndex := p.TopLine + (localY - 3)
 			nodes := p.Tree.GetNodes()
 			if nodeIndex < len(nodes) {
 				p.Selected = nodeIndex
@@ -132,22 +143,46 @@ func (p *Panel) cursorUp() bool {
 		p.previewSelected() // Auto-preview on selection change
 		return true
 	}
-	return false
+
+	// If at first node (Selected == 0), move to header
+	if p.Selected == 0 {
+		p.Selected = -1 // Header is selected
+		return true
+	}
+
+	return false // Already at header, can't go up further
 }
 
 // cursorDown moves selection down and previews file
 func (p *Panel) cursorDown() bool {
+	// If header is selected, move to first node
+	if p.Selected == -1 {
+		nodes := p.Tree.GetNodes()
+		if len(nodes) > 0 {
+			p.Selected = 0
+			p.previewSelected() // Preview the first node
+			return true
+		}
+		return false // No nodes to select
+	}
+
+	// Normal navigation through nodes
 	nodes := p.Tree.GetNodes()
 	if p.Selected < len(nodes)-1 {
 		p.Selected++
 		p.previewSelected() // Auto-preview on selection change
 		return true
 	}
-	return false
+	return false // Can't go down from bottom
 }
 
 // previewSelected opens the selected file in the editor (if it's a file, not directory)
 func (p *Panel) previewSelected() {
+	// Don't preview when header is selected
+	if p.Selected == -1 {
+		return
+	}
+
 	nodes := p.Tree.GetNodes()
 	if p.Selected >= len(nodes) {
 		return
@@ -220,6 +255,16 @@ func (p *Panel) collapseSelected() bool {
 
 // openSelected toggles directory or moves focus to editor for files
 func (p *Panel) openSelected() bool {
+	// If header is selected, open project picker
+	if p.Selected == -1 {
+		if p.OnProjectPathClick != nil {
+			p.OnProjectPathClick()
+			return true
+		}
+		return false
+	}
+
+	// Normal node opening logic
 	nodes := p.Tree.GetNodes()
 	if p.Selected >= len(nodes) {
 		return false

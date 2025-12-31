@@ -11,6 +11,7 @@ import (
 	"github.com/ellery/thock/internal/action"
 	"github.com/ellery/thock/internal/buffer"
 	"github.com/ellery/thock/internal/clipboard"
+	"github.com/ellery/thock/internal/dashboard"
 	"github.com/ellery/thock/internal/filebrowser"
 	"github.com/ellery/thock/internal/terminal"
 	"github.com/micro-editor/tcell/v2"
@@ -35,6 +36,7 @@ type LayoutManager struct {
 	Modal        *Modal
 	InputModal   *InputModal
 	ConfirmModal *ConfirmModal
+	ProjectPicker *dashboard.ProjectPicker
 
 	// Tab bar for showing open files
 	TabBar *TabBar
@@ -70,6 +72,7 @@ func NewLayoutManager(root string) *LayoutManager {
 		Modal:         NewModal(),
 		InputModal:    NewInputModal(),
 		ConfirmModal:  NewConfirmModal(),
+		ProjectPicker: nil,                // Initialized when screen is available
 		TabBar:        NewTabBar(),
 	}
 }
@@ -136,6 +139,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 	lm.FileBrowser.OnFileOpen = lm.previewFileInEditor // Preview without switching focus
 	lm.FileBrowser.OnTreeReady = lm.triggerRedraw
 	lm.FileBrowser.OnFocusEditor = lm.FocusEditor
+	lm.FileBrowser.OnProjectPathClick = lm.ShowProjectPicker
 	lm.FileBrowser.OnFileSaved = func(path string) {
 		log.Printf("THOCK: File saved callback - refreshing tree and selecting: %s", path)
 		lm.FileBrowser.SelectFile(path)
@@ -285,6 +289,19 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 		lm.triggerRedraw()
 	}()
 
+	// Initialize project picker
+	lm.ProjectPicker = dashboard.NewProjectPicker(screen,
+		func(path string) {
+			lm.navigateToProject(path)
+		},
+		func() {
+			lm.ProjectPicker.Hide()
+			lm.triggerRedraw()
+		},
+	)
+	lm.ProjectPicker.Hide() // Start hidden
+	log.Println("THOCK: Project picker initialized")
+
 	log.Println("THOCK: Layout initialization complete")
 	return nil
 }
@@ -349,6 +366,11 @@ func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 	if lm.ConfirmModal != nil && lm.ConfirmModal.Active {
 		lm.ConfirmModal.Render(screen)
 	}
+
+	// Draw project picker on top of everything
+	if lm.ProjectPicker != nil && lm.ProjectPicker.Active {
+		lm.ProjectPicker.Render(screen)
+	}
 }
 
 // HandleEvent routes events to the active panel
@@ -366,6 +388,11 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 	// Handle confirm modal (dangerous actions)
 	if lm.ConfirmModal != nil && lm.ConfirmModal.Active {
 		return lm.ConfirmModal.HandleEvent(event)
+	}
+
+	// Handle project picker
+	if lm.ProjectPicker != nil && lm.ProjectPicker.Active {
+		return lm.ProjectPicker.HandleEvent(event)
 	}
 
 	// CRITICAL: Terminal gets ALL keyboard events when focused (except global shortcuts)
@@ -1403,4 +1430,180 @@ func (lm *LayoutManager) SaveCurrentBuffer() bool {
 		}
 	}
 	return false
+}
+
+// ShowProjectPicker shows the project picker with current directory pre-filled
+func (lm *LayoutManager) ShowProjectPicker() {
+	if lm.ProjectPicker != nil && lm.FileBrowser != nil {
+		currentDir := lm.FileBrowser.Tree.CurrentDir
+		// Set input path and let Show() handle tilde collapsing and directory loading
+		lm.ProjectPicker.InputPath = currentDir
+		lm.ProjectPicker.CursorPos = len(currentDir)
+		lm.ProjectPicker.Show()
+		lm.triggerRedraw()
+	}
+}
+
+// navigateToProject changes the root directory and reinitializes the file browser
+func (lm *LayoutManager) navigateToProject(newRoot string) {
+	log.Printf("THOCK: Navigating to new project: %s", newRoot)
+
+	// Hide the picker
+	if lm.ProjectPicker != nil {
+		lm.ProjectPicker.Hide()
+	}
+
+	// Update root
+	lm.Root = newRoot
+
+	// Recreate file browser with new root
+	treeRegion := Region{
+		X:      0,
+		Y:      0,
+		Width:  lm.getTreeWidth(),
+		Height: lm.ScreenH,
+	}
+
+	lm.FileBrowser = filebrowser.NewPanel(
+		treeRegion.X, treeRegion.Y,
+		treeRegion.Width, treeRegion.Height,
+		newRoot,
+	)
+
+	// Re-register all callbacks (pattern from Initialize method)
+	lm.FileBrowser.OnFileOpen = lm.previewFileInEditor
+	lm.FileBrowser.OnTreeReady = lm.triggerRedraw
+	lm.FileBrowser.OnFocusEditor = lm.FocusEditor
+	lm.FileBrowser.OnProjectPathClick = lm.ShowProjectPicker
+
+	lm.FileBrowser.OnFileSaved = func(path string) {
+		log.Printf("THOCK: File saved callback - refreshing tree and selecting: %s", path)
+		lm.FileBrowser.SelectFile(path)
+		lm.triggerRedraw()
+	}
+
+	// Delete confirmation callback
+	lm.FileBrowser.OnDeleteRequest = func(path string, isDir bool, callback func(bool)) {
+		itemType := "file"
+		if isDir {
+			itemType = "folder"
+		}
+		name := filepath.Base(path)
+		lm.ShowConfirmModal(
+			" Delete "+itemType,
+			"Delete \""+name+"\"?",
+			"This action cannot be undone!",
+			func(confirmed bool) {
+				if confirmed {
+					log.Printf("THOCK: Deleting %s: %s", itemType, path)
+					err := os.RemoveAll(path)
+					if err != nil {
+						action.InfoBar.Error("Delete failed: " + err.Error())
+					} else {
+						lm.ShowTimedMessage("Deleted "+name, 3*time.Second)
+						lm.clearEditorIfPathDeleted(path, isDir)
+					}
+				}
+				callback(confirmed)
+				lm.triggerRedraw()
+			},
+		)
+	}
+
+	// Rename input callback
+	lm.FileBrowser.OnRenameRequest = func(oldPath string, callback func(string)) {
+		currentName := filepath.Base(oldPath)
+		lm.ShowInputModal("Rename", "New name:", currentName, func(newName string, canceled bool) {
+			if canceled || newName == "" || newName == currentName {
+				return
+			}
+
+			newPath := filepath.Join(filepath.Dir(oldPath), newName)
+			log.Printf("THOCK: Renaming %s -> %s", oldPath, newPath)
+
+			err := os.Rename(oldPath, newPath)
+			if err != nil {
+				action.InfoBar.Error("Rename failed: " + err.Error())
+				return
+			}
+
+			lm.ShowTimedMessage("Renamed to "+newName, 3*time.Second)
+			lm.FileBrowser.Tree.Refresh()
+			lm.FileBrowser.Tree.SelectPath(newPath)
+			lm.triggerRedraw()
+
+			callback(newName)
+		})
+	}
+
+	// New file callback
+	lm.FileBrowser.OnNewFileRequest = func(dirPath string, callback func(string)) {
+		lm.ShowInputModal("New File", "File name:", "", func(fileName string, canceled bool) {
+			if canceled || fileName == "" {
+				return
+			}
+
+			newPath := filepath.Join(dirPath, fileName)
+			log.Printf("THOCK: Creating new file: %s", newPath)
+
+			file, err := os.Create(newPath)
+			if err != nil {
+				action.InfoBar.Error("Create file failed: " + err.Error())
+				return
+			}
+			file.Close()
+
+			lm.ShowTimedMessage("Created "+fileName, 3*time.Second)
+
+			lm.FileBrowser.Tree.ExpandedPaths[dirPath] = true
+			lm.FileBrowser.Tree.Refresh()
+			lm.FileBrowser.Tree.SelectPath(newPath)
+			lm.triggerRedraw()
+
+			lm.previewFileInEditor(newPath)
+
+			callback(fileName)
+		})
+	}
+
+	// New folder callback
+	lm.FileBrowser.OnNewFolderRequest = func(dirPath string, callback func(string)) {
+		lm.ShowInputModal("New Folder", "Folder name:", "", func(folderName string, canceled bool) {
+			if canceled || folderName == "" {
+				return
+			}
+
+			newPath := filepath.Join(dirPath, folderName)
+			log.Printf("THOCK: Creating new folder: %s", newPath)
+
+			err := os.MkdirAll(newPath, 0755)
+			if err != nil {
+				action.InfoBar.Error("Create folder failed: " + err.Error())
+				return
+			}
+
+			lm.ShowTimedMessage("Created "+folderName+"/", 3*time.Second)
+
+			lm.FileBrowser.Tree.ExpandedPaths[dirPath] = true
+			lm.FileBrowser.Tree.Refresh()
+			lm.FileBrowser.Tree.SelectPath(newPath)
+			lm.triggerRedraw()
+
+			callback(folderName)
+		})
+	}
+
+	// Close all tabs and reset to empty buffer
+	if lm.TabBar != nil {
+		for i := len(lm.TabBar.Tabs) - 1; i >= 0; i-- {
+			if lm.TabBar.Tabs[i].Buffer != nil {
+				lm.TabBar.Tabs[i].Buffer.Close()
+			}
+		}
+		lm.TabBar.Tabs = nil
+		lm.TabBar.ActiveIndex = 0
+	}
+
+	lm.resetToEmptyBuffer()
+	lm.triggerRedraw()
 }

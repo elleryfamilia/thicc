@@ -36,22 +36,51 @@ func (p *Panel) clearRegion(screen tcell.Screen) {
 
 // drawHeader draws the header showing current directory
 func (p *Panel) drawHeader(screen tcell.Screen) {
-	// Line 0: Current directory
+	// Line 1: Current directory with folder icon (line 0 reserved for border)
 	dir := p.Tree.CurrentDir
-	if len(dir) > p.Region.Width-2 {
-		dir = "..." + dir[len(dir)-(p.Region.Width-5):]
-	}
-	p.drawText(screen, 1, 0, dir, DirectoryStyle)
 
-	// Line 1: Separator
+	// Add folder icon prefix (📁 U+1F4C1)
+	prefix := "📁 "
+	displayPath := prefix + dir
+
+	// Truncate if needed (accounting for icon)
+	maxWidth := p.Region.Width - 2
+	if len(displayPath) > maxWidth {
+		// Show "📁 .../end/of/path" format
+		suffix := dir[len(dir)-min(len(dir), maxWidth-len(prefix)-3):]
+		displayPath = prefix + "..." + suffix
+	}
+
+	// Highlight header if selected (Selected == -1)
+	style := DirectoryStyle // Default: bright blue
+	if p.Selected == -1 && p.Focus {
+		// Fill entire line with selection background first
+		for i := 0; i < p.Region.Width; i++ {
+			screen.SetContent(p.Region.X+i, p.Region.Y+1, ' ', nil, FocusedStyle)
+		}
+		style = FocusedStyle // When selected: black bg, white text (same as nodes)
+	}
+
+	// Draw the path with appropriate style
+	p.drawText(screen, 1, 1, displayPath, style)
+
+	// Line 2: Separator
 	separator := strings.Repeat("─", p.Region.Width-2)
-	p.drawText(screen, 1, 1, separator, DividerStyle)
+	p.drawText(screen, 1, 2, separator, DividerStyle)
+}
+
+// min returns the minimum of two integers
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
 }
 
 // drawNodes draws the file/folder nodes
 func (p *Panel) drawNodes(screen tcell.Screen) {
 	nodes := p.GetVisibleNodes()
-	startY := 2 // After header
+	startY := 3 // After header (line 1) and separator (line 2)
 
 	// Show loading message if tree isn't ready yet
 	if nodes == nil {

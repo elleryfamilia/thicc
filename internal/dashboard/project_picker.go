@@ -136,12 +136,45 @@ func (p *ProjectPicker) loadDirectory(path string) {
 func (p *ProjectPicker) filterEntries() {
 	p.FilteredList = nil
 
-	// Get the filter text (part after last /)
+	// Get the filter text by comparing InputPath with CurrentDir
 	filter := ""
-	if idx := strings.LastIndex(p.InputPath, "/"); idx >= 0 {
-		filter = strings.ToLower(p.InputPath[idx+1:])
+
+	// Normalize both paths for comparison
+	normalizedInput := p.expandTilde(p.InputPath)
+	normalizedCurrent := p.CurrentDir
+
+	// Check if InputPath points to a valid directory different from CurrentDir
+	// Remove trailing slash for directory check
+	inputDir := strings.TrimSuffix(normalizedInput, "/")
+	currentDir := strings.TrimSuffix(normalizedCurrent, "/")
+
+	if inputDir != currentDir {
+		// Check if the input path is a valid directory
+		if info, err := os.Stat(inputDir); err == nil && info.IsDir() {
+			// Load this directory instead of filtering
+			p.CurrentDir = inputDir
+			p.loadDirectory(inputDir)
+			return
+		}
 	}
 
+	// Ensure both have trailing slashes for consistent comparison
+	if !strings.HasSuffix(normalizedInput, "/") {
+		normalizedInput += "/"
+	}
+	if !strings.HasSuffix(normalizedCurrent, "/") {
+		normalizedCurrent += "/"
+	}
+
+	// If InputPath is within CurrentDir, extract any filter text
+	if strings.HasPrefix(normalizedInput, normalizedCurrent) {
+		// Filter is anything typed after the current directory path
+		filter = strings.ToLower(normalizedInput[len(normalizedCurrent):])
+		// Remove trailing slash from filter if present
+		filter = strings.TrimSuffix(filter, "/")
+	}
+
+	// Apply filter
 	for _, entry := range p.Entries {
 		if filter == "" || strings.Contains(strings.ToLower(entry.Name), filter) {
 			p.FilteredList = append(p.FilteredList, entry)
@@ -252,7 +285,46 @@ func (p *ProjectPicker) handleKey(ev *tcell.EventKey) bool {
 }
 
 func (p *ProjectPicker) handleMouse(ev *tcell.EventMouse) bool {
-	// Basic mouse support - could be extended
+	// Only handle left clicks
+	if ev.Buttons() != tcell.Button1 {
+		return false
+	}
+
+	mouseX, mouseY := ev.Position()
+
+	// Calculate modal position (same logic as Render method)
+	w, h := p.Screen.Size()
+	x := (w - p.Width) / 2
+	y := (h - p.Height) / 2
+
+	// Check if click is within modal bounds
+	if mouseX < x || mouseX >= x+p.Width || mouseY < y || mouseY >= y+p.Height {
+		return false
+	}
+
+	// Convert to local coordinates
+	localY := mouseY - y
+
+	// List area starts at line 4 (after title + separator + input + separator)
+	// and spans ListHeight rows
+	listStartY := 4
+	listEndY := listStartY + p.ListHeight
+
+	if localY >= listStartY && localY < listEndY {
+		// Calculate which item was clicked
+		itemIndex := p.TopLine + (localY - listStartY)
+
+		// Validate index is within filtered list
+		if itemIndex < len(p.FilteredList) {
+			// Set selection to clicked item
+			p.SelectedIdx = itemIndex
+
+			// Drill into the folder using existing Tab key logic
+			p.handleTab()
+			return true
+		}
+	}
+
 	return false
 }
 
@@ -385,6 +457,11 @@ func (p *ProjectPicker) ensureVisible() {
 	}
 }
 
+// getContextualHints generates hint text
+func (p *ProjectPicker) getContextualHints() string {
+	return "[Tab] Drill in  [Bksp] Go up  [Esc] Cancel"
+}
+
 // Render draws the project picker
 func (p *ProjectPicker) Render(screen tcell.Screen) {
 	if !p.Active {
@@ -433,34 +510,77 @@ func (p *ProjectPicker) Render(screen tcell.Screen) {
 	// Input field (line 2)
 	inputY := y + 2
 	inputStyle := tcell.StyleDefault.Foreground(ColorTextBright)
+	previewStyle := tcell.StyleDefault.Foreground(ColorTextMuted) // Dimmed for preview
 
 	// Draw input with cursor
 	inputX := x + 2
 	inputWidth := p.Width - 4
-	displayPath := p.InputPath
 
-	// Scroll input if too long
+	// Build display path with selected folder preview
+	actualPath := p.InputPath
+	previewPath := ""
+	if len(p.FilteredList) > 0 && p.SelectedIdx < len(p.FilteredList) {
+		// Add "/" prefix only if path doesn't already end with one
+		if strings.HasSuffix(actualPath, "/") {
+			previewPath = p.FilteredList[p.SelectedIdx].Name
+		} else {
+			previewPath = "/" + p.FilteredList[p.SelectedIdx].Name
+		}
+	}
+	displayPath := actualPath + previewPath
+
+	// Scroll input if too long (scroll based on cursor position in actual path)
 	inputOffset := 0
 	if p.CursorPos > inputWidth-1 {
 		inputOffset = p.CursorPos - inputWidth + 1
 	}
 
+	// Determine if we should highlight a segment (when cursor is after "/" for backspace delete)
+	highlightStart := -1
+	highlightEnd := -1
+	if p.CursorPos > 0 && p.CursorPos <= len(actualPath) && actualPath[p.CursorPos-1] == '/' {
+		// Find the start of the segment before the "/"
+		// Walk backwards from the "/" to find the previous "/" or start of string
+		segmentEnd := p.CursorPos - 1 // Position of the "/"
+		segmentStart := segmentEnd - 1
+		for segmentStart >= 0 && actualPath[segmentStart] != '/' {
+			segmentStart--
+		}
+		segmentStart++ // Move past the "/" or stay at 0
+		highlightStart = segmentStart
+		highlightEnd = segmentEnd
+	}
+
+	// Draw input characters with appropriate styling
+	highlightStyle := tcell.StyleDefault.Foreground(ColorBgDark).Background(ColorYellow)
 	for i := 0; i < inputWidth; i++ {
 		charIdx := inputOffset + i
 		if charIdx < len(displayPath) {
-			screen.SetContent(inputX+i, inputY, rune(displayPath[charIdx]), nil, inputStyle)
+			style := inputStyle
+
+			// Apply highlight if this character is in the segment to be deleted
+			if charIdx >= highlightStart && charIdx < highlightEnd {
+				style = highlightStyle
+			} else if charIdx >= len(actualPath) {
+				// Preview portion (selected folder) - use dimmed style
+				style = previewStyle
+			}
+
+			screen.SetContent(inputX+i, inputY, rune(displayPath[charIdx]), nil, style)
 		} else {
 			screen.SetContent(inputX+i, inputY, ' ', nil, inputStyle)
 		}
 	}
 
-	// Draw cursor
+	// Draw cursor (only within actual path, not in preview)
 	cursorX := inputX + (p.CursorPos - inputOffset)
 	if cursorX >= inputX && cursorX < inputX+inputWidth {
 		cursorStyle := tcell.StyleDefault.Foreground(ColorBgDark).Background(ColorTextBright)
 		ch := ' '
-		if p.CursorPos < len(displayPath) {
-			ch = rune(displayPath[p.CursorPos])
+		// Show character from displayPath at cursor position (includes preview)
+		charIdx := p.CursorPos
+		if charIdx < len(displayPath) {
+			ch = rune(displayPath[charIdx])
 		}
 		screen.SetContent(cursorX, inputY, ch, nil, cursorStyle)
 	}
@@ -532,9 +652,9 @@ func (p *ProjectPicker) Render(screen tcell.Screen) {
 		screen.SetContent(x+i, hintSepY, '─', nil, tcell.StyleDefault.Foreground(ColorCyan))
 	}
 
-	// Hints
+	// Hints (contextual)
 	hintY := y + p.Height - 2
-	hints := "[Tab] Complete  [Enter] Open  [Esc] Cancel"
+	hints := p.getContextualHints()
 	hintStyle := tcell.StyleDefault.Foreground(ColorTextMuted)
 	hintX := x + (p.Width-len(hints))/2
 	for i, ch := range hints {
