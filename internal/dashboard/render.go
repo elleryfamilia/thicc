@@ -159,7 +159,7 @@ func (d *Dashboard) drawLogo(screen tcell.Screen) {
 	// Check if there's room for the logo
 	if logoY < 0 || d.ScreenW < ThockLogoWidth+4 {
 		// Draw simple text title instead
-		title := "THOCK"
+		title := "THICC"
 		titleX := d.menuRegion.X + (d.menuRegion.Width-len(title))/2
 		d.drawText(screen, titleX, d.menuRegion.Y-2, title, StyleTitle)
 		return

@@ -30,20 +30,20 @@ var MarshmallowColors = []ArtColorRegion{
 	{Line: 1, StartX: 9, EndX: 10, Style: StyleArtSecondary},
 }
 
-// ThockLogo - Figlet Rebel font
+// ThockLogo - THICC logo in DOS Rebel font
 var ThockLogo = []string{
-	` ███████████ █████   █████    ███████      █████████  █████   ████`,
-	`▒█▒▒▒███▒▒▒█▒▒███   ▒▒███   ███▒▒▒▒▒███   ███▒▒▒▒▒███▒▒███   ███▒ `,
-	`▒   ▒███  ▒  ▒███    ▒███  ███     ▒▒███ ███     ▒▒▒  ▒███  ███   `,
-	`    ▒███     ▒███████████ ▒███      ▒███▒███          ▒███████    `,
-	`    ▒███     ▒███▒▒▒▒▒███ ▒███      ▒███▒███          ▒███▒▒███   `,
-	`    ▒███     ▒███    ▒███ ▒▒███     ███ ▒▒███     ███ ▒███ ▒▒███  `,
-	`    █████    █████   █████ ▒▒▒███████▒   ▒▒█████████  █████ ▒▒████`,
-	`   ▒▒▒▒▒    ▒▒▒▒▒   ▒▒▒▒▒    ▒▒▒▒▒▒▒      ▒▒▒▒▒▒▒▒▒  ▒▒▒▒▒   ▒▒▒▒ `,
+	`███████████ █████   █████ █████   █████████    █████████ `,
+	`░█░░░███░░░█░░███   ░░███ ░░███   ███░░░░░███  ███░░░░░███`,
+	`░   ░███  ░  ░███    ░███  ░███  ███     ░░░  ███     ░░░ `,
+	`    ░███     ░███████████  ░███ ░███         ░███         `,
+	`    ░███     ░███░░░░░███  ░███ ░███         ░███         `,
+	`    ░███     ░███    ░███  ░███ ░░███     ███░░███     ███`,
+	`    █████    █████   █████ █████ ░░█████████  ░░█████████ `,
+	`   ░░░░░    ░░░░░   ░░░░░ ░░░░░   ░░░░░░░░░    ░░░░░░░░░  `,
 }
 
 // ThockLogoWidth is the width of the logo
-var ThockLogoWidth = 69
+var ThockLogoWidth = 58
 
 // ThockLogoHeight is the height of the logo
 var ThockLogoHeight = len(ThockLogo)
@@ -52,13 +52,13 @@ var ThockLogoHeight = len(ThockLogo)
 var ThockTagline = "a terminal editor that sparks joy"
 
 // GetLogoColorForChar returns the color style based on the character type
-// Solid blocks (█) get one color, shaded blocks (▒) get another for depth
+// Solid blocks (█) get one color, shaded blocks (▒, ░) get another for depth
 func GetLogoColorForChar(ch rune) tcell.Style {
 	switch ch {
 	case '█':
 		// Solid parts - bright magenta/pink
 		return tcell.StyleDefault.Foreground(ColorMagenta).Bold(true)
-	case '▒':
+	case '▒', '░':
 		// Shaded/outline parts - cyan for contrast
 		return tcell.StyleDefault.Foreground(ColorCyan).Bold(true)
 	default:
