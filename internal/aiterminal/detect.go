@@ -25,6 +25,24 @@ func GetAvailableAITools() []AITool {
 			Description: "Anthropic's Claude Code CLI",
 		},
 		{
+			Name:        "Gemini CLI",
+			Command:     "gemini",
+			Args:        []string{},
+			Description: "Google's Gemini CLI",
+		},
+		{
+			Name:        "Codex CLI",
+			Command:     "codex",
+			Args:        []string{},
+			Description: "OpenAI Codex CLI",
+		},
+		{
+			Name:        "OpenCode",
+			Command:     "opencode",
+			Args:        []string{},
+			Description: "OpenCode AI coding assistant",
+		},
+		{
 			Name:        "Aider",
 			Command:     "aider",
 			Args:        []string{},
@@ -35,12 +53,6 @@ func GetAvailableAITools() []AITool {
 			Command:     "gh",
 			Args:        []string{"copilot"},
 			Description: "GitHub Copilot CLI",
-		},
-		{
-			Name:        "Gemini CLI",
-			Command:     "gemini",
-			Args:        []string{},
-			Description: "Google's Gemini CLI",
 		},
 		{
 			Name:        "ChatGPT CLI",

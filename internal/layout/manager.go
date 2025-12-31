@@ -55,6 +55,9 @@ type LayoutManager struct {
 	// Screen reference for triggering redraws
 	Screen tcell.Screen
 
+	// AI Tool command to auto-launch in terminal (nil = default shell)
+	AIToolCommand []string
+
 	// Mutex to protect Terminal access during async creation
 	mu sync.RWMutex
 }
@@ -72,6 +75,12 @@ func NewLayoutManager(root string) *LayoutManager {
 		ConfirmModal:  NewConfirmModal(),
 		TabBar:        NewTabBar(),
 	}
+}
+
+// SetAIToolCommand sets the AI tool command to auto-launch in the terminal
+// Must be called before Initialize() for the command to take effect
+func (lm *LayoutManager) SetAIToolCommand(cmd []string) {
+	lm.AIToolCommand = cmd
 }
 
 // getTreeWidth returns the tree width (percentage-based with minimum)
@@ -267,8 +276,12 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 	// Create terminal asynchronously (to avoid blocking UI)
 	log.Println("THOCK: Creating terminal panel asynchronously")
 	go func() {
-		// Use default shell (nil means NewPanel will use $SHELL or /bin/bash)
-		term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, nil)
+		// Use configured AI tool command, or default shell if nil
+		cmdArgs := lm.AIToolCommand
+		if cmdArgs != nil && len(cmdArgs) > 0 {
+			log.Printf("THOCK: Auto-launching AI tool: %v", cmdArgs)
+		}
+		term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, cmdArgs)
 		if err != nil {
 			log.Printf("THOCK: Failed to create terminal: %v", err)
 			return
