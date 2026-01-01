@@ -11,10 +11,11 @@ import (
 
 // OpenTab represents an open tab with its buffer
 type OpenTab struct {
-	Buffer *buffer.Buffer
-	Name   string // Cached display name (filename or "Untitled")
-	Path   string // Full path for dedup check
-	Loaded bool   // true if Buffer is loaded, false for stub/lazy tabs
+	Buffer    *buffer.Buffer
+	Name      string // Cached display name (filename or "Untitled")
+	Path      string // Full path for dedup check
+	Loaded    bool   // true if Buffer is loaded, false for stub/lazy tabs
+	IsPreview bool   // true if this is a preview tab (italicized, replaceable)
 }
 
 // tabPosition tracks where a tab is rendered for click detection
@@ -117,6 +118,67 @@ func (t *TabBar) AddTabStub(path string) int {
 	t.ActiveIndex = len(t.Tabs) - 1
 	// Note: ensureActiveVisible is called during Render, not here
 	// This avoids issues with stale/missing region info
+	return t.ActiveIndex
+}
+
+// FindPreviewTab returns the index of the preview tab, or -1 if none exists
+func (t *TabBar) FindPreviewTab() int {
+	for i, tab := range t.Tabs {
+		if tab.IsPreview {
+			return i
+		}
+	}
+	return -1
+}
+
+// PinTab converts a preview tab to a permanent tab
+func (t *TabBar) PinTab(index int) {
+	if index >= 0 && index < len(t.Tabs) {
+		t.Tabs[index].IsPreview = false
+	}
+}
+
+// AddPreviewTabStub creates a preview tab stub, replacing any existing preview tab
+// Returns the index of the new preview tab
+func (t *TabBar) AddPreviewTabStub(path string) int {
+	// Close existing preview tab if any
+	existingPreview := t.FindPreviewTab()
+	if existingPreview >= 0 {
+		// Close the existing preview tab's buffer if loaded
+		if t.Tabs[existingPreview].Loaded && t.Tabs[existingPreview].Buffer != nil {
+			t.Tabs[existingPreview].Buffer.Close()
+		}
+		// Remove from list
+		t.Tabs = append(t.Tabs[:existingPreview], t.Tabs[existingPreview+1:]...)
+		// Adjust ActiveIndex if needed
+		if existingPreview < t.ActiveIndex {
+			t.ActiveIndex--
+		} else if existingPreview == t.ActiveIndex && t.ActiveIndex >= len(t.Tabs) {
+			if len(t.Tabs) > 0 {
+				t.ActiveIndex = len(t.Tabs) - 1
+			} else {
+				t.ActiveIndex = 0
+			}
+		}
+	}
+
+	// Create the new preview tab
+	name := filepath.Base(path)
+	if name == "" || name == "." {
+		name = "Untitled"
+	} else {
+		name = truncateName(name)
+	}
+
+	tab := OpenTab{
+		Buffer:    nil,
+		Name:      name,
+		Path:      path,
+		Loaded:    false,
+		IsPreview: true,
+	}
+	t.Tabs = append(t.Tabs, tab)
+	t.ActiveIndex = len(t.Tabs) - 1
 	return t.ActiveIndex
 }
 
@@ -453,6 +515,11 @@ func (t *TabBar) calcTabWidth(tab OpenTab, isActive bool) int {
 func (t *TabBar) renderSingleTab(screen tcell.Screen, startX int, tab OpenTab, isActive bool, style tcell.Style) int {
 	leftEdge := t.Region.X
 	rightEdge := t.Region.X + t.Region.Width
+
+	// Apply italic style for preview tabs (VS Code style)
+	if tab.IsPreview {
+		style = style.Italic(true)
+	}
 
 	// Get file icon based on path/name
 	icon := filemanager.IconForPath(tab.Path, false)

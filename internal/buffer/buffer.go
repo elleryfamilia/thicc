@@ -61,6 +61,8 @@ var (
 	// BTStdout is a buffer that only writes to stdout
 	// when closed
 	BTStdout = BufType{6, false, true, true}
+	// BTBinary is a read-only placeholder for binary files
+	BTBinary = BufType{7, true, true, false}
 )
 
 // isBinaryFile checks if the file appears to be binary by looking for null bytes
@@ -331,9 +333,15 @@ func NewBufferFromFileWithCommand(path string, btype BufType, cmd Command) (*Buf
 	if err == nil {
 		defer file.Close()
 
-		// Check if file is binary
+		// Check if file is binary - return a read-only placeholder instead of error
 		if isBinaryFile(file) {
-			return nil, errors.New("Binary file detected: " + filepath.Base(filename) + " cannot be opened in THOCK. Binary files (executables, images, etc.) are not supported.")
+			message := fmt.Sprintf(
+				"\n  Binary file: %s\n\n"+
+					"  This file cannot be displayed in THOCK.\n"+
+					"  Binary files (executables, images, etc.) are not editable.\n",
+				filepath.Base(filename))
+			b := NewBufferFromString(message, filename, BTBinary)
+			return b, nil
 		}
 	}
 

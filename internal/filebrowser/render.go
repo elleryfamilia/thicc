@@ -2,6 +2,7 @@ package filebrowser
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 
 	"github.com/ellery/thock/internal/config"
@@ -20,10 +21,8 @@ func (p *Panel) Render(screen tcell.Screen) {
 	// Draw tree nodes
 	p.drawNodes(screen)
 
-	// Draw border if needed
-	if p.Focus {
-		p.drawFocusBorder(screen)
-	}
+	// Draw border (always, with style based on focus)
+	p.drawBorder(screen)
 }
 
 // clearRegion clears the panel's screen region
@@ -38,19 +37,19 @@ func (p *Panel) clearRegion(screen tcell.Screen) {
 
 // drawHeader draws the header showing current directory
 func (p *Panel) drawHeader(screen tcell.Screen) {
-	// Line 1: Current directory with folder icon (line 0 reserved for border)
-	dir := p.Tree.CurrentDir
+	// Line 1: Directory name with open folder icon (clickable to change directory)
+	dirName := filepath.Base(p.Tree.CurrentDir)
+	if dirName == "" || dirName == "." {
+		dirName = p.Tree.CurrentDir // Fallback for root paths
+	}
 
-	// Add folder icon prefix (Nerd Font open folder)
-	prefix := " " // U+F07C open folder
-	displayPath := prefix + dir
+	// Add open folder icon prefix (Nerd Font U+F07C)
+	displayName := " \uF07C " + dirName
 
-	// Truncate if needed (accounting for icon)
+	// Truncate if needed
 	maxWidth := p.Region.Width - 2
-	if len(displayPath) > maxWidth {
-		// Show " .../end/of/path" format
-		suffix := dir[len(dir)-min(len(dir), maxWidth-len(prefix)-3):]
-		displayPath = prefix + "..." + suffix
+	if len(displayName) > maxWidth {
+		displayName = displayName[:maxWidth-3] + "..."
 	}
 
 	// Highlight header if selected (Selected == -1)
@@ -63,8 +62,8 @@ func (p *Panel) drawHeader(screen tcell.Screen) {
 		style = FocusedStyle // When selected: black bg, white text (same as nodes)
 	}
 
-	// Draw the path with appropriate style
-	p.drawText(screen, 1, 1, displayPath, style)
+	// Draw the directory name with appropriate style
+	p.drawText(screen, 1, 1, displayName, style)
 
 	// Line 2: Separator
 	separator := strings.Repeat("─", p.Region.Width-2)
@@ -136,25 +135,6 @@ func (p *Panel) renderNode(screen tcell.Screen, y int, node *filemanager.TreeNod
 	}
 	x += p.drawText(screen, x, y, indent, style)
 
-	// Expansion indicator for directories
-	if node.IsDir {
-		style = GetDirectoryStyle()
-		if isSelected {
-			style = selStyle
-		}
-		if node.Expanded {
-			x += p.drawText(screen, x, y, "▼ ", style)
-		} else {
-			x += p.drawText(screen, x, y, "▶ ", style)
-		}
-	} else {
-		style = GetDefaultStyle()
-		if isSelected {
-			style = selStyle
-		}
-		x += p.drawText(screen, x, y, "  ", style)
-	}
-
 	// Icon with color based on file type
 	icon := filemanager.IconForNode(node)
 	iconStyle := StyleForPath(node.Path, node.IsDir)
@@ -185,19 +165,7 @@ func (p *Panel) renderNode(screen tcell.Screen, y int, node *filemanager.TreeNod
 	}
 
 	x += p.drawText(screen, x, y, name, nameStyle)
-
-	// Add git status icon for files (not directories)
-	if !node.IsDir {
-		_, gitIcon := p.Tree.GetGitStatus(node.Path)
-		if gitIcon != "" {
-			// Color the git icon based on status
-			gitStyle := GetGitStatusStyle(gitIcon)
-			if isSelected {
-				gitStyle = selStyle
-			}
-			p.drawText(screen, x+1, y, gitIcon, gitStyle)
-		}
-	}
+	_ = x // Silence unused variable warning
 }
 
 // drawText draws text at the given position and returns the number of characters drawn
@@ -220,32 +188,50 @@ func GetBorderStyle() tcell.Style {
 	return config.DefStyle.Foreground(tcell.Color205) // Hot pink
 }
 
-// drawFocusBorder draws a border around the panel when focused
-// Uses double-line box characters for thicker, more visible appearance
-func (p *Panel) drawFocusBorder(screen tcell.Screen) {
-	borderStyle := GetBorderStyle()
-
-	// Draw vertical lines on left and right (double-line)
-	for y := 0; y < p.Region.Height; y++ {
-		// Left border
-		screen.SetContent(p.Region.X, p.Region.Y+y, '║', nil, borderStyle)
-		// Right border
-		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '║', nil, borderStyle)
+// drawBorder draws a border around the panel
+// Uses double-line (focused/pink) or single-line (unfocused/gray) to match other panels
+func (p *Panel) drawBorder(screen tcell.Screen) {
+	var style tcell.Style
+	if p.Focus {
+		style = GetBorderStyle() // Hot pink
+	} else {
+		style = config.DefStyle.Foreground(tcell.ColorGray)
 	}
 
-	// Top and bottom borders (double-line)
-	for x := 0; x < p.Region.Width; x++ {
-		// Top border
-		screen.SetContent(p.Region.X+x, p.Region.Y, '═', nil, borderStyle)
-		// Bottom border
-		screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '═', nil, borderStyle)
+	// Draw vertical lines
+	for y := 1; y < p.Region.Height-1; y++ {
+		if p.Focus {
+			screen.SetContent(p.Region.X, p.Region.Y+y, '║', nil, style)
+			screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '║', nil, style)
+		} else {
+			screen.SetContent(p.Region.X, p.Region.Y+y, '│', nil, style)
+			screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '│', nil, style)
+		}
 	}
 
-	// Double-line corners
-	screen.SetContent(p.Region.X, p.Region.Y, '╔', nil, borderStyle)
-	screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '╗', nil, borderStyle)
-	screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '╚', nil, borderStyle)
-	screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '╝', nil, borderStyle)
+	// Draw horizontal lines
+	for x := 1; x < p.Region.Width-1; x++ {
+		if p.Focus {
+			screen.SetContent(p.Region.X+x, p.Region.Y, '═', nil, style)
+			screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '═', nil, style)
+		} else {
+			screen.SetContent(p.Region.X+x, p.Region.Y, '─', nil, style)
+			screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '─', nil, style)
+		}
+	}
+
+	// Draw corners
+	if p.Focus {
+		screen.SetContent(p.Region.X, p.Region.Y, '╔', nil, style)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '╗', nil, style)
+		screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '╚', nil, style)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '╝', nil, style)
+	} else {
+		screen.SetContent(p.Region.X, p.Region.Y, '┌', nil, style)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '┐', nil, style)
+		screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '└', nil, style)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '┘', nil, style)
+	}
 }
 
 // GetStatusLine returns a status line for the panel

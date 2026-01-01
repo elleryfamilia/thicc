@@ -238,8 +238,11 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 			lm.FileBrowser.Tree.SelectPath(newPath)
 			lm.triggerRedraw()
 
-			// Open the new file in editor
+			// Open the new file in editor and pin it (new files should be permanent)
 			lm.previewFileInEditor(newPath)
+			if lm.TabBar != nil {
+				lm.TabBar.PinTab(lm.TabBar.ActiveIndex)
+			}
 
 			callback(fileName)
 		})
@@ -350,6 +353,9 @@ func (lm *LayoutManager) RenderFrame(screen tcell.Screen) {
 func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 	// Sync initial buffer to tab bar (ensures Untitled tab shows on startup)
 	lm.SyncInitialTab()
+
+	// Check if preview tab needs to be pinned due to modification
+	lm.checkAndPinOnModification()
 
 	// Always draw editor border (bright when focused, dim when not)
 	lm.drawEditorBorder(screen, lm.ActivePanel == 1)
@@ -679,6 +685,15 @@ func (lm *LayoutManager) setActivePanel(panel int) {
 	if term != nil {
 		term.Focus = (panel == 2)
 	}
+
+	// Pin preview tab when switching to editor (user is committing to this file)
+	if panel == 1 && lm.TabBar != nil {
+		activeTab := lm.TabBar.GetActiveTab()
+		if activeTab != nil && activeTab.IsPreview {
+			log.Printf("THOCK: Pinning preview tab on panel switch: %s", activeTab.Name)
+			lm.TabBar.PinTab(lm.TabBar.ActiveIndex)
+		}
+	}
 }
 
 // cycleFocus cycles to the next panel
@@ -722,7 +737,8 @@ func (lm *LayoutManager) cycleFocus() {
 }
 
 // previewFileInEditor opens a file in the editor panel WITHOUT switching focus
-// Uses lazy loading - creates a stub tab first, then loads the buffer
+// Uses lazy loading - creates a preview tab first, then loads the buffer
+// Preview tabs are italicized and get replaced when navigating to another file
 func (lm *LayoutManager) previewFileInEditor(path string) {
 	log.Printf("THOCK: Previewing file: %s", path)
 
@@ -742,10 +758,10 @@ func (lm *LayoutManager) previewFileInEditor(path string) {
 		}
 	}
 
-	// Create stub tab first (instant UI feedback)
+	// Create preview tab (replaces existing preview if any)
 	if lm.TabBar != nil {
-		lm.TabBar.AddTabStub(absPath)
-		log.Printf("THOCK: Created stub tab, now have %d tabs, active=%d", len(lm.TabBar.Tabs), lm.TabBar.ActiveIndex)
+		lm.TabBar.AddPreviewTabStub(absPath)
+		log.Printf("THOCK: Created preview tab, now have %d tabs, active=%d", len(lm.TabBar.Tabs), lm.TabBar.ActiveIndex)
 	}
 
 	// Load and display the active tab
@@ -1057,9 +1073,19 @@ func (lm *LayoutManager) FocusTree() {
 	}
 }
 
-// FocusEditor sets focus to editor
+// FocusEditor sets focus to editor and pins the active preview tab
 func (lm *LayoutManager) FocusEditor() {
 	lm.setActivePanel(1)
+
+	// Pin the active tab if it's a preview (user is now focusing on it)
+	if lm.TabBar != nil {
+		activeTab := lm.TabBar.GetActiveTab()
+		if activeTab != nil && activeTab.IsPreview {
+			log.Printf("THOCK: Pinning preview tab on editor focus: %s", activeTab.Name)
+			lm.TabBar.PinTab(lm.TabBar.ActiveIndex)
+		}
+	}
+
 	log.Println("THOCK: Focus set to editor")
 }
 
@@ -1093,6 +1119,25 @@ func (lm *LayoutManager) SyncInitialTab() {
 				}
 			}
 		}
+	}
+}
+
+// checkAndPinOnModification checks if the active preview tab was modified and pins it
+// Called during render to auto-pin when user starts editing
+func (lm *LayoutManager) checkAndPinOnModification() {
+	if lm.TabBar == nil {
+		return
+	}
+
+	activeTab := lm.TabBar.GetActiveTab()
+	if activeTab == nil || !activeTab.IsPreview {
+		return
+	}
+
+	// If the buffer has been modified, pin the tab
+	if activeTab.Buffer != nil && activeTab.Buffer.Modified() {
+		log.Printf("THOCK: Pinning preview tab due to modification: %s", activeTab.Name)
+		lm.TabBar.PinTab(lm.TabBar.ActiveIndex)
 	}
 }
 
@@ -1588,7 +1633,11 @@ func (lm *LayoutManager) navigateToProject(newRoot string) {
 			lm.FileBrowser.Tree.SelectPath(newPath)
 			lm.triggerRedraw()
 
+			// Open the new file in editor and pin it (new files should be permanent)
 			lm.previewFileInEditor(newPath)
+			if lm.TabBar != nil {
+				lm.TabBar.PinTab(lm.TabBar.ActiveIndex)
+			}
 
 			callback(fileName)
 		})
