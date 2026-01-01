@@ -51,9 +51,13 @@ _g_clock=$(printf '\xef\x80\x97')       # U+F017 clock
 _cmd_start=0
 preexec() { _cmd_start=$SECONDS }
 _cmd_elapsed() {
-  # Determine git segment color (must match _git_info logic)
-  local gbg=30
+  # Determine previous segment color for arrow transition
+  # Not in git repo: use folder segment color (53=magenta)
+  # In git repo clean: use git segment color (30=cyan)
+  # In git repo dirty: use git segment color (208=orange)
+  local gbg=53
   if git rev-parse --git-dir &>/dev/null; then
+    gbg=30
     [[ -n "$(git status --porcelain 2>/dev/null | head -1)" ]] && gbg=208
   fi
 
@@ -111,9 +115,13 @@ _g_clock=$(printf '\xef\x80\x97')
 _cmd_start=0
 _timer_start() { _cmd_start=$SECONDS; }
 _timer_show() {
-  # Determine git segment color (must match _git_info logic)
-  local gbg=30
+  # Determine previous segment color for arrow transition
+  # Not in git repo: use folder segment color (53=magenta)
+  # In git repo clean: use git segment color (30=cyan)
+  # In git repo dirty: use git segment color (208=orange)
+  local gbg=53
   if git rev-parse --git-dir &>/dev/null; then
+    gbg=30
     [[ -n "$(git status --porcelain 2>/dev/null | head -1)" ]] && gbg=208
   fi
 
