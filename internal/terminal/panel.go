@@ -2,14 +2,150 @@ package terminal
 
 import (
 	"io"
+	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/creack/pty"
 	"github.com/hinshun/vt10x"
 )
+
+// hasStarship checks if the starship prompt is installed
+func hasStarship() bool {
+	path, err := exec.LookPath("starship")
+	found := err == nil
+	log.Printf("THOCK: hasStarship check - found=%v, path=%s, err=%v", found, path, err)
+	return found
+}
+
+// getPromptInitCommand returns the command to initialize a sexy prompt
+// This is sent to the shell AFTER it fully starts (so it overrides rc files)
+func getPromptInitCommand() string {
+	shell := getDefaultShell()
+	shellName := filepath.Base(shell)
+
+	// Skip starship - use our custom Powerline prompt instead
+	_ = hasStarship() // keep function for future use
+
+	// Powerline-style prompt with Spider-Verse theme colors
+	// Glyphs defined via printf with UTF-8 hex bytes (avoids encoding issues)
+	if shellName == "zsh" {
+		return `
+# Clear existing hooks
+precmd_functions=()
+chpwd_functions=()
+preexec_functions=()
+setopt PROMPT_SUBST
+
+# Define glyphs via printf (UTF-8 hex bytes)
+_g_folder=$(printf '\xef\x81\xbc')      # U+F07C folder
+_g_arrow=$(printf '\xee\x82\xb0')       # U+E0B0 powerline arrow
+_g_branch=$(printf '\xee\x82\xa0')      # U+E0A0 git branch
+_g_prompt=$(printf '\xe2\x9d\xaf')      # U+276F chevron
+_g_clock=$(printf '\xef\x80\x97')       # U+F017 clock
+
+# Command timing (returns powerline segment if elapsed > 0)
+_cmd_start=0
+preexec() { _cmd_start=$SECONDS }
+_cmd_elapsed() {
+  # Determine previous segment color for arrow transition
+  # Not in git repo: use folder segment color (53=magenta)
+  # In git repo clean: use git segment color (30=cyan)
+  # In git repo dirty: use git segment color (208=orange)
+  local gbg=53
+  if git rev-parse --git-dir &>/dev/null; then
+    gbg=30
+    [[ -n "$(git status --porcelain 2>/dev/null | head -1)" ]] && gbg=208
+  fi
+
+  if (( _cmd_start > 0 )) && (( SECONDS - _cmd_start > 0 )); then
+    # git_bg -> gold segment -> default
+    echo "%k%F{${gbg}}%K{178}${_g_arrow}%F{black} ${_g_clock} $((SECONDS - _cmd_start))s %k%F{178}${_g_arrow}%f"
+  else
+    # git_bg -> default (just the ending arrow)
+    echo "%k%F{${gbg}}${_g_arrow}%f"
+  fi
+  _cmd_start=0
+}
+
+# Git info with dynamic segment color based on state
+# Returns full segment: [arrow into][content][arrow out or to time]
+_git_info() {
+  local branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+  [[ -z "$branch" ]] && return
+
+  # Check dirty state
+  local dirty=$(git status --porcelain 2>/dev/null | head -1)
+
+  # Check ahead/behind
+  local ab=""
+  local ahead=$(git rev-list --count @{upstream}..HEAD 2>/dev/null)
+  local behind=$(git rev-list --count HEAD..@{upstream} 2>/dev/null)
+  [[ "$ahead" -gt 0 ]] 2>/dev/null && ab="+${ahead}"
+  [[ "$behind" -gt 0 ]] 2>/dev/null && ab="${ab}-${behind}"
+
+  # Segment bg color: 30=cyan (clean), 208=orange (dirty)
+  local bg=30
+  [[ -n "$dirty" ]] && bg=208
+
+  # Truncate branch to 12 chars
+  branch="${branch:0:12}"
+
+  # Output: [magenta arrow on git_bg][white text on git_bg][content]
+  echo "%F{53}%K{${bg}}${_g_arrow}%f%F{231} ${_g_branch} ${branch}${ab} "
+}
+
+# Build prompt: [magenta] dir [dynamic git segment] [yellow time if >0] [arrow]
+PROMPT='%K{53}%F{231} ${_g_folder} %1~ %k$(_git_info)$(_cmd_elapsed) '
+RPROMPT=''
+`
+	}
+	// bash: Similar but with bash syntax
+	return `
+# Define glyphs via printf
+_g_folder=$(printf '\xef\x81\xbc')
+_g_arrow=$(printf '\xee\x82\xb0')
+_g_branch=$(printf '\xee\x82\xa0')
+_g_prompt=$(printf '\xe2\x9d\xaf')
+_g_clock=$(printf '\xef\x80\x97')
+
+_cmd_start=0
+_timer_start() { _cmd_start=$SECONDS; }
+_timer_show() {
+  # Determine previous segment color for arrow transition
+  # Not in git repo: use folder segment color (53=magenta)
+  # In git repo clean: use git segment color (30=cyan)
+  # In git repo dirty: use git segment color (208=orange)
+  local gbg=53
+  if git rev-parse --git-dir &>/dev/null; then
+    gbg=30
+    [[ -n "$(git status --porcelain 2>/dev/null | head -1)" ]] && gbg=208
+  fi
+
+  if (( _cmd_start > 0 )) && (( SECONDS - _cmd_start > 0 )); then
+    printf "\e[0m\e[38;5;${gbg}m\e[48;5;178m${_g_arrow}\e[30m ${_g_clock} %ss \e[0m\e[38;5;178m${_g_arrow}\e[0m" "$((SECONDS - _cmd_start))"
+  else
+    printf "\e[0m\e[38;5;${gbg}m${_g_arrow}\e[0m"
+  fi
+  _cmd_start=0
+}
+trap '_timer_start' DEBUG
+
+_git_info() {
+  local branch=$(git symbolic-ref --short HEAD 2>/dev/null)
+  [[ -z "$branch" ]] && return
+  local dirty=$(git status --porcelain 2>/dev/null | head -1)
+  local bg=30
+  [[ -n "$dirty" ]] && bg=208
+  printf "\e[38;5;53m\e[48;5;${bg}m${_g_arrow}\e[97m ${_g_branch} ${branch:0:12} "
+}
+
+PS1='\[\e[48;5;53m\e[97m\] ${_g_folder} \W \[\e[0m\]$(_git_info)$(_timer_show) '
+`
+}
 
 // Region defines a rectangular screen region (same as filebrowser)
 type Region struct {
@@ -48,9 +184,19 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	// (true when running an AI tool, false when running default shell)
 	autoRespawn := cmdArgs != nil && len(cmdArgs) > 0
 
+	// Track if we're starting a default shell (to inject sexy prompt)
+	injectPrompt := false
+
+	log.Printf("THOCK: NewPanel called with cmdArgs=%v (nil=%v, len=%d)", cmdArgs, cmdArgs == nil, len(cmdArgs))
+
 	// Default to user's shell if no command specified
 	if cmdArgs == nil || len(cmdArgs) == 0 {
-		cmdArgs = []string{getDefaultShell()}
+		shell := getDefaultShell()
+		cmdArgs = []string{shell, "-i"} // Just start interactive shell
+		injectPrompt = true             // We'll inject sexy prompt after shell starts
+		log.Printf("THOCK: Using default shell: %s", shell)
+	} else {
+		log.Printf("THOCK: Using provided cmdArgs: %v", cmdArgs)
 	}
 
 	// Content area is inside the border (1 cell on each side)
@@ -104,7 +250,41 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	// Start reading from PTY in background
 	go p.readLoop()
 
+	// Inject sexy prompt after shell fully initializes
+	if injectPrompt {
+		log.Printf("THOCK: Will inject sexy prompt for shell")
+		go p.injectSexyPrompt()
+	} else {
+		log.Printf("THOCK: Not injecting prompt (cmdArgs provided)")
+	}
+
 	return p, nil
+}
+
+// injectSexyPrompt sends prompt initialization to the shell after it starts
+// This ensures our prompt overrides anything set in rc files
+func (p *Panel) injectSexyPrompt() {
+	log.Printf("THOCK: injectSexyPrompt starting, waiting 500ms...")
+	// Wait for shell to fully initialize (load rc files, oh-my-zsh, etc.)
+	time.Sleep(500 * time.Millisecond)
+
+	p.mu.Lock()
+	if !p.Running || p.PTY == nil {
+		log.Printf("THOCK: injectSexyPrompt - shell not running or PTY nil, aborting")
+		p.mu.Unlock()
+		return
+	}
+	pty := p.PTY
+	p.mu.Unlock()
+
+	// Get the prompt init command
+	initCmd := getPromptInitCommand()
+	log.Printf("THOCK: injectSexyPrompt - sending command: %s", initCmd)
+
+	// Send command to override prompt, then clear screen for clean look
+	fullCmd := initCmd + "\nclear\n"
+	n, err := pty.Write([]byte(fullCmd))
+	log.Printf("THOCK: injectSexyPrompt - wrote %d bytes, err=%v", n, err)
 }
 
 // getDefaultShell returns the user's default shell
@@ -149,6 +329,7 @@ func (p *Panel) readLoop() {
 
 // RespawnShell starts a new shell in the terminal after the previous process exited
 func (p *Panel) RespawnShell() error {
+	log.Printf("THOCK: RespawnShell called")
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -197,6 +378,9 @@ func (p *Panel) RespawnShell() error {
 
 	// Start new read loop
 	go p.readLoop()
+
+	// Inject sexy prompt after shell initializes
+	go p.injectSexyPrompt()
 
 	// Trigger redraw
 	if p.OnRedraw != nil {

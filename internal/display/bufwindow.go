@@ -12,6 +12,11 @@ import (
 	"github.com/ellery/thock/internal/util"
 )
 
+// BinaryFileStyle is a special background style for binary files (Spider-Verse magenta)
+var BinaryFileStyle = tcell.StyleDefault.
+	Background(tcell.GetColor("#1a0a1a")). // Deep magenta/purple
+	Foreground(tcell.Color205)              // Hot pink text
+
 // The BufWindow provides a way of displaying a certain section of a buffer.
 type BufWindow struct {
 	*View
@@ -207,9 +212,15 @@ func (w *BufWindow) getStartInfo(n, lineN int) ([]byte, int, int, *tcell.Style) 
 
 // Clear resets all cells in this window to the default style
 func (w *BufWindow) Clear() {
+	// Use special style for binary files
+	style := config.DefStyle
+	if w.Buf != nil && w.Buf.Type == buffer.BTBinary {
+		style = BinaryFileStyle
+	}
+
 	for y := 0; y < w.Height; y++ {
 		for x := 0; x < w.Width; x++ {
-			screen.SetContent(w.X+x, w.Y+y, ' ', nil, config.DefStyle)
+			screen.SetContent(w.X+x, w.Y+y, ' ', nil, style)
 		}
 	}
 }
@@ -450,7 +461,11 @@ func (w *BufWindow) displayBuffer() {
 
 	cursors := b.GetCursors()
 
+	// Use special style for binary files (Spider-Verse magenta background)
 	curStyle := config.DefStyle
+	if b.Type == buffer.BTBinary {
+		curStyle = BinaryFileStyle
+	}
 
 	// Parse showchars which is in the format of key1=val1,key2=val2,...
 	spacechars := " "

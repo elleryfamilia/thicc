@@ -4,7 +4,31 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
+)
+
+// Git status icons (Nerd Font glyphs)
+const (
+	GitIconModified  = "\uf040" // Pencil - modified
+	GitIconStaged    = "\uf00c" // Check - staged
+	GitIconUntracked = "\uf059" // Question - untracked
+	GitIconDeleted   = "\uf00d" // X mark - deleted
+	GitIconRenamed   = "\uf061" // Arrow - renamed
+	GitIconConflict  = "\uf071" // Warning - conflict
+)
+
+// GitStatus represents the git status of a file
+type GitStatus int
+
+const (
+	GitStatusNone GitStatus = iota
+	GitStatusModified
+	GitStatusStaged
+	GitStatusUntracked
+	GitStatusDeleted
+	GitStatusRenamed
+	GitStatusConflict
 )
 
 // gitCache caches git status for directories
@@ -13,12 +37,136 @@ type gitCache struct {
 	repoRoots  map[string]string      // dir -> repo root
 	ignoredMap map[string]bool        // path -> is ignored
 	gitDirs    map[string]bool        // dir -> has .git
+	statusMap  map[string]GitStatus   // path -> git status
 }
 
 var cache = &gitCache{
 	repoRoots:  make(map[string]string),
 	ignoredMap: make(map[string]bool),
 	gitDirs:    make(map[string]bool),
+	statusMap:  make(map[string]GitStatus),
+}
+
+// GetGitStatus returns the git status of a file and the corresponding icon
+func (t *Tree) GetGitStatus(path string) (GitStatus, string) {
+	// Check cache first
+	cache.mu.RLock()
+	if status, ok := cache.statusMap[path]; ok {
+		cache.mu.RUnlock()
+		return status, gitStatusIcon(status)
+	}
+	cache.mu.RUnlock()
+
+	// Find git repo root
+	repoRoot := t.findGitRepo(path)
+	if repoRoot == "" {
+		cache.mu.Lock()
+		cache.statusMap[path] = GitStatusNone
+		cache.mu.Unlock()
+		return GitStatusNone, ""
+	}
+
+	// Get relative path from repo root
+	relPath, err := filepath.Rel(repoRoot, path)
+	if err != nil {
+		return GitStatusNone, ""
+	}
+
+	// Run git status for this file
+	status := t.checkGitStatus(repoRoot, relPath)
+
+	// Cache result
+	cache.mu.Lock()
+	cache.statusMap[path] = status
+	cache.mu.Unlock()
+
+	return status, gitStatusIcon(status)
+}
+
+// checkGitStatus runs git status for a specific file
+func (t *Tree) checkGitStatus(repoRoot, relPath string) GitStatus {
+	cmd := exec.Command("git", "status", "--porcelain", "--", relPath)
+	cmd.Dir = repoRoot
+
+	output, err := cmd.Output()
+	if err != nil {
+		return GitStatusNone
+	}
+
+	line := strings.TrimSpace(string(output))
+	if line == "" {
+		return GitStatusNone
+	}
+
+	// Parse porcelain format: XY filename
+	// X = index status, Y = working tree status
+	if len(line) < 2 {
+		return GitStatusNone
+	}
+
+	indexStatus := line[0]
+	workTreeStatus := line[1]
+
+	// Check for conflicts first
+	if indexStatus == 'U' || workTreeStatus == 'U' ||
+		(indexStatus == 'A' && workTreeStatus == 'A') ||
+		(indexStatus == 'D' && workTreeStatus == 'D') {
+		return GitStatusConflict
+	}
+
+	// Check for untracked
+	if indexStatus == '?' && workTreeStatus == '?' {
+		return GitStatusUntracked
+	}
+
+	// Check for staged changes (index has changes)
+	if indexStatus == 'A' || indexStatus == 'M' || indexStatus == 'D' || indexStatus == 'R' {
+		if indexStatus == 'R' {
+			return GitStatusRenamed
+		}
+		if indexStatus == 'D' {
+			return GitStatusDeleted
+		}
+		return GitStatusStaged
+	}
+
+	// Check for modified in working tree
+	if workTreeStatus == 'M' {
+		return GitStatusModified
+	}
+
+	if workTreeStatus == 'D' {
+		return GitStatusDeleted
+	}
+
+	return GitStatusNone
+}
+
+// gitStatusIcon returns the Nerd Font icon for a git status
+func gitStatusIcon(status GitStatus) string {
+	switch status {
+	case GitStatusModified:
+		return GitIconModified
+	case GitStatusStaged:
+		return GitIconStaged
+	case GitStatusUntracked:
+		return GitIconUntracked
+	case GitStatusDeleted:
+		return GitIconDeleted
+	case GitStatusRenamed:
+		return GitIconRenamed
+	case GitStatusConflict:
+		return GitIconConflict
+	default:
+		return ""
+	}
+}
+
+// RefreshGitStatus clears the git status cache (call when files change)
+func (t *Tree) RefreshGitStatus() {
+	cache.mu.Lock()
+	cache.statusMap = make(map[string]GitStatus)
+	cache.mu.Unlock()
 }
 
 // IsGitIgnored checks if a path is gitignored

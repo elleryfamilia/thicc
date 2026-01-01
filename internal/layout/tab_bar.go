@@ -5,15 +5,17 @@ import (
 
 	"github.com/ellery/thock/internal/action"
 	"github.com/ellery/thock/internal/buffer"
+	"github.com/ellery/thock/internal/filemanager"
 	"github.com/micro-editor/tcell/v2"
 )
 
 // OpenTab represents an open tab with its buffer
 type OpenTab struct {
-	Buffer *buffer.Buffer
-	Name   string // Cached display name (filename or "Untitled")
-	Path   string // Full path for dedup check
-	Loaded bool   // true if Buffer is loaded, false for stub/lazy tabs
+	Buffer    *buffer.Buffer
+	Name      string // Cached display name (filename or "Untitled")
+	Path      string // Full path for dedup check
+	Loaded    bool   // true if Buffer is loaded, false for stub/lazy tabs
+	IsPreview bool   // true if this is a preview tab (italicized, replaceable)
 }
 
 // tabPosition tracks where a tab is rendered for click detection
@@ -116,6 +118,67 @@ func (t *TabBar) AddTabStub(path string) int {
 	t.ActiveIndex = len(t.Tabs) - 1
 	// Note: ensureActiveVisible is called during Render, not here
 	// This avoids issues with stale/missing region info
+	return t.ActiveIndex
+}
+
+// FindPreviewTab returns the index of the preview tab, or -1 if none exists
+func (t *TabBar) FindPreviewTab() int {
+	for i, tab := range t.Tabs {
+		if tab.IsPreview {
+			return i
+		}
+	}
+	return -1
+}
+
+// PinTab converts a preview tab to a permanent tab
+func (t *TabBar) PinTab(index int) {
+	if index >= 0 && index < len(t.Tabs) {
+		t.Tabs[index].IsPreview = false
+	}
+}
+
+// AddPreviewTabStub creates a preview tab stub, replacing any existing preview tab
+// Returns the index of the new preview tab
+func (t *TabBar) AddPreviewTabStub(path string) int {
+	// Close existing preview tab if any
+	existingPreview := t.FindPreviewTab()
+	if existingPreview >= 0 {
+		// Close the existing preview tab's buffer if loaded
+		if t.Tabs[existingPreview].Loaded && t.Tabs[existingPreview].Buffer != nil {
+			t.Tabs[existingPreview].Buffer.Close()
+		}
+		// Remove from list
+		t.Tabs = append(t.Tabs[:existingPreview], t.Tabs[existingPreview+1:]...)
+		// Adjust ActiveIndex if needed
+		if existingPreview < t.ActiveIndex {
+			t.ActiveIndex--
+		} else if existingPreview == t.ActiveIndex && t.ActiveIndex >= len(t.Tabs) {
+			if len(t.Tabs) > 0 {
+				t.ActiveIndex = len(t.Tabs) - 1
+			} else {
+				t.ActiveIndex = 0
+			}
+		}
+	}
+
+	// Create the new preview tab
+	name := filepath.Base(path)
+	if name == "" || name == "." {
+		name = "Untitled"
+	} else {
+		name = truncateName(name)
+	}
+
+	tab := OpenTab{
+		Buffer:    nil,
+		Name:      name,
+		Path:      path,
+		Loaded:    false,
+		IsPreview: true,
+	}
+	t.Tabs = append(t.Tabs, tab)
+	t.ActiveIndex = len(t.Tabs) - 1
 	return t.ActiveIndex
 }
 
@@ -432,8 +495,9 @@ func (t *TabBar) shouldShowCloseButton(tab OpenTab) bool {
 
 // calcTabWidth calculates the width of a tab
 func (t *TabBar) calcTabWidth(tab OpenTab, isActive bool) int {
-	// Format: " ● name [x] " or " name [x] " (no [x] for single Untitled tab)
+	// Format: " icon ● name [x] " or " icon name [x] " (no [x] for single Untitled tab)
 	width := 1 // leading space
+	width += 2 // icon + space (icon is 1 cell wide in Nerd Fonts)
 	if tab.Buffer != nil && tab.Buffer.Modified() {
 		width += 2 // "● "
 	}
@@ -452,8 +516,19 @@ func (t *TabBar) renderSingleTab(screen tcell.Screen, startX int, tab OpenTab, i
 	leftEdge := t.Region.X
 	rightEdge := t.Region.X + t.Region.Width
 
-	// Build tab text without close button: " ● name " or " name "
-	text := " "
+	// Apply italic style for preview tabs (VS Code style)
+	if tab.IsPreview {
+		style = style.Italic(true)
+	}
+
+	// Get file icon based on path/name
+	icon := filemanager.IconForPath(tab.Path, false)
+	if tab.Name == "Untitled" {
+		icon = filemanager.DefaultFileIcon
+	}
+
+	// Build tab text without close button: " icon ● name " or " icon name "
+	text := " " + icon + " "
 	if tab.Buffer != nil && tab.Buffer.Modified() {
 		text += "● "
 	}

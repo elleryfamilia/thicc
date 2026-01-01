@@ -48,10 +48,13 @@ func ColorschemeExists(colorschemeName string) bool {
 	return FindRuntimeFile(RTColorscheme, colorschemeName) != nil
 }
 
+// ThockBackground is the default background color for all panels
+var ThockBackground = tcell.GetColor("#0b0614")
+
 // InitColorscheme picks and initializes the colorscheme when micro starts
 func InitColorscheme() error {
 	Colorscheme = make(map[string]tcell.Style)
-	DefStyle = tcell.StyleDefault
+	DefStyle = tcell.StyleDefault.Background(ThockBackground)
 
 	log.Printf("THOCK: InitColorscheme starting, colorscheme setting = %v", GlobalSettings["colorscheme"])
 
@@ -72,6 +75,10 @@ func InitColorscheme() error {
 			log.Printf("THOCK: Fallback colorscheme also failed: %v", err2)
 		}
 	}
+
+	// Ensure DefStyle uses the Thock background color
+	fg, _, _ := DefStyle.Decompose()
+	DefStyle = DefStyle.Foreground(fg).Background(ThockBackground)
 
 	return err
 }
@@ -169,19 +176,16 @@ lineLoop:
 // StringToStyle returns a style from a string
 // The strings must be in the format "extra foregroundcolor,backgroundcolor"
 // The 'extra' can be bold, reverse, italic or underline
+// Note: Background colors from colorschemes are ignored - we always use ThockBackground
+// for visual consistency across the editor
 func StringToStyle(str string) tcell.Style {
-	var fg, bg string
+	var fg string
 	spaceSplit := strings.Split(str, " ")
 	split := strings.Split(spaceSplit[len(spaceSplit)-1], ",")
-	if len(split) > 1 {
-		fg, bg = split[0], split[1]
-	} else {
-		fg = split[0]
-	}
+	fg = split[0]
 	fg = strings.TrimSpace(fg)
-	bg = strings.TrimSpace(bg)
 
-	var fgColor, bgColor tcell.Color
+	var fgColor tcell.Color
 	var ok bool
 	if fg == "" || fg == "default" {
 		fgColor, _, _ = DefStyle.Decompose()
@@ -191,16 +195,9 @@ func StringToStyle(str string) tcell.Style {
 			fgColor, _, _ = DefStyle.Decompose()
 		}
 	}
-	if bg == "" || bg == "default" {
-		_, bgColor, _ = DefStyle.Decompose()
-	} else {
-		bgColor, ok = StringToColor(bg)
-		if !ok {
-			_, bgColor, _ = DefStyle.Decompose()
-		}
-	}
 
-	style := DefStyle.Foreground(fgColor).Background(bgColor)
+	// Always use ThockBackground for consistent editor appearance
+	style := DefStyle.Foreground(fgColor).Background(ThockBackground)
 	if strings.Contains(str, "bold") {
 		style = style.Bold(true)
 	}

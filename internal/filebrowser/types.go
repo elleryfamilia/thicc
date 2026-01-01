@@ -1,6 +1,7 @@
 package filebrowser
 
 import (
+	"github.com/ellery/thock/internal/config"
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -18,67 +19,78 @@ func (r Region) Contains(x, y int) bool {
 		y >= r.Y && y < r.Y+r.Height
 }
 
-// DefaultStyle is the default style for the file browser
-var DefaultStyle = tcell.StyleDefault.
-	Foreground(tcell.ColorWhite).
-	Background(tcell.ColorBlack)
+// GetDefaultStyle returns the default style for the file browser, using the editor's background
+func GetDefaultStyle() tcell.Style {
+	return config.DefStyle.Foreground(tcell.ColorWhite)
+}
+
+// DefaultStyle is kept for backwards compatibility (used at render time)
+var DefaultStyle = tcell.StyleDefault.Foreground(tcell.ColorWhite)
 
 // FocusedStyle is the style for focused items
 var FocusedStyle = tcell.StyleDefault.
 	Foreground(tcell.ColorBlack).
 	Background(tcell.ColorWhite)
 
-// DirectoryStyle is the style for directories
-// Using 256-color palette (Color33 = bright blue) for consistent rendering across terminals
-var DirectoryStyle = tcell.StyleDefault.
-	Foreground(tcell.Color33).
-	Background(tcell.ColorBlack).
-	Bold(true)
+// GetDirectoryStyle returns the style for directories, using the editor's background
+func GetDirectoryStyle() tcell.Style {
+	return config.DefStyle.Foreground(tcell.Color33).Bold(true)
+}
 
-// FileStyle is the style for regular files
-var FileStyle = tcell.StyleDefault.
-	Foreground(tcell.ColorWhite).
-	Background(tcell.ColorBlack)
+// DirectoryStyle is kept for backwards compatibility
+var DirectoryStyle = tcell.StyleDefault.Foreground(tcell.Color33).Bold(true)
 
-// DividerStyle is the style for panel dividers
-var DividerStyle = tcell.StyleDefault.
-	Foreground(tcell.ColorGray).
-	Background(tcell.ColorBlack)
+// GetFileStyle returns the style for regular files, using the editor's background
+func GetFileStyle() tcell.Style {
+	return config.DefStyle.Foreground(tcell.ColorWhite)
+}
 
-// File type specific colors - using 256-color palette for consistent rendering
+// FileStyle is kept for backwards compatibility
+var FileStyle = tcell.StyleDefault.Foreground(tcell.ColorWhite)
+
+// GetDividerStyle returns the style for panel dividers, using the editor's background
+func GetDividerStyle() tcell.Style {
+	return config.DefStyle.Foreground(tcell.ColorGray)
+}
+
+// DividerStyle is kept for backwards compatibility
+var DividerStyle = tcell.StyleDefault.Foreground(tcell.ColorGray)
+
+// File type foreground colors - using 256-color palette for consistent rendering
 var (
 	// Programming languages
-	GoFileStyle         = tcell.StyleDefault.Foreground(tcell.Color37).Background(tcell.ColorBlack)  // Cyan
-	RustFileStyle       = tcell.StyleDefault.Foreground(tcell.Color208).Background(tcell.ColorBlack) // Orange
-	PythonFileStyle     = tcell.StyleDefault.Foreground(tcell.Color226).Background(tcell.ColorBlack) // Bright yellow
-	JavaScriptFileStyle = tcell.StyleDefault.Foreground(tcell.Color220).Background(tcell.ColorBlack) // Gold yellow
-	LuaFileStyle        = tcell.StyleDefault.Foreground(tcell.Color63).Background(tcell.ColorBlack)  // Blue-purple
+	goFileColor         = tcell.Color37  // Cyan
+	rustFileColor       = tcell.Color208 // Orange
+	pythonFileColor     = tcell.Color226 // Bright yellow
+	javaScriptFileColor = tcell.Color220 // Gold yellow
+	luaFileColor        = tcell.Color63  // Blue-purple
 
 	// Web files
-	HTMLFileStyle = tcell.StyleDefault.Foreground(tcell.Color208).Background(tcell.ColorBlack) // Orange
-	CSSFileStyle  = tcell.StyleDefault.Foreground(tcell.Color39).Background(tcell.ColorBlack)  // Deep sky blue
+	htmlFileColor = tcell.Color208 // Orange
+	cssFileColor  = tcell.Color39  // Deep sky blue
 
 	// Data/Config
-	JSONFileStyle = tcell.StyleDefault.Foreground(tcell.Color226).Background(tcell.ColorBlack) // Bright yellow
-	YAMLFileStyle = tcell.StyleDefault.Foreground(tcell.Color40).Background(tcell.ColorBlack)  // Green
+	jsonFileColor = tcell.Color226 // Bright yellow
+	yamlFileColor = tcell.Color40  // Green
 
 	// Documentation
-	MarkdownFileStyle = tcell.StyleDefault.Foreground(tcell.Color33).Background(tcell.ColorBlack) // Bright blue (same as directories)
+	markdownFileColor = tcell.Color33 // Bright blue (same as directories)
 
 	// Images
-	ImageFileStyle = tcell.StyleDefault.Foreground(tcell.Color201).Background(tcell.ColorBlack) // Magenta/fuchsia
+	imageFileColor = tcell.Color201 // Magenta/fuchsia
 
 	// Archives
-	ArchiveFileStyle = tcell.StyleDefault.Foreground(tcell.Color196).Background(tcell.ColorBlack) // Bright red
+	archiveFileColor = tcell.Color196 // Bright red
 
 	// Executables
-	ExecutableFileStyle = tcell.StyleDefault.Foreground(tcell.Color40).Background(tcell.ColorBlack).Bold(true) // Green
+	executableFileColor = tcell.Color40 // Green
 )
 
 // StyleForPath returns the appropriate style for a file path
+// Uses config.DefStyle as the base to match the editor background
 func StyleForPath(path string, isDir bool) tcell.Style {
 	if isDir {
-		return DirectoryStyle
+		return GetDirectoryStyle()
 	}
 
 	// Get file extension
@@ -90,51 +102,85 @@ func StyleForPath(path string, isDir bool) tcell.Style {
 		}
 	}
 
-	// Debug logging for markdown files
-	// if ext == ".md" || ext == ".markdown" {
-	// 	log.Printf("THOCK FileBrowser: Markdown file detected: %s (ext=%s)", path, ext)
-	// }
-
-	// Return style based on extension
+	// Return style based on extension, using config.DefStyle as base
 	switch ext {
 	// Go
 	case ".go":
-		return GoFileStyle
+		return config.DefStyle.Foreground(goFileColor)
 	// Rust
 	case ".rs":
-		return RustFileStyle
+		return config.DefStyle.Foreground(rustFileColor)
 	// Python
 	case ".py":
-		return PythonFileStyle
+		return config.DefStyle.Foreground(pythonFileColor)
 	// JavaScript/TypeScript
 	case ".js", ".jsx", ".ts", ".tsx":
-		return JavaScriptFileStyle
+		return config.DefStyle.Foreground(javaScriptFileColor)
 	// Lua
 	case ".lua":
-		return LuaFileStyle
+		return config.DefStyle.Foreground(luaFileColor)
 	// Web
 	case ".html", ".htm":
-		return HTMLFileStyle
+		return config.DefStyle.Foreground(htmlFileColor)
 	case ".css", ".scss", ".sass", ".less":
-		return CSSFileStyle
+		return config.DefStyle.Foreground(cssFileColor)
 	// Data/Config
 	case ".json":
-		return JSONFileStyle
+		return config.DefStyle.Foreground(jsonFileColor)
 	case ".yaml", ".yml":
-		return YAMLFileStyle
+		return config.DefStyle.Foreground(yamlFileColor)
 	// Documentation
 	case ".md", ".markdown":
-		return MarkdownFileStyle
+		return config.DefStyle.Foreground(markdownFileColor)
 	// Images
 	case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".bmp", ".webp":
-		return ImageFileStyle
+		return config.DefStyle.Foreground(imageFileColor)
 	// Archives
 	case ".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar":
-		return ArchiveFileStyle
+		return config.DefStyle.Foreground(archiveFileColor)
 	// Executables (by extension)
 	case ".sh", ".bash", ".zsh", ".fish":
-		return ExecutableFileStyle
+		return config.DefStyle.Foreground(executableFileColor).Bold(true)
 	default:
-		return FileStyle
+		return GetFileStyle()
+	}
+}
+
+// Git status colors
+var (
+	gitModifiedColor  = tcell.Color208 // Orange
+	gitStagedColor    = tcell.Color40  // Green
+	gitUntrackedColor = tcell.Color243 // Gray
+	gitDeletedColor   = tcell.Color196 // Red
+	gitConflictColor  = tcell.Color226 // Yellow
+)
+
+// Git status icon constants (must match filemanager.GitIcon* constants)
+const (
+	gitIconModified  = "\uf040" // Pencil
+	gitIconStaged    = "\uf00c" // Check
+	gitIconUntracked = "\uf059" // Question
+	gitIconDeleted   = "\uf00d" // X mark
+	gitIconRenamed   = "\uf061" // Arrow
+	gitIconConflict  = "\uf071" // Warning
+)
+
+// GetGitStatusStyle returns the style for a git status icon
+func GetGitStatusStyle(icon string) tcell.Style {
+	switch icon {
+	case gitIconModified:
+		return config.DefStyle.Foreground(gitModifiedColor)
+	case gitIconStaged:
+		return config.DefStyle.Foreground(gitStagedColor)
+	case gitIconUntracked:
+		return config.DefStyle.Foreground(gitUntrackedColor)
+	case gitIconDeleted:
+		return config.DefStyle.Foreground(gitDeletedColor)
+	case gitIconRenamed:
+		return config.DefStyle.Foreground(gitStagedColor)
+	case gitIconConflict:
+		return config.DefStyle.Foreground(gitConflictColor)
+	default:
+		return config.DefStyle
 	}
 }

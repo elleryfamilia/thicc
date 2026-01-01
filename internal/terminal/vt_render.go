@@ -3,12 +3,15 @@ package terminal
 import (
 	"reflect"
 
+	"github.com/ellery/thock/internal/config"
 	"github.com/hinshun/vt10x"
 	"github.com/micro-editor/tcell/v2"
 )
 
-// BorderStyle is the style for focus borders (pink for Spider-Verse vibe)
-var BorderStyle = tcell.StyleDefault.Foreground(tcell.Color205) // Hot pink
+// GetBorderStyle returns the style for focus borders (pink for Spider-Verse vibe)
+func GetBorderStyle() tcell.Style {
+	return config.DefStyle.Foreground(tcell.Color205) // Hot pink
+}
 
 // Render draws the terminal to the tcell screen
 func (p *Panel) Render(screen tcell.Screen) {
@@ -16,7 +19,7 @@ func (p *Panel) Render(screen tcell.Screen) {
 	defer p.mu.Unlock()
 
 	// Only clear border areas (content will be overwritten by VT cells)
-	clearStyle := tcell.StyleDefault.Background(tcell.ColorBlack)
+	clearStyle := config.DefStyle
 
 	// Top and bottom borders
 	for x := 0; x < p.Region.Width; x++ {
@@ -125,9 +128,9 @@ func (p *Panel) getAltCell(x, y int) vt10x.Glyph {
 func (p *Panel) drawBorder(screen tcell.Screen) {
 	var style tcell.Style
 	if p.Focus {
-		style = BorderStyle // Hot pink when focused
+		style = GetBorderStyle() // Hot pink when focused
 	} else {
-		style = tcell.StyleDefault.Foreground(tcell.ColorGray) // Gray when not focused
+		style = config.DefStyle.Foreground(tcell.ColorGray) // Gray when not focused
 	}
 
 	// Draw vertical lines
@@ -190,7 +193,8 @@ func (p *Panel) ShowCursor(screen tcell.Screen) {
 
 // glyphToTcellStyle converts VT10x Glyph to tcell style
 func glyphToTcellStyle(glyph vt10x.Glyph) tcell.Style {
-	style := tcell.StyleDefault
+	// Start with config.DefStyle to get the Thock background
+	style := config.DefStyle
 
 	// Foreground color
 	if glyph.FG != vt10x.DefaultFG {
@@ -209,7 +213,7 @@ func glyphToTcellStyle(glyph vt10x.Glyph) tcell.Style {
 		}
 	}
 
-	// Background color
+	// Background color - use Thock background for default, otherwise use the glyph's background
 	if glyph.BG != vt10x.DefaultBG {
 		// Same logic as foreground
 		if glyph.BG > 255 {
@@ -223,6 +227,7 @@ func glyphToTcellStyle(glyph vt10x.Glyph) tcell.Style {
 			style = style.Background(tcell.PaletteColor(int(glyph.BG)))
 		}
 	}
+	// If glyph.BG == vt10x.DefaultBG, we keep the Thock background from config.DefStyle
 
 	// Text attributes (Mode is int16 with bitflags)
 	// Mode flags from vt10x (estimated from typical VT100 implementation)
