@@ -78,8 +78,8 @@ clean:
 	rm -f thock
 	rm -f log.txt
 
-# THOCK: Quick build without generate step
-quick:
+# THOCK: Quick build (includes generate for syntax highlighting)
+quick: generate
 	CGO_ENABLED=$(CGO_ENABLED) go build -o thock ./cmd/thock
 
 # THOCK: Run with debug logging
