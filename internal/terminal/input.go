@@ -4,6 +4,7 @@ import (
 	"log"
 	"unicode/utf8"
 
+	"github.com/ellery/thock/internal/clipboard"
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -18,6 +19,23 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 	switch ev := event.(type) {
 	case *tcell.EventKey:
 		log.Printf("THOCK Terminal: Key event, Key=%v, Rune=%c", ev.Key(), ev.Rune())
+
+		// Handle Ctrl+C: copy selection if exists, otherwise send SIGINT
+		if ev.Key() == tcell.KeyCtrlC {
+			if p.HasSelection() {
+				text := p.GetSelection()
+				clipboard.Write(text, clipboard.ClipboardReg)
+				log.Printf("THOCK Terminal: Copied %d chars to clipboard", len(text))
+				p.ClearSelection()
+				// Trigger redraw to clear selection highlight
+				if p.OnRedraw != nil {
+					p.OnRedraw()
+				}
+				return true
+			}
+			// No selection - fall through to send SIGINT to terminal
+		}
+
 		result := p.handleKey(ev)
 		log.Printf("THOCK Terminal: handleKey returned %v", result)
 		return result
@@ -27,15 +45,74 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 		_, err := p.Write([]byte(ev.Text()))
 		return err == nil
 	case *tcell.EventMouse:
-		// Consume mouse clicks so they don't fall through to micro
-		// (which might steal focus back)
-		if ev.Buttons() != tcell.ButtonNone {
-			log.Printf("THOCK Terminal: Mouse click consumed")
-			return true
-		}
-		return false
+		return p.handleMouse(ev)
 	}
 
+	return false
+}
+
+// handleMouse processes mouse events for text selection
+func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
+	// Calculate position relative to content area (inside border)
+	mouseX, mouseY := ev.Position()
+	contentX := p.Region.X + 1
+	contentY := p.Region.Y + 1
+	x := mouseX - contentX
+	y := mouseY - contentY
+
+	// Clamp to content bounds
+	contentW := p.Region.Width - 2
+	contentH := p.Region.Height - 2
+	if x < 0 {
+		x = 0
+	}
+	if x >= contentW {
+		x = contentW - 1
+	}
+	if y < 0 {
+		y = 0
+	}
+	if y >= contentH {
+		y = contentH - 1
+	}
+
+	if ev.Buttons() == tcell.Button1 {
+		if p.mouseReleased {
+			// New click - start selection
+			p.Selection[0] = Loc{X: x, Y: y}
+			p.Selection[1] = Loc{X: x, Y: y}
+			log.Printf("THOCK Terminal: Selection start at (%d, %d)", x, y)
+		} else {
+			// Drag - extend selection
+			p.Selection[1] = Loc{X: x, Y: y}
+			log.Printf("THOCK Terminal: Selection drag to (%d, %d)", x, y)
+		}
+		p.mouseReleased = false
+
+		// Trigger redraw to show selection
+		if p.OnRedraw != nil {
+			p.OnRedraw()
+		}
+		return true
+	} else if ev.Buttons() == tcell.ButtonNone {
+		if !p.mouseReleased {
+			// Button released - finalize selection
+			p.Selection[1] = Loc{X: x, Y: y}
+			p.mouseReleased = true
+			log.Printf("THOCK Terminal: Selection end at (%d, %d)", x, y)
+
+			// Trigger redraw
+			if p.OnRedraw != nil {
+				p.OnRedraw()
+			}
+		}
+		return false // Don't consume button-none events
+	}
+
+	// Consume other mouse button events to prevent focus stealing
+	if ev.Buttons() != tcell.ButtonNone {
+		return true
+	}
 	return false
 }
 

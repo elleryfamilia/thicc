@@ -66,6 +66,11 @@ func (p *Panel) Render(screen tcell.Screen) {
 
 			style := glyphToTcellStyle(glyph)
 
+			// Apply selection highlight (reverse video)
+			if p.isSelected(x, y) {
+				style = style.Reverse(true)
+			}
+
 			// Draw to screen (in content area)
 			screen.SetContent(
 				contentX+x,

@@ -155,6 +155,27 @@ type Region struct {
 	Height int
 }
 
+// Loc represents a position in the terminal (for selection)
+type Loc struct {
+	X, Y int
+}
+
+// LessThan returns true if this location is before other
+func (l Loc) LessThan(other Loc) bool {
+	if l.Y < other.Y {
+		return true
+	}
+	if l.Y > other.Y {
+		return false
+	}
+	return l.X < other.X
+}
+
+// GreaterEqual returns true if this location is at or after other
+func (l Loc) GreaterEqual(other Loc) bool {
+	return !l.LessThan(other)
+}
+
 // Panel is a standalone terminal emulator with VT10x + PTY
 type Panel struct {
 	VT      vt10x.Terminal
@@ -175,6 +196,10 @@ type Panel struct {
 
 	// Auto-respawn shell when process exits
 	autoRespawn bool
+
+	// Selection state for copy/paste
+	Selection     [2]Loc // Start and end of selection
+	mouseReleased bool   // Track mouse button state for drag detection
 }
 
 // NewPanel creates a new terminal panel
@@ -245,6 +270,7 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 		Focus:         false,
 		throttleDelay: 16 * time.Millisecond, // 60fps max
 		autoRespawn:   autoRespawn,
+		mouseReleased: true, // Start with mouse released
 	}
 
 	// Start reading from PTY in background
@@ -483,4 +509,80 @@ func (p *Panel) IsRunning() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.Running
+}
+
+// HasSelection returns true if there is an active text selection
+func (p *Panel) HasSelection() bool {
+	return p.Selection[0] != p.Selection[1]
+}
+
+// ClearSelection clears the current selection
+func (p *Panel) ClearSelection() {
+	p.Selection[0] = Loc{}
+	p.Selection[1] = Loc{}
+}
+
+// GetSelection returns the selected text from the terminal
+func (p *Panel) GetSelection() string {
+	if !p.HasSelection() {
+		return ""
+	}
+
+	start := p.Selection[0]
+	end := p.Selection[1]
+
+	// Normalize so start is before end
+	if start.GreaterEqual(end) {
+		start, end = end, start
+	}
+
+	// Get content dimensions
+	cols, rows := p.VT.Size()
+
+	var result string
+	for y := start.Y; y <= end.Y && y < rows; y++ {
+		lineStart := 0
+		lineEnd := cols
+
+		if y == start.Y {
+			lineStart = start.X
+		}
+		if y == end.Y {
+			lineEnd = end.X
+		}
+
+		for x := lineStart; x < lineEnd && x < cols; x++ {
+			glyph := p.VT.Cell(x, y)
+			r := glyph.Char
+			if r == 0 {
+				r = ' '
+			}
+			result += string(r)
+		}
+
+		// Add newline between lines (but not at the end)
+		if y < end.Y {
+			result += "\n"
+		}
+	}
+
+	return result
+}
+
+// isSelected returns true if the given cell position is within the selection
+func (p *Panel) isSelected(x, y int) bool {
+	if !p.HasSelection() {
+		return false
+	}
+
+	loc := Loc{X: x, Y: y}
+	start := p.Selection[0]
+	end := p.Selection[1]
+
+	// Handle selection in either direction
+	if start.GreaterEqual(end) {
+		start, end = end, start
+	}
+
+	return loc.GreaterEqual(start) && loc.LessThan(end)
 }
