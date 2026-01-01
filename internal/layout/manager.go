@@ -11,6 +11,7 @@ import (
 	"github.com/ellery/thock/internal/action"
 	"github.com/ellery/thock/internal/buffer"
 	"github.com/ellery/thock/internal/clipboard"
+	"github.com/ellery/thock/internal/config"
 	"github.com/ellery/thock/internal/dashboard"
 	"github.com/ellery/thock/internal/filebrowser"
 	"github.com/ellery/thock/internal/terminal"
@@ -412,10 +413,11 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 	// This must happen BEFORE global key handlers to prevent editor from intercepting keys like Esc
 	if lm.ActivePanel == 2 {
 		if ev, ok := event.(*tcell.EventKey); ok {
-			// Allow global shortcuts to pass through: Ctrl+Q, Ctrl+T, Ctrl+W, Ctrl+[, Ctrl+], Alt+Arrow
+			// Allow global shortcuts to pass through: Ctrl+Q, Ctrl+T, Ctrl+W, Ctrl+Space, Ctrl+[, Ctrl+], Alt+Arrow
 			isGlobalShortcut := ev.Key() == tcell.KeyCtrlQ ||
 				ev.Key() == tcell.KeyCtrlT ||
 				ev.Key() == tcell.KeyCtrlW ||
+				ev.Key() == tcell.KeyCtrlSpace ||
 				(ev.Key() == tcell.KeyRight && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Key() == tcell.KeyLeft && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == ']' && ev.Modifiers()&tcell.ModCtrl != 0) ||
@@ -900,14 +902,27 @@ func (lm *LayoutManager) CloseActiveTab() {
 	lm.triggerRedraw()
 }
 
-// drawDividers draws vertical lines between panels
-func (lm *LayoutManager) drawDividers(screen tcell.Screen) {
-	style := tcell.StyleDefault.Foreground(tcell.ColorGray)
+// Powerline separator glyphs
+const (
+	PowerlineArrowRight = '\uE0B0' //
+	PowerlineArrowLeft  = '\uE0B2' //
+)
 
-	// Vertical line after tree (left edge of editor)
+// drawDividers draws Powerline-style separators between panels
+func (lm *LayoutManager) drawDividers(screen tcell.Screen) {
+	// Get the background color from DefStyle
+	_, bgColor, _ := config.DefStyle.Decompose()
+
+	// Powerline arrow: foreground = left panel color, background = right panel color
+	// This creates the seamless "flowing" effect
+	powerlineStyle := tcell.StyleDefault.
+		Foreground(bgColor).
+		Background(bgColor)
+
+	// Vertical Powerline separator after tree (left edge of editor)
 	treeW := lm.getTreeWidth()
 	for y := 0; y < lm.ScreenH; y++ {
-		screen.SetContent(treeW, y, '│', nil, style)
+		screen.SetContent(treeW, y, PowerlineArrowRight, nil, powerlineStyle)
 	}
 
 	// Only draw divider before terminal if terminal doesn't exist
@@ -919,7 +934,7 @@ func (lm *LayoutManager) drawDividers(screen tcell.Screen) {
 	if !hasTerminal {
 		termX := lm.getLeftPanelsWidth()
 		for y := 0; y < lm.ScreenH; y++ {
-			screen.SetContent(termX, y, '│', nil, style)
+			screen.SetContent(termX, y, PowerlineArrowRight, nil, powerlineStyle)
 		}
 	}
 }
@@ -929,9 +944,9 @@ func (lm *LayoutManager) drawEditorBorder(screen tcell.Screen, focused bool) {
 	// Choose style based on focus state (pink for Spider-Verse vibe)
 	var style tcell.Style
 	if focused {
-		style = tcell.StyleDefault.Foreground(tcell.Color205).Background(tcell.ColorBlack) // Hot pink
+		style = config.DefStyle.Foreground(tcell.Color205) // Hot pink
 	} else {
-		style = tcell.StyleDefault.Foreground(tcell.ColorGray).Background(tcell.ColorBlack)
+		style = config.DefStyle.Foreground(tcell.ColorGray)
 	}
 
 	editorX := lm.getTreeWidth()
@@ -939,7 +954,7 @@ func (lm *LayoutManager) drawEditorBorder(screen tcell.Screen, focused bool) {
 	h := lm.ScreenH
 
 	// Clear the border areas first (in case editor rendered there)
-	clearStyle := tcell.StyleDefault.Background(tcell.ColorBlack)
+	clearStyle := config.DefStyle
 	// Top row
 	for x := editorX; x < editorX+editorW; x++ {
 		screen.SetContent(x, 0, ' ', nil, clearStyle)

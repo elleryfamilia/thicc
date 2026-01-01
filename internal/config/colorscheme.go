@@ -48,10 +48,13 @@ func ColorschemeExists(colorschemeName string) bool {
 	return FindRuntimeFile(RTColorscheme, colorschemeName) != nil
 }
 
+// ThockBackground is the default background color for all panels
+var ThockBackground = tcell.GetColor("#0b0614")
+
 // InitColorscheme picks and initializes the colorscheme when micro starts
 func InitColorscheme() error {
 	Colorscheme = make(map[string]tcell.Style)
-	DefStyle = tcell.StyleDefault
+	DefStyle = tcell.StyleDefault.Background(ThockBackground)
 
 	log.Printf("THOCK: InitColorscheme starting, colorscheme setting = %v", GlobalSettings["colorscheme"])
 
@@ -72,6 +75,10 @@ func InitColorscheme() error {
 			log.Printf("THOCK: Fallback colorscheme also failed: %v", err2)
 		}
 	}
+
+	// Ensure DefStyle uses the Thock background color
+	fg, _, _ := DefStyle.Decompose()
+	DefStyle = DefStyle.Foreground(fg).Background(ThockBackground)
 
 	return err
 }

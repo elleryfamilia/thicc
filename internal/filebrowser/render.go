@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/ellery/thock/internal/config"
 	"github.com/ellery/thock/internal/filemanager"
 	"github.com/micro-editor/tcell/v2"
 )
@@ -27,9 +28,10 @@ func (p *Panel) Render(screen tcell.Screen) {
 
 // clearRegion clears the panel's screen region
 func (p *Panel) clearRegion(screen tcell.Screen) {
+	style := GetDefaultStyle()
 	for y := 0; y < p.Region.Height; y++ {
 		for x := 0; x < p.Region.Width; x++ {
-			screen.SetContent(p.Region.X+x, p.Region.Y+y, ' ', nil, DefaultStyle)
+			screen.SetContent(p.Region.X+x, p.Region.Y+y, ' ', nil, style)
 		}
 	}
 }
@@ -39,20 +41,20 @@ func (p *Panel) drawHeader(screen tcell.Screen) {
 	// Line 1: Current directory with folder icon (line 0 reserved for border)
 	dir := p.Tree.CurrentDir
 
-	// Add folder icon prefix (📁 U+1F4C1)
-	prefix := "📁 "
+	// Add folder icon prefix (Nerd Font open folder)
+	prefix := " " // U+F07C open folder
 	displayPath := prefix + dir
 
 	// Truncate if needed (accounting for icon)
 	maxWidth := p.Region.Width - 2
 	if len(displayPath) > maxWidth {
-		// Show "📁 .../end/of/path" format
+		// Show " .../end/of/path" format
 		suffix := dir[len(dir)-min(len(dir), maxWidth-len(prefix)-3):]
 		displayPath = prefix + "..." + suffix
 	}
 
 	// Highlight header if selected (Selected == -1)
-	style := DirectoryStyle // Default: bright blue
+	style := GetDirectoryStyle() // Default: bright blue
 	if p.Selected == -1 && p.Focus {
 		// Fill entire line with selection background first
 		for i := 0; i < p.Region.Width; i++ {
@@ -66,7 +68,7 @@ func (p *Panel) drawHeader(screen tcell.Screen) {
 
 	// Line 2: Separator
 	separator := strings.Repeat("─", p.Region.Width-2)
-	p.drawText(screen, 1, 2, separator, DividerStyle)
+	p.drawText(screen, 1, 2, separator, GetDividerStyle())
 }
 
 // min returns the minimum of two integers
@@ -84,7 +86,7 @@ func (p *Panel) drawNodes(screen tcell.Screen) {
 
 	// Show loading message if tree isn't ready yet
 	if nodes == nil {
-		p.drawText(screen, 1, startY, "Loading files...", DefaultStyle)
+		p.drawText(screen, 1, startY, "Loading files...", GetDefaultStyle())
 		return
 	}
 
@@ -128,7 +130,7 @@ func (p *Panel) renderNode(screen tcell.Screen, y int, node *filemanager.TreeNod
 
 	// Indentation (1 space per level to save horizontal space)
 	indent := strings.Repeat(" ", node.Indent)
-	style := DefaultStyle
+	style := GetDefaultStyle()
 	if isSelected {
 		style = selStyle
 	}
@@ -136,7 +138,7 @@ func (p *Panel) renderNode(screen tcell.Screen, y int, node *filemanager.TreeNod
 
 	// Expansion indicator for directories
 	if node.IsDir {
-		style = DirectoryStyle
+		style = GetDirectoryStyle()
 		if isSelected {
 			style = selStyle
 		}
@@ -146,7 +148,7 @@ func (p *Panel) renderNode(screen tcell.Screen, y int, node *filemanager.TreeNod
 			x += p.drawText(screen, x, y, "▶ ", style)
 		}
 	} else {
-		style = DefaultStyle
+		style = GetDefaultStyle()
 		if isSelected {
 			style = selStyle
 		}
@@ -174,15 +176,28 @@ func (p *Panel) renderNode(screen tcell.Screen, y int, node *filemanager.TreeNod
 	}
 
 	// Choose style for name
-	nameStyle := FileStyle
+	nameStyle := GetFileStyle()
 	if node.IsDir {
-		nameStyle = DirectoryStyle
+		nameStyle = GetDirectoryStyle()
 	}
 	if isSelected {
 		nameStyle = selStyle
 	}
 
-	p.drawText(screen, x, y, name, nameStyle)
+	x += p.drawText(screen, x, y, name, nameStyle)
+
+	// Add git status icon for files (not directories)
+	if !node.IsDir {
+		_, gitIcon := p.Tree.GetGitStatus(node.Path)
+		if gitIcon != "" {
+			// Color the git icon based on status
+			gitStyle := GetGitStatusStyle(gitIcon)
+			if isSelected {
+				gitStyle = selStyle
+			}
+			p.drawText(screen, x+1, y, gitIcon, gitStyle)
+		}
+	}
 }
 
 // drawText draws text at the given position and returns the number of characters drawn
@@ -200,33 +215,37 @@ func (p *Panel) drawText(screen tcell.Screen, x, y int, text string, style tcell
 	return len(text)
 }
 
-// BorderStyle is the style for focus borders (pink/magenta for Spider-Verse vibe)
-var BorderStyle = tcell.StyleDefault.Foreground(tcell.Color205).Background(tcell.ColorBlack) // Hot pink
+// GetBorderStyle returns the style for focus borders (pink/magenta for Spider-Verse vibe)
+func GetBorderStyle() tcell.Style {
+	return config.DefStyle.Foreground(tcell.Color205) // Hot pink
+}
 
 // drawFocusBorder draws a border around the panel when focused
 // Uses double-line box characters for thicker, more visible appearance
 func (p *Panel) drawFocusBorder(screen tcell.Screen) {
+	borderStyle := GetBorderStyle()
+
 	// Draw vertical lines on left and right (double-line)
 	for y := 0; y < p.Region.Height; y++ {
 		// Left border
-		screen.SetContent(p.Region.X, p.Region.Y+y, '║', nil, BorderStyle)
+		screen.SetContent(p.Region.X, p.Region.Y+y, '║', nil, borderStyle)
 		// Right border
-		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '║', nil, BorderStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '║', nil, borderStyle)
 	}
 
 	// Top and bottom borders (double-line)
 	for x := 0; x < p.Region.Width; x++ {
 		// Top border
-		screen.SetContent(p.Region.X+x, p.Region.Y, '═', nil, BorderStyle)
+		screen.SetContent(p.Region.X+x, p.Region.Y, '═', nil, borderStyle)
 		// Bottom border
-		screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '═', nil, BorderStyle)
+		screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '═', nil, borderStyle)
 	}
 
 	// Double-line corners
-	screen.SetContent(p.Region.X, p.Region.Y, '╔', nil, BorderStyle)
-	screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '╗', nil, BorderStyle)
-	screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '╚', nil, BorderStyle)
-	screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '╝', nil, BorderStyle)
+	screen.SetContent(p.Region.X, p.Region.Y, '╔', nil, borderStyle)
+	screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '╗', nil, borderStyle)
+	screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '╚', nil, borderStyle)
+	screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '╝', nil, borderStyle)
 }
 
 // GetStatusLine returns a status line for the panel

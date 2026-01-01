@@ -5,6 +5,7 @@ import (
 
 	"github.com/ellery/thock/internal/action"
 	"github.com/ellery/thock/internal/buffer"
+	"github.com/ellery/thock/internal/filemanager"
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -432,8 +433,9 @@ func (t *TabBar) shouldShowCloseButton(tab OpenTab) bool {
 
 // calcTabWidth calculates the width of a tab
 func (t *TabBar) calcTabWidth(tab OpenTab, isActive bool) int {
-	// Format: " ● name [x] " or " name [x] " (no [x] for single Untitled tab)
+	// Format: " icon ● name [x] " or " icon name [x] " (no [x] for single Untitled tab)
 	width := 1 // leading space
+	width += 2 // icon + space (icon is 1 cell wide in Nerd Fonts)
 	if tab.Buffer != nil && tab.Buffer.Modified() {
 		width += 2 // "● "
 	}
@@ -452,8 +454,14 @@ func (t *TabBar) renderSingleTab(screen tcell.Screen, startX int, tab OpenTab, i
 	leftEdge := t.Region.X
 	rightEdge := t.Region.X + t.Region.Width
 
-	// Build tab text without close button: " ● name " or " name "
-	text := " "
+	// Get file icon based on path/name
+	icon := filemanager.IconForPath(tab.Path, false)
+	if tab.Name == "Untitled" {
+		icon = filemanager.DefaultFileIcon
+	}
+
+	// Build tab text without close button: " icon ● name " or " icon name "
+	text := " " + icon + " "
 	if tab.Buffer != nil && tab.Buffer.Modified() {
 		text += "● "
 	}
