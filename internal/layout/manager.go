@@ -33,10 +33,11 @@ type LayoutManager struct {
 	// Editor uses micro's existing action.Tabs (middle region)
 
 	// Modal dialogs for prompts
-	Modal        *Modal
-	InputModal   *InputModal
-	ConfirmModal *ConfirmModal
-	ProjectPicker *dashboard.ProjectPicker
+	Modal          *Modal
+	InputModal     *InputModal
+	ConfirmModal   *ConfirmModal
+	ShortcutsModal *ShortcutsModal
+	ProjectPicker  *dashboard.ProjectPicker
 
 	// Tab bar for showing open files
 	TabBar *TabBar
@@ -47,6 +48,11 @@ type LayoutManager struct {
 	LeftPanelsPct   int // Tree + Editor width as percentage (60 = 60%)
 	ScreenW         int // Total screen width
 	ScreenH         int // Total screen height
+
+	// Pane visibility state
+	TreeVisible     bool // Whether tree pane is visible (default: true)
+	EditorVisible   bool // Whether editor pane is visible (default: true)
+	TerminalVisible bool // Whether terminal pane is visible (default: true)
 
 	// Active panel (0=filebrowser, 1=editor, 2=terminal)
 	ActivePanel int
@@ -67,16 +73,20 @@ type LayoutManager struct {
 // NewLayoutManager creates a new layout manager
 func NewLayoutManager(root string) *LayoutManager {
 	return &LayoutManager{
-		TreeWidth:     20,                 // Minimum tree width
-		LeftPanelsPct: 60,                 // Tree + Editor = 60% of screen
-		TermWidthPct:  40,                 // Terminal = 40% of screen
-		Root:          root,
-		ActivePanel:   1,                  // Start with editor focused
-		Modal:         NewModal(),
-		InputModal:    NewInputModal(),
-		ConfirmModal:  NewConfirmModal(),
-		ProjectPicker: nil,                // Initialized when screen is available
-		TabBar:        NewTabBar(),
+		TreeWidth:       30,                // Fixed tree width
+		LeftPanelsPct:   60,                // Tree + Editor = 60% of screen
+		TermWidthPct:    40,                // Terminal = 40% of screen
+		Root:            root,
+		ActivePanel:     1,                 // Start with editor focused
+		TreeVisible:     true,              // All panes visible by default
+		EditorVisible:   true,
+		TerminalVisible: true,
+		Modal:           NewModal(),
+		InputModal:      NewInputModal(),
+		ConfirmModal:    NewConfirmModal(),
+		ShortcutsModal:  NewShortcutsModal(),
+		ProjectPicker:   nil, // Initialized when screen is available
+		TabBar:          NewTabBar(),
 	}
 }
 
@@ -86,30 +96,70 @@ func (lm *LayoutManager) SetAIToolCommand(cmd []string) {
 	lm.AIToolCommand = cmd
 }
 
-// getTreeWidth returns the tree width (percentage-based with minimum)
+// PlaceholderWidth is the width of placeholder boxes when both editor and terminal are hidden
+const PlaceholderWidth = 20
+
+// getTreeWidth returns the tree width (fixed at 30 when visible, 0 when hidden)
 func (lm *LayoutManager) getTreeWidth() int {
-	// Use 20% of left panels for tree, with minimum of TreeWidth
-	leftWidth := lm.getLeftPanelsWidth()
-	treeWidth := leftWidth * 35 / 100 // 35% of left side for tree
-	if treeWidth < lm.TreeWidth {
-		treeWidth = lm.TreeWidth
+	if !lm.TreeVisible {
+		return 0
 	}
-	return treeWidth
+	return lm.TreeWidth
 }
 
-// getTermWidth calculates terminal width based on percentage
+// getTermWidth calculates terminal width based on visibility
 func (lm *LayoutManager) getTermWidth() int {
-	return lm.ScreenW * lm.TermWidthPct / 100
+	if !lm.TerminalVisible {
+		return 0
+	}
+
+	// Calculate available space after tree
+	availableWidth := lm.ScreenW - lm.getTreeWidth()
+
+	// If editor is also visible, split the space
+	if lm.EditorVisible {
+		// Terminal gets its percentage of remaining space
+		return availableWidth * lm.TermWidthPct / 100
+	}
+
+	// Terminal takes all remaining space
+	return availableWidth
 }
 
-// getLeftPanelsWidth calculates tree + editor width based on percentage
-func (lm *LayoutManager) getLeftPanelsWidth() int {
-	return lm.ScreenW * lm.LeftPanelsPct / 100
+// getEditorX returns the X position of the editor
+func (lm *LayoutManager) getEditorX() int {
+	return lm.getTreeWidth()
 }
 
-// getEditorWidth calculates editor width (left panels minus tree)
+// getTermX returns the X position of the terminal
+func (lm *LayoutManager) getTermX() int {
+	return lm.getTreeWidth() + lm.getEditorWidth()
+}
+
+// getEditorWidth calculates editor width based on visibility
 func (lm *LayoutManager) getEditorWidth() int {
-	return lm.getLeftPanelsWidth() - lm.getTreeWidth()
+	if !lm.EditorVisible {
+		return 0
+	}
+
+	// Calculate available space after tree
+	availableWidth := lm.ScreenW - lm.getTreeWidth()
+
+	// If terminal is also visible, split the space
+	if lm.TerminalVisible {
+		// Editor gets the remaining space after terminal's percentage
+		termWidth := availableWidth * lm.TermWidthPct / 100
+		return availableWidth - termWidth
+	}
+
+	// Editor takes all remaining space
+	return availableWidth
+}
+
+// needsPlaceholders returns true if we need to show placeholders
+// (when both editor AND terminal are hidden)
+func (lm *LayoutManager) needsPlaceholders() bool {
+	return !lm.EditorVisible && !lm.TerminalVisible
 }
 
 // Initialize creates the panels once screen size is known
@@ -274,7 +324,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 	}
 
 	// Calculate terminal region
-	termX := lm.getLeftPanelsWidth()
+	termX := lm.getTermX()
 	termW := lm.getTermWidth()
 
 	// Create terminal asynchronously (to avoid blocking UI)
@@ -321,8 +371,8 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 
 // RenderFrame draws all 3 panels (called BEFORE editor renders)
 func (lm *LayoutManager) RenderFrame(screen tcell.Screen) {
-	// 1. Render file browser (left)
-	if lm.FileBrowser != nil {
+	// 1. Render file browser (left) - only if visible
+	if lm.FileBrowser != nil && lm.TreeVisible {
 		lm.FileBrowser.Focus = (lm.ActivePanel == 0)
 		lm.FileBrowser.Render(screen)
 	}
@@ -331,17 +381,22 @@ func (lm *LayoutManager) RenderFrame(screen tcell.Screen) {
 	//    in DoEvent() after this function returns
 	//    Border is drawn in RenderOverlay() AFTER editor renders
 
-	// 3. Render terminal (right)
+	// 3. Render terminal (right) - only if visible
 	lm.mu.RLock()
 	term := lm.Terminal
 	lm.mu.RUnlock()
 
-	if term != nil {
+	if term != nil && lm.TerminalVisible {
 		term.Focus = (lm.ActivePanel == 2)
 		term.Render(screen)
 	}
 
-	// 4. Draw dividers between panels
+	// 4. Draw placeholders if both editor and terminal are hidden
+	if lm.needsPlaceholders() {
+		lm.drawPlaceholders(screen)
+	}
+
+	// 5. Draw dividers between visible panels
 	lm.drawDividers(screen)
 }
 
@@ -350,19 +405,22 @@ func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 	// Sync initial buffer to tab bar (ensures Untitled tab shows on startup)
 	lm.SyncInitialTab()
 
-	// Always draw editor border (bright when focused, dim when not)
-	lm.drawEditorBorder(screen, lm.ActivePanel == 1)
+	// Only draw editor border and tab bar if editor is visible
+	if lm.EditorVisible {
+		// Draw editor border (bright when focused, dim when not)
+		lm.drawEditorBorder(screen, lm.ActivePanel == 1)
 
-	// Draw tab bar below top border
-	if lm.TabBar != nil {
-		lm.TabBar.Region = Region{
-			X:      lm.getTreeWidth() + 1,
-			Y:      1, // Below top border
-			Width:  lm.getEditorWidth() - 2,
-			Height: 1,
+		// Draw tab bar below top border
+		if lm.TabBar != nil {
+			lm.TabBar.Region = Region{
+				X:      lm.getTreeWidth() + 1,
+				Y:      1, // Below top border
+				Width:  lm.getEditorWidth() - 2,
+				Height: 1,
+			}
+			lm.TabBar.Focused = (lm.ActivePanel == 1)
+			lm.TabBar.Render(screen)
 		}
-		lm.TabBar.Focused = (lm.ActivePanel == 1)
-		lm.TabBar.Render(screen)
 	}
 
 	// Draw modal dialog on top of everything
@@ -383,6 +441,11 @@ func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 	// Draw project picker on top of everything
 	if lm.ProjectPicker != nil && lm.ProjectPicker.Active {
 		lm.ProjectPicker.Render(screen)
+	}
+
+	// Draw shortcuts modal on top of everything
+	if lm.ShortcutsModal != nil && lm.ShortcutsModal.Active {
+		lm.ShortcutsModal.Render(screen)
 	}
 }
 
@@ -408,18 +471,29 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		return lm.ProjectPicker.HandleEvent(event)
 	}
 
+	// Handle shortcuts modal
+	if lm.ShortcutsModal != nil && lm.ShortcutsModal.Active {
+		return lm.ShortcutsModal.HandleEvent(event)
+	}
+
 	// CRITICAL: Terminal gets ALL keyboard events when focused (except global shortcuts)
 	// This must happen BEFORE global key handlers to prevent editor from intercepting keys like Esc
 	if lm.ActivePanel == 2 {
 		if ev, ok := event.(*tcell.EventKey); ok {
 			// Allow global shortcuts to pass through: Ctrl+Q, Ctrl+T, Ctrl+W, Ctrl+[, Ctrl+], Alt+Arrow
+			// Also allow pane toggle shortcuts: Alt+1, Alt+2, Alt+3, Ctrl+/
 			isGlobalShortcut := ev.Key() == tcell.KeyCtrlQ ||
 				ev.Key() == tcell.KeyCtrlT ||
 				ev.Key() == tcell.KeyCtrlW ||
 				(ev.Key() == tcell.KeyRight && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Key() == tcell.KeyLeft && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == ']' && ev.Modifiers()&tcell.ModCtrl != 0) ||
-				(ev.Rune() == '[' && ev.Modifiers()&tcell.ModCtrl != 0)
+				(ev.Rune() == '[' && ev.Modifiers()&tcell.ModCtrl != 0) ||
+				(ev.Rune() == '1' && ev.Modifiers()&tcell.ModAlt != 0) ||
+				(ev.Rune() == '2' && ev.Modifiers()&tcell.ModAlt != 0) ||
+				(ev.Rune() == '3' && ev.Modifiers()&tcell.ModAlt != 0) ||
+				(ev.Rune() == '/' && ev.Modifiers()&tcell.ModCtrl != 0) ||
+				ev.Key() == tcell.KeyCtrlUnderscore // Ctrl+/ often sends this
 
 			if !isGlobalShortcut {
 				lm.mu.RLock()
@@ -479,7 +553,8 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 
 	// Log all key events for debugging
 	if ev, ok := event.(*tcell.EventKey); ok {
-		log.Printf("THOCK HandleEvent: Key event, ActivePanel=%d, Key=%v, Rune=%c", lm.ActivePanel, ev.Key(), ev.Rune())
+		log.Printf("THOCK HandleEvent: Key=%v, Rune=%q (0x%x), Mod=%v, ActivePanel=%d",
+			ev.Key(), ev.Rune(), ev.Rune(), ev.Modifiers(), lm.ActivePanel)
 
 		// Ctrl+Q should always quit, regardless of which panel is focused
 		if ev.Key() == tcell.KeyCtrlQ {
@@ -550,6 +625,42 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 			log.Println("THOCK: Ctrl+W detected, closing active tab")
 			lm.CloseActiveTab()
 			return true
+		}
+
+		// Pane visibility toggle shortcuts (Alt+1, Alt+2, Alt+3)
+		if ev.Key() == tcell.KeyRune && ev.Modifiers()&tcell.ModAlt != 0 {
+			switch ev.Rune() {
+			case '1':
+				log.Println("THOCK: Alt+1 detected, toggling tree")
+				lm.ToggleTree()
+				return true
+			case '2':
+				log.Println("THOCK: Alt+2 detected, toggling editor")
+				lm.ToggleEditor()
+				return true
+			case '3':
+				log.Println("THOCK: Alt+3 detected, toggling terminal")
+				lm.ToggleTerminal()
+				return true
+			}
+		}
+
+		// Ctrl+/ for shortcuts help (may come as KeyRune '/' with Ctrl or as KeyCtrlUnderscore)
+		if (ev.Key() == tcell.KeyRune && ev.Rune() == '/' && ev.Modifiers()&tcell.ModCtrl != 0) ||
+			ev.Key() == tcell.KeyCtrlUnderscore {
+			log.Println("THOCK: Ctrl+/ detected, showing shortcuts")
+			lm.ShowShortcutsModal()
+			return true
+		}
+
+		// Also support '?' for shortcuts help (Shift+/ without Ctrl)
+		if ev.Key() == tcell.KeyRune && ev.Rune() == '?' && ev.Modifiers() == 0 {
+			// Only trigger if not in a text input context (editor focused)
+			if lm.ActivePanel != 1 {
+				log.Println("THOCK: ? detected, showing shortcuts")
+				lm.ShowShortcutsModal()
+				return true
+			}
 		}
 	}
 
@@ -643,15 +754,22 @@ func (lm *LayoutManager) handleFocusSwitch(event tcell.Event) bool {
 // Returns: 0=filebrowser, 1=editor, 2=terminal, -1=none
 func (lm *LayoutManager) panelAtX(x int) int {
 	treeWidth := lm.getTreeWidth()
-	leftPanelsWidth := lm.getLeftPanelsWidth()
+	editorEndX := lm.getTermX()
 
-	if x < treeWidth {
+	// Tree region
+	if x < treeWidth && lm.TreeVisible {
 		if lm.FileBrowser != nil {
 			return 0
 		}
-	} else if x < leftPanelsWidth {
+	}
+
+	// Editor region
+	if x >= treeWidth && x < editorEndX && lm.EditorVisible {
 		return 1
-	} else {
+	}
+
+	// Terminal region
+	if x >= editorEndX && lm.TerminalVisible {
 		lm.mu.RLock()
 		hasTerminal := lm.Terminal != nil
 		lm.mu.RUnlock()
@@ -659,6 +777,7 @@ func (lm *LayoutManager) panelAtX(x int) int {
 			return 2
 		}
 	}
+
 	return -1
 }
 
@@ -900,27 +1019,102 @@ func (lm *LayoutManager) CloseActiveTab() {
 	lm.triggerRedraw()
 }
 
-// drawDividers draws vertical lines between panels
+// drawDividers draws vertical lines between visible panels
 func (lm *LayoutManager) drawDividers(screen tcell.Screen) {
 	style := tcell.StyleDefault.Foreground(tcell.ColorGray)
 
-	// Vertical line after tree (left edge of editor)
-	treeW := lm.getTreeWidth()
-	for y := 0; y < lm.ScreenH; y++ {
-		screen.SetContent(treeW, y, '│', nil, style)
+	// Only draw divider after tree if tree is visible and there's something to the right
+	if lm.TreeVisible && (lm.EditorVisible || lm.TerminalVisible || lm.needsPlaceholders()) {
+		treeW := lm.getTreeWidth()
+		for y := 0; y < lm.ScreenH; y++ {
+			screen.SetContent(treeW, y, '│', nil, style)
+		}
 	}
 
-	// Only draw divider before terminal if terminal doesn't exist
-	// (terminal draws its own border which serves as the divider)
+	// Only draw divider before terminal if terminal doesn't exist but is supposed to be visible
+	// (terminal draws its own border which serves as the divider when visible)
 	lm.mu.RLock()
 	hasTerminal := lm.Terminal != nil
 	lm.mu.RUnlock()
 
-	if !hasTerminal {
-		termX := lm.getLeftPanelsWidth()
+	if !hasTerminal && lm.TerminalVisible {
+		termX := lm.getTermX()
 		for y := 0; y < lm.ScreenH; y++ {
 			screen.SetContent(termX, y, '│', nil, style)
 		}
+	}
+}
+
+// drawPlaceholders draws placeholder boxes when both editor and terminal are hidden
+func (lm *LayoutManager) drawPlaceholders(screen tcell.Screen) {
+	// Calculate positions
+	startX := lm.getTreeWidth()
+	availableWidth := lm.ScreenW - startX
+	centerY := lm.ScreenH / 2
+
+	// Each placeholder is a small box
+	boxWidth := PlaceholderWidth
+	boxHeight := 5
+	gap := 2
+
+	// Center both placeholders horizontally
+	totalWidth := boxWidth*2 + gap
+	editorX := startX + (availableWidth-totalWidth)/2
+	terminalX := editorX + boxWidth + gap
+
+	// Draw editor placeholder
+	lm.drawPlaceholderBox(screen, editorX, centerY-boxHeight/2, boxWidth, boxHeight, "Editor", "Alt+2")
+
+	// Draw terminal placeholder
+	lm.drawPlaceholderBox(screen, terminalX, centerY-boxHeight/2, boxWidth, boxHeight, "Terminal", "Alt+3")
+}
+
+// drawPlaceholderBox draws a single placeholder box with title and shortcut hint
+func (lm *LayoutManager) drawPlaceholderBox(screen tcell.Screen, x, y, width, height int, title, shortcut string) {
+	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+	titleStyle := tcell.StyleDefault.Foreground(tcell.Color205) // Hot pink
+	hintStyle := tcell.StyleDefault.Foreground(tcell.Color51)   // Cyan
+
+	// Draw border
+	// Top border
+	screen.SetContent(x, y, '┌', nil, borderStyle)
+	screen.SetContent(x+width-1, y, '┐', nil, borderStyle)
+	for i := 1; i < width-1; i++ {
+		screen.SetContent(x+i, y, '─', nil, borderStyle)
+	}
+
+	// Bottom border
+	screen.SetContent(x, y+height-1, '└', nil, borderStyle)
+	screen.SetContent(x+width-1, y+height-1, '┘', nil, borderStyle)
+	for i := 1; i < width-1; i++ {
+		screen.SetContent(x+i, y+height-1, '─', nil, borderStyle)
+	}
+
+	// Side borders
+	for i := 1; i < height-1; i++ {
+		screen.SetContent(x, y+i, '│', nil, borderStyle)
+		screen.SetContent(x+width-1, y+i, '│', nil, borderStyle)
+	}
+
+	// Clear inside
+	bgStyle := tcell.StyleDefault.Background(tcell.ColorBlack)
+	for row := 1; row < height-1; row++ {
+		for col := 1; col < width-1; col++ {
+			screen.SetContent(x+col, y+row, ' ', nil, bgStyle)
+		}
+	}
+
+	// Draw title (centered, row 1)
+	titleX := x + (width-len(title))/2
+	for i, r := range title {
+		screen.SetContent(titleX+i, y+1, r, nil, titleStyle)
+	}
+
+	// Draw shortcut hint (centered, row 2)
+	hintText := shortcut + " to show"
+	hintX := x + (width-len(hintText))/2
+	for i, r := range hintText {
+		screen.SetContent(hintX+i, y+2, r, nil, hintStyle)
 	}
 }
 
@@ -1000,14 +1194,14 @@ func (lm *LayoutManager) Resize(w, h int) {
 		lm.FileBrowser.Region.Height = h
 	}
 
-	// Resize terminal (starts at left panels width, takes remaining space)
+	// Resize terminal (starts after tree+editor, takes remaining space)
 	lm.mu.RLock()
 	term := lm.Terminal
 	lm.mu.RUnlock()
 
 	if term != nil {
 		termW := lm.getTermWidth()
-		term.Region.X = lm.getLeftPanelsWidth()
+		term.Region.X = lm.getTermX()
 		term.Region.Width = termW
 		term.Region.Height = h
 		_ = term.Resize(termW, h)
@@ -1057,6 +1251,125 @@ func (lm *LayoutManager) FocusTerminal() {
 	if hasTerminal {
 		lm.setActivePanel(2)
 		log.Println("THOCK: Focus set to terminal")
+	}
+}
+
+// ToggleTree toggles the visibility of the tree pane
+func (lm *LayoutManager) ToggleTree() {
+	lm.TreeVisible = !lm.TreeVisible
+	log.Printf("THOCK: Tree visibility toggled to %v", lm.TreeVisible)
+
+	// If we just hid the focused pane, move focus to next visible pane
+	if !lm.TreeVisible && lm.ActivePanel == 0 {
+		lm.focusNextVisiblePane()
+	}
+
+	// Update panel regions
+	lm.updatePanelRegions()
+	lm.triggerRedraw()
+}
+
+// ToggleEditor toggles the visibility of the editor pane
+func (lm *LayoutManager) ToggleEditor() {
+	lm.EditorVisible = !lm.EditorVisible
+	log.Printf("THOCK: Editor visibility toggled to %v", lm.EditorVisible)
+
+	// If we just hid the focused pane, move focus to next visible pane
+	if !lm.EditorVisible && lm.ActivePanel == 1 {
+		lm.focusNextVisiblePane()
+	}
+
+	// Update panel regions
+	lm.updatePanelRegions()
+	lm.triggerRedraw()
+}
+
+// ToggleTerminal toggles the visibility of the terminal pane
+func (lm *LayoutManager) ToggleTerminal() {
+	lm.TerminalVisible = !lm.TerminalVisible
+	log.Printf("THOCK: Terminal visibility toggled to %v", lm.TerminalVisible)
+
+	// If we just hid the focused pane, move focus to next visible pane
+	if !lm.TerminalVisible && lm.ActivePanel == 2 {
+		lm.focusNextVisiblePane()
+	}
+
+	// Update panel regions
+	lm.updatePanelRegions()
+	lm.triggerRedraw()
+}
+
+// focusNextVisiblePane moves focus to the next visible pane
+// Priority: Editor > Terminal > Tree
+func (lm *LayoutManager) focusNextVisiblePane() {
+	// Try editor first
+	if lm.EditorVisible {
+		lm.setActivePanel(1)
+		log.Println("THOCK: Focus moved to editor")
+		return
+	}
+
+	// Try terminal
+	if lm.TerminalVisible {
+		lm.mu.RLock()
+		hasTerminal := lm.Terminal != nil
+		lm.mu.RUnlock()
+		if hasTerminal {
+			lm.setActivePanel(2)
+			log.Println("THOCK: Focus moved to terminal")
+			return
+		}
+	}
+
+	// Try tree
+	if lm.TreeVisible && lm.FileBrowser != nil {
+		lm.setActivePanel(0)
+		log.Println("THOCK: Focus moved to tree")
+		return
+	}
+
+	// No visible pane with focus capability
+	log.Println("THOCK: No visible pane to focus")
+}
+
+// updatePanelRegions recalculates and updates all panel regions based on visibility
+func (lm *LayoutManager) updatePanelRegions() {
+	// Update file browser region
+	if lm.FileBrowser != nil {
+		if lm.TreeVisible {
+			lm.FileBrowser.Region.X = 0
+			lm.FileBrowser.Region.Width = lm.getTreeWidth()
+			lm.FileBrowser.Region.Height = lm.ScreenH
+		} else {
+			lm.FileBrowser.Region.Width = 0
+		}
+	}
+
+	// Update terminal region
+	lm.mu.RLock()
+	term := lm.Terminal
+	lm.mu.RUnlock()
+
+	if term != nil {
+		if lm.TerminalVisible {
+			term.Region.X = lm.getTermX()
+			term.Region.Width = lm.getTermWidth()
+			term.Region.Height = lm.ScreenH
+			_ = term.Resize(term.Region.Width, term.Region.Height)
+		} else {
+			term.Region.Width = 0
+		}
+	}
+
+	log.Printf("THOCK: Panel regions updated (tree=%d, editor=%d, term=%d)",
+		lm.getTreeWidth(), lm.getEditorWidth(), lm.getTermWidth())
+}
+
+// ShowShortcutsModal displays the keyboard shortcuts help modal
+func (lm *LayoutManager) ShowShortcutsModal() {
+	if lm.ShortcutsModal != nil {
+		lm.ShortcutsModal.Show(lm.ScreenW, lm.ScreenH)
+		lm.triggerRedraw()
 	}
 }
 

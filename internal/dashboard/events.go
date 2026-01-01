@@ -48,29 +48,31 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 		return true
 	}
 
-	// Character shortcuts
-	switch ev.Rune() {
-	case 'q', 'Q':
-		if d.OnExit != nil {
-			d.OnExit()
+	// Character shortcuts (only when no modifiers like Alt are pressed)
+	if ev.Modifiers() == 0 {
+		switch ev.Rune() {
+		case 'q', 'Q':
+			if d.OnExit != nil {
+				d.OnExit()
+			}
+			return true
+
+		case 'n':
+			if d.OnNewFile != nil {
+				d.OnNewFile()
+			}
+			return true
+
+		case 'o', 'O':
+			d.ShowProjectPicker()
+			return true
+
+		// Number shortcuts for recent projects
+		case '1', '2', '3', '4', '5', '6', '7', '8', '9':
+			num := int(ev.Rune() - '0')
+			d.OpenRecentByNumber(num)
+			return true
 		}
-		return true
-
-	case 'n':
-		if d.OnNewFile != nil {
-			d.OnNewFile()
-		}
-		return true
-
-	case 'o', 'O':
-		d.ShowProjectPicker()
-		return true
-
-	// Number shortcuts for recent projects
-	case '1', '2', '3', '4', '5', '6', '7', '8', '9':
-		num := int(ev.Rune() - '0')
-		d.OpenRecentByNumber(num)
-		return true
 	}
 
 	// Navigation keys
