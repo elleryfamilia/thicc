@@ -111,17 +111,20 @@ echo "FreeBSD 32"
 GOOS=freebsd GOARCH=386 make build
 create_artefact_generic "freebsd32"
 
-# Windows
+# Windows - rename thicc to thicc.exe since Makefile doesn't add .exe
 echo "Windows 64"
 GOOS=windows GOARCH=amd64 make build
+mv thicc thicc.exe
 create_artefact_windows "win64"
 
 echo "Windows ARM 64"
 GOOS=windows GOARCH=arm64 make build
+mv thicc thicc.exe
 create_artefact_windows "win-arm64"
 
 echo "Windows 32"
 GOOS=windows GOARCH=386 make build
+mv thicc thicc.exe
 create_artefact_windows "win32"
 
 rm -rf thicc-$VERSION
