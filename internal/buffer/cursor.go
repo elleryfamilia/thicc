@@ -1,8 +1,8 @@
 package buffer
 
 import (
-	"github.com/ellery/thock/internal/clipboard"
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/clipboard"
+	"github.com/ellery/thicc/internal/util"
 )
 
 // InBounds returns whether the given location is a valid character position in the given buffer

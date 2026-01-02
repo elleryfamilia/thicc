@@ -8,31 +8,31 @@ if [ -z "$VERSION" ]; then
 fi
 
 mkdir -p binaries
-mkdir -p micro-$VERSION
+mkdir -p thicc-$VERSION
 
-cp LICENSE micro-$VERSION
-cp README.md micro-$VERSION
-cp LICENSE-THIRD-PARTY micro-$VERSION
-cp assets/packaging/micro.1 micro-$VERSION
-cp assets/packaging/micro.desktop micro-$VERSION
-cp assets/micro-logo-mark.svg micro-$VERSION/micro.svg
+cp LICENSE thicc-$VERSION
+cp README.md thicc-$VERSION
+cp LICENSE-THIRD-PARTY thicc-$VERSION
+cp assets/packaging/thicc.1 thicc-$VERSION
+cp assets/packaging/thicc.desktop thicc-$VERSION
+cp assets/thicc-logo-mark.svg thicc-$VERSION/thicc.svg
 
 create_artefact_generic()
 {
-	mv micro micro-$VERSION/
-	tar -czf micro-$VERSION-$1.tar.gz micro-$VERSION
-	sha256sum micro-$VERSION-$1.tar.gz > micro-$VERSION-$1.tar.gz.sha
-	mv micro-$VERSION-$1.* binaries
-	rm micro-$VERSION/micro
+	mv thicc thicc-$VERSION/
+	tar -czf thicc-$VERSION-$1.tar.gz thicc-$VERSION
+	sha256sum thicc-$VERSION-$1.tar.gz > thicc-$VERSION-$1.tar.gz.sha
+	mv thicc-$VERSION-$1.* binaries
+	rm thicc-$VERSION/thicc
 }
 
 create_artefact_windows()
 {
-	mv micro.exe micro-$VERSION/
-	zip -r -q -T micro-$VERSION-$1.zip micro-$VERSION
-	sha256sum micro-$VERSION-$1.zip > micro-$VERSION-$1.zip.sha
-	mv micro-$VERSION-$1.* binaries
-	rm micro-$VERSION/micro.exe
+	mv thicc.exe thicc-$VERSION/
+	zip -r -q -T thicc-$VERSION-$1.zip thicc-$VERSION
+	sha256sum thicc-$VERSION-$1.zip > thicc-$VERSION-$1.zip.sha
+	mv thicc-$VERSION-$1.* binaries
+	rm thicc-$VERSION/thicc.exe
 }
 
 # Mac
@@ -49,8 +49,8 @@ create_artefact_generic "macos-arm64"
 echo "Linux 64"
 GOOS=linux GOARCH=amd64 make build
 if ./tools/package-deb.sh $VERSION; then
-	sha256sum micro-$VERSION-amd64.deb > micro-$VERSION-amd64.deb.sha
-	mv micro-$VERSION-amd64.* binaries
+	sha256sum thicc-$VERSION-amd64.deb > thicc-$VERSION-amd64.deb.sha
+	mv thicc-$VERSION-amd64.* binaries
 fi
 create_artefact_generic "linux64"
 
@@ -124,4 +124,4 @@ echo "Windows 32"
 GOOS=windows GOARCH=386 make build
 create_artefact_windows "win32"
 
-rm -rf micro-$VERSION
+rm -rf thicc-$VERSION

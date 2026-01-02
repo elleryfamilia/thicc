@@ -4,7 +4,7 @@ import (
 	"log"
 	"os"
 
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/util"
 )
 
 // NullWriter simply sends writes into the void

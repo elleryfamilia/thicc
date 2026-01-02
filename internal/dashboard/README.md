@@ -1,18 +1,18 @@
 # Dashboard Package
 
-The dashboard package provides a welcome screen displayed when thock starts without file/directory arguments. It features a Spider-Verse inspired color theme and provides quick access to common actions.
+The dashboard package provides a welcome screen displayed when thicc starts without file/directory arguments. It features a Spider-Verse inspired color theme and provides quick access to common actions.
 
 ## Features
 
 - **New File** - Create an empty buffer and enter the editor
 - **Open Project** - Navigate to and open a project folder via the Project Picker
 - **Recent Projects** - Quick access to recently opened files and folders (1-9 shortcuts)
-- **Exit** - Quit thock
+- **Exit** - Quit thicc
 
 ## Visual Design
 
 ```
-                    THOCK LOGO (Pink/Cyan two-tone)
+                    THICC LOGO (Pink/Cyan two-tone)
 
     ╔══════════════════════════════════════╗
     ║  > New File              n           ║
@@ -51,7 +51,7 @@ The dashboard package provides a welcome screen displayed when thock starts with
 | `events.go` | Keyboard and mouse event handling |
 | `recent.go` | Recent projects persistence (JSON) |
 | `project_picker.go` | Project folder navigation modal |
-| `ascii_art.go` | THOCK logo (Figlet Rebel font) |
+| `ascii_art.go` | THICC logo (Figlet Rebel font) |
 | `colors.go` | Spider-Verse color definitions and styles |
 
 ### Key Data Structures
@@ -113,7 +113,7 @@ type RecentProject struct {
 | `←/→` or `h/l` | Switch menu ↔ recent pane |
 | `Tab` | Cycle between panes |
 | `Enter` | Activate selection |
-| `q` / `Esc` | Exit thock |
+| `q` / `Esc` | Exit thicc |
 | `Delete` | Remove selected recent item |
 
 ### Project Picker
@@ -144,22 +144,22 @@ Example flow:
 ```
 ~/_git/█           ← Type "_git", Tab to complete
 ~/_git/            ← Shows _git contents
-  thock/
-> thock-dashboard-screen/   ← Press ↓ to select
+  thicc/
+> thicc-dashboard-screen/   ← Press ↓ to select
   other-project/
                    ← Press Enter to open
 ```
 
 ## Recent Projects Persistence
 
-Recent projects are stored at `~/.config/micro/thock/recent.json`:
+Recent projects are stored at `~/.config/micro/thicc/recent.json`:
 
 ```json
 {
   "projects": [
     {
-      "path": "/Users/ellery/_git/thock",
-      "name": "thock",
+      "path": "/Users/ellery/_git/thicc",
+      "name": "thicc",
       "is_folder": true,
       "last_opened": "2024-01-15T10:30:00Z"
     }
@@ -173,10 +173,10 @@ Recent projects are stored at `~/.config/micro/thock/recent.json`:
 
 ## Integration
 
-The dashboard is shown when thock starts without arguments:
+The dashboard is shown when thicc starts without arguments:
 
 ```go
-// In cmd/thock/micro.go
+// In cmd/thicc/micro.go
 if len(args) == 0 && isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd()) {
     showDashboard = true
 }
@@ -193,15 +193,15 @@ if showDashboard {
 Callbacks are wired in `InitDashboard()` to handle transitions:
 
 ```go
-thockDashboard.OnNewFile = func() {
+thiccDashboard.OnNewFile = func() {
     showDashboard = false
     TransitionToEditor(nil, "")
 }
 
-thockDashboard.OnOpenProject = func(path string) {
+thiccDashboard.OnOpenProject = func(path string) {
     showDashboard = false
     os.Chdir(path)
     TransitionToEditor(nil, "")
-    thockDashboard.RecentStore.AddProject(path, true)
+    thiccDashboard.RecentStore.AddProject(path, true)
 }
 ```

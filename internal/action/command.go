@@ -13,12 +13,12 @@ import (
 	"strings"
 
 	shellquote "github.com/kballard/go-shellquote"
-	"github.com/ellery/thock/internal/buffer"
-	"github.com/ellery/thock/internal/clipboard"
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/screen"
-	"github.com/ellery/thock/internal/shell"
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/clipboard"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/screen"
+	"github.com/ellery/thicc/internal/shell"
+	"github.com/ellery/thicc/internal/util"
 )
 
 // A Command contains information about how to execute a command

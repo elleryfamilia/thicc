@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/ellery/thock/internal/aiterminal"
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/aiterminal"
+	"github.com/ellery/thicc/internal/util"
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -94,21 +94,21 @@ func (d *Dashboard) calculateLayout() {
 // drawMarshmallow renders the ASCII art mascot above the logo
 func (d *Dashboard) drawMarshmallow(screen tcell.Screen) {
 	// Calculate logo position first
-	logoX := d.menuRegion.X + (d.menuRegion.Width-ThockLogoWidth)/2
+	logoX := d.menuRegion.X + (d.menuRegion.Width-ThiccLogoWidth)/2
 	if logoX < 0 {
 		logoX = 0
 	}
-	logoY := d.menuRegion.Y - ThockLogoHeight - 2
+	logoY := d.menuRegion.Y - ThiccLogoHeight - 2
 	if logoY < 1 {
 		logoY = 1
 	}
 
 	// Position character above the logo, centered horizontally with it
-	startX := logoX + (ThockLogoWidth-MarshmallowArtWidth)/2
+	startX := logoX + (ThiccLogoWidth-MarshmallowArtWidth)/2
 	startY := logoY - MarshmallowArtHeight - 1 // 1 line spacing from logo
 
 	// Don't draw if screen is too small or would be off-screen
-	if startY < 1 || d.ScreenW < ThockLogoWidth+4 {
+	if startY < 1 || d.ScreenW < ThiccLogoWidth+4 {
 		return
 	}
 
@@ -146,18 +146,18 @@ func (d *Dashboard) drawMarshmallow(screen tcell.Screen) {
 // drawLogo renders the THOCK title banner above the menu
 func (d *Dashboard) drawLogo(screen tcell.Screen) {
 	// Center logo above menu panel
-	logoX := d.menuRegion.X + (d.menuRegion.Width-ThockLogoWidth)/2
+	logoX := d.menuRegion.X + (d.menuRegion.Width-ThiccLogoWidth)/2
 	if logoX < 0 {
 		logoX = 0
 	}
 
-	logoY := d.menuRegion.Y - ThockLogoHeight - 2
+	logoY := d.menuRegion.Y - ThiccLogoHeight - 2
 	if logoY < 1 {
 		logoY = 1
 	}
 
 	// Check if there's room for the logo
-	if logoY < 0 || d.ScreenW < ThockLogoWidth+4 {
+	if logoY < 0 || d.ScreenW < ThiccLogoWidth+4 {
 		// Draw simple text title instead
 		title := "THICC"
 		titleX := d.menuRegion.X + (d.menuRegion.Width-len(title))/2
@@ -166,7 +166,7 @@ func (d *Dashboard) drawLogo(screen tcell.Screen) {
 	}
 
 	// Draw the logo with two-tone coloring (solid vs shade)
-	for lineIdx, line := range ThockLogo {
+	for lineIdx, line := range ThiccLogo {
 		y := logoY + lineIdx
 		runeIdx := 0
 		for _, ch := range line {
@@ -181,11 +181,11 @@ func (d *Dashboard) drawLogo(screen tcell.Screen) {
 	}
 
 	// Draw tagline below logo in cyan
-	taglineX := d.menuRegion.X + (d.menuRegion.Width-len(ThockTagline))/2
-	taglineY := logoY + ThockLogoHeight + 1
+	taglineX := d.menuRegion.X + (d.menuRegion.Width-len(ThiccTagline))/2
+	taglineY := logoY + ThiccLogoHeight + 1
 	if taglineY < d.menuRegion.Y {
 		taglineStyle := tcell.StyleDefault.Foreground(ColorCyan).Italic(true)
-		d.drawText(screen, taglineX, taglineY, ThockTagline, taglineStyle)
+		d.drawText(screen, taglineX, taglineY, ThiccTagline, taglineStyle)
 	}
 }
 

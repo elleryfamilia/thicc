@@ -13,9 +13,9 @@ import (
 
 	"github.com/micro-editor/json5"
 	"github.com/micro-editor/tcell/v2"
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/screen"
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/screen"
+	"github.com/ellery/thicc/internal/util"
 )
 
 var Binder = map[string]func(e Event, action string){

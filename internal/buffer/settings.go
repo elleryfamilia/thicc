@@ -4,9 +4,9 @@ import (
 	"crypto/md5"
 	"reflect"
 
-	"github.com/ellery/thock/internal/config"
-	ulua "github.com/ellery/thock/internal/lua"
-	"github.com/ellery/thock/internal/screen"
+	"github.com/ellery/thicc/internal/config"
+	ulua "github.com/ellery/thicc/internal/lua"
+	"github.com/ellery/thicc/internal/screen"
 	"golang.org/x/text/encoding/htmlindex"
 	"golang.org/x/text/encoding/unicode"
 	luar "layeh.com/gopher-luar"

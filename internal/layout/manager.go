@@ -8,13 +8,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/ellery/thock/internal/action"
-	"github.com/ellery/thock/internal/buffer"
-	"github.com/ellery/thock/internal/clipboard"
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/dashboard"
-	"github.com/ellery/thock/internal/filebrowser"
-	"github.com/ellery/thock/internal/terminal"
+	"github.com/ellery/thicc/internal/action"
+	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/clipboard"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/dashboard"
+	"github.com/ellery/thicc/internal/filebrowser"
+	"github.com/ellery/thicc/internal/terminal"
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -168,7 +168,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 	lm.Screen = screen
 	lm.ScreenW, lm.ScreenH = screen.Size()
 
-	log.Printf("THOCK: Initializing layout (screen: %dx%d)", lm.ScreenW, lm.ScreenH)
+	log.Printf("THICC: Initializing layout (screen: %dx%d)", lm.ScreenW, lm.ScreenH)
 
 	// Calculate regions
 	treeRegion := Region{
@@ -188,7 +188,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 	// }
 
 	// Create file browser
-	log.Println("THOCK: Creating file browser panel")
+	log.Println("THICC: Creating file browser panel")
 	lm.FileBrowser = filebrowser.NewPanel(
 		treeRegion.X, treeRegion.Y,
 		treeRegion.Width, treeRegion.Height,
@@ -201,7 +201,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 	lm.FileBrowser.OnFocusEditor = lm.FocusEditor
 	lm.FileBrowser.OnProjectPathClick = lm.ShowProjectPicker
 	lm.FileBrowser.OnFileSaved = func(path string) {
-		log.Printf("THOCK: File saved callback - refreshing tree and selecting: %s", path)
+		log.Printf("THICC: File saved callback - refreshing tree and selecting: %s", path)
 		lm.FileBrowser.SelectFile(path)
 		lm.triggerRedraw()
 	}
@@ -219,7 +219,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 			"This action cannot be undone!",
 			func(confirmed bool) {
 				if confirmed {
-					log.Printf("THOCK: Deleting %s: %s", itemType, path)
+					log.Printf("THICC: Deleting %s: %s", itemType, path)
 					err := os.RemoveAll(path)
 					if err != nil {
 						action.InfoBar.Error("Delete failed: " + err.Error())
@@ -245,7 +245,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 			}
 
 			newPath := filepath.Join(filepath.Dir(oldPath), newName)
-			log.Printf("THOCK: Renaming %s -> %s", oldPath, newPath)
+			log.Printf("THICC: Renaming %s -> %s", oldPath, newPath)
 
 			err := os.Rename(oldPath, newPath)
 			if err != nil {
@@ -270,7 +270,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 			}
 
 			newPath := filepath.Join(dirPath, fileName)
-			log.Printf("THOCK: Creating new file: %s", newPath)
+			log.Printf("THICC: Creating new file: %s", newPath)
 
 			// Create the file
 			file, err := os.Create(newPath)
@@ -306,7 +306,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 			}
 
 			newPath := filepath.Join(dirPath, folderName)
-			log.Printf("THOCK: Creating new folder: %s", newPath)
+			log.Printf("THICC: Creating new folder: %s", newPath)
 
 			// Create the folder
 			err := os.MkdirAll(newPath, 0755)
@@ -332,16 +332,16 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 	termW := lm.getTermWidth()
 
 	// Create terminal asynchronously (to avoid blocking UI)
-	log.Println("THOCK: Creating terminal panel asynchronously")
+	log.Println("THICC: Creating terminal panel asynchronously")
 	go func() {
 		// Use configured AI tool command, or default shell if nil
 		cmdArgs := lm.AIToolCommand
 		if cmdArgs != nil && len(cmdArgs) > 0 {
-			log.Printf("THOCK: Auto-launching AI tool: %v", cmdArgs)
+			log.Printf("THICC: Auto-launching AI tool: %v", cmdArgs)
 		}
 		term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, cmdArgs)
 		if err != nil {
-			log.Printf("THOCK: Failed to create terminal: %v", err)
+			log.Printf("THICC: Failed to create terminal: %v", err)
 			return
 		}
 
@@ -352,7 +352,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 		lm.Terminal = term
 		lm.mu.Unlock()
 
-		log.Println("THOCK: Terminal panel created successfully")
+		log.Println("THICC: Terminal panel created successfully")
 		lm.triggerRedraw()
 	}()
 
@@ -367,9 +367,9 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 		},
 	)
 	lm.ProjectPicker.Hide() // Start hidden
-	log.Println("THOCK: Project picker initialized")
+	log.Println("THICC: Project picker initialized")
 
-	log.Println("THOCK: Layout initialization complete")
+	log.Println("THICC: Layout initialization complete")
 	return nil
 }
 
@@ -528,13 +528,13 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 			if lm.TabBar != nil && lm.TabBar.IsInTabBar(x, y) {
 				// Check for overflow indicator clicks first (for scrolling)
 				if lm.TabBar.IsLeftOverflowClick(x, y) {
-					log.Println("THOCK: Left overflow clicked, scrolling left")
+					log.Println("THICC: Left overflow clicked, scrolling left")
 					lm.TabBar.ScrollLeft()
 					lm.triggerRedraw()
 					return true
 				}
 				if lm.TabBar.IsRightOverflowClick(x, y) {
-					log.Println("THOCK: Right overflow clicked, scrolling right")
+					log.Println("THICC: Right overflow clicked, scrolling right")
 					lm.TabBar.ScrollRight()
 					lm.triggerRedraw()
 					return true
@@ -543,7 +543,7 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 				// Check for close button click
 				closeIdx := lm.TabBar.IsCloseButtonClick(x, y)
 				if closeIdx >= 0 {
-					log.Printf("THOCK: Tab %d close button clicked", closeIdx)
+					log.Printf("THICC: Tab %d close button clicked", closeIdx)
 					lm.CloseTabAtIndex(closeIdx)
 					return true
 				}
@@ -551,7 +551,7 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 				// Check for tab click (to switch tabs)
 				tabIdx := lm.TabBar.GetClickedTab(x, y)
 				if tabIdx >= 0 && tabIdx != lm.TabBar.ActiveIndex {
-					log.Printf("THOCK: Tab %d clicked, switching", tabIdx)
+					log.Printf("THICC: Tab %d clicked, switching", tabIdx)
 					lm.switchToTab(tabIdx)
 					return true
 				}
@@ -566,13 +566,13 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 
 		// Ctrl+Q should always quit, regardless of which panel is focused
 		if ev.Key() == tcell.KeyCtrlQ {
-			log.Println("THOCK: Ctrl+Q detected, checking for unsaved changes")
+			log.Println("THICC: Ctrl+Q detected, checking for unsaved changes")
 			return lm.handleQuit()
 		}
 
 		// Ctrl+S for save (with modal for new files) when editor is focused
 		if ev.Key() == tcell.KeyCtrlS && lm.ActivePanel == 1 {
-			log.Println("THOCK: Ctrl+S detected, saving current buffer")
+			log.Println("THICC: Ctrl+S detected, saving current buffer")
 			return lm.SaveCurrentBuffer()
 		}
 
@@ -582,21 +582,21 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 			case tcell.KeyCtrlN:
 				// Ctrl+N = new file, Ctrl+Shift+N = new folder
 				if ev.Modifiers()&tcell.ModShift != 0 {
-					log.Println("THOCK: Ctrl+Shift+N detected, creating new folder")
+					log.Println("THICC: Ctrl+Shift+N detected, creating new folder")
 					lm.FileBrowser.NewFolderSelected()
 				} else {
-					log.Println("THOCK: Ctrl+N detected, creating new file")
+					log.Println("THICC: Ctrl+N detected, creating new file")
 					lm.FileBrowser.NewFileSelected()
 				}
 				return true
 
 			case tcell.KeyCtrlD:
-				log.Println("THOCK: Ctrl+D detected, deleting selected")
+				log.Println("THICC: Ctrl+D detected, deleting selected")
 				lm.FileBrowser.DeleteSelected()
 				return true
 
 			case tcell.KeyCtrlR:
-				log.Println("THOCK: Ctrl+R detected, renaming selected")
+				log.Println("THICC: Ctrl+R detected, renaming selected")
 				lm.FileBrowser.RenameSelected()
 				return true
 			}
@@ -607,30 +607,30 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		// Ctrl+[ or Option+Left = previous tab
 		// Note: Ctrl+] sends ASCII 29 (KeyCtrlRightSq), Ctrl+[ sends ESC (KeyCtrlLeftSq)
 		if ev.Key() == tcell.KeyCtrlRightSq {
-			log.Println("THOCK: Ctrl+] detected, next tab")
+			log.Println("THICC: Ctrl+] detected, next tab")
 			lm.NextTab()
 			return true
 		}
 		if ev.Key() == tcell.KeyCtrlLeftSq && ev.Modifiers() == 0 {
 			// Only handle bare Ctrl+[ (ESC), not Escape sequences with modifiers
-			log.Println("THOCK: Ctrl+[ detected, previous tab")
+			log.Println("THICC: Ctrl+[ detected, previous tab")
 			lm.PreviousTab()
 			return true
 		}
 		if ev.Key() == tcell.KeyRight && ev.Modifiers()&tcell.ModAlt != 0 {
-			log.Println("THOCK: Option+Right detected, next tab")
+			log.Println("THICC: Option+Right detected, next tab")
 			lm.NextTab()
 			return true
 		}
 		if ev.Key() == tcell.KeyLeft && ev.Modifiers()&tcell.ModAlt != 0 {
-			log.Println("THOCK: Option+Left detected, previous tab")
+			log.Println("THICC: Option+Left detected, previous tab")
 			lm.PreviousTab()
 			return true
 		}
 
 		// Ctrl+W closes the active tab
 		if ev.Key() == tcell.KeyCtrlW {
-			log.Println("THOCK: Ctrl+W detected, closing active tab")
+			log.Println("THICC: Ctrl+W detected, closing active tab")
 			lm.CloseActiveTab()
 			return true
 		}
@@ -639,15 +639,15 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		if ev.Key() == tcell.KeyRune && ev.Modifiers()&tcell.ModAlt != 0 {
 			switch ev.Rune() {
 			case '1':
-				log.Println("THOCK: Alt+1 detected, toggling tree")
+				log.Println("THICC: Alt+1 detected, toggling tree")
 				lm.ToggleTree()
 				return true
 			case '2':
-				log.Println("THOCK: Alt+2 detected, toggling editor")
+				log.Println("THICC: Alt+2 detected, toggling editor")
 				lm.ToggleEditor()
 				return true
 			case '3':
-				log.Println("THOCK: Alt+3 detected, toggling terminal")
+				log.Println("THICC: Alt+3 detected, toggling terminal")
 				lm.ToggleTerminal()
 				return true
 			}
@@ -656,7 +656,7 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		// Ctrl+/ for shortcuts help (may come as KeyRune '/' with Ctrl or as KeyCtrlUnderscore)
 		if (ev.Key() == tcell.KeyRune && ev.Rune() == '/' && ev.Modifiers()&tcell.ModCtrl != 0) ||
 			ev.Key() == tcell.KeyCtrlUnderscore {
-			log.Println("THOCK: Ctrl+/ detected, showing shortcuts")
+			log.Println("THICC: Ctrl+/ detected, showing shortcuts")
 			lm.ShowShortcutsModal()
 			return true
 		}
@@ -665,7 +665,7 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		if ev.Key() == tcell.KeyRune && ev.Rune() == '?' && ev.Modifiers() == 0 {
 			// Only trigger if not in a text input context (editor focused)
 			if lm.ActivePanel != 1 {
-				log.Println("THOCK: ? detected, showing shortcuts")
+				log.Println("THICC: ? detected, showing shortcuts")
 				lm.ShowShortcutsModal()
 				return true
 			}
@@ -714,7 +714,7 @@ func (lm *LayoutManager) handleFocusSwitch(event tcell.Event) bool {
 			x, _ := ev.Position()
 			newPanel := lm.panelAtX(x)
 			if newPanel != lm.ActivePanel && newPanel >= 0 {
-				log.Printf("THOCK: Mouse click at x=%d, switching focus from panel %d to %d", x, lm.ActivePanel, newPanel)
+				log.Printf("THICC: Mouse click at x=%d, switching focus from panel %d to %d", x, lm.ActivePanel, newPanel)
 				lm.setActivePanel(newPanel)
 				// Don't consume the event - let the panel handle the click too
 			}
@@ -731,7 +731,7 @@ func (lm *LayoutManager) handleFocusSwitch(event tcell.Event) bool {
 	// Tab key: tree → editor (only when no modifiers)
 	if ev.Key() == tcell.KeyTab && ev.Modifiers() == 0 {
 		if lm.ActivePanel == 0 { // Tree has focus
-			log.Println("THOCK: Tab pressed in tree, switching to editor")
+			log.Println("THICC: Tab pressed in tree, switching to editor")
 			lm.FocusEditor()
 			return true // Consume the event to prevent insertion
 		}
@@ -741,7 +741,7 @@ func (lm *LayoutManager) handleFocusSwitch(event tcell.Event) bool {
 	if ev.Key() == tcell.KeyBacktab ||
 		(ev.Key() == tcell.KeyTab && ev.Modifiers()&tcell.ModShift != 0) {
 		if lm.ActivePanel == 1 { // Editor has focus
-			log.Println("THOCK: Shift+Tab pressed in editor, switching to tree")
+			log.Println("THICC: Shift+Tab pressed in editor, switching to tree")
 			lm.FocusTree()
 			return true // Consume the event
 		}
@@ -749,9 +749,9 @@ func (lm *LayoutManager) handleFocusSwitch(event tcell.Event) bool {
 
 	// Ctrl+Space cycles focus: tree → editor → terminal → tree
 	if ev.Key() == tcell.KeyCtrlSpace {
-		log.Printf("THOCK: Ctrl+Space pressed, current panel: %d", lm.ActivePanel)
+		log.Printf("THICC: Ctrl+Space pressed, current panel: %d", lm.ActivePanel)
 		lm.cycleFocus()
-		log.Printf("THOCK: Focus switched to panel %d", lm.ActivePanel)
+		log.Printf("THICC: Focus switched to panel %d", lm.ActivePanel)
 		return true
 	}
 
@@ -809,7 +809,7 @@ func (lm *LayoutManager) setActivePanel(panel int) {
 	if panel == 1 && lm.TabBar != nil {
 		activeTab := lm.TabBar.GetActiveTab()
 		if activeTab != nil && activeTab.IsPreview {
-			log.Printf("THOCK: Pinning preview tab on panel switch: %s", activeTab.Name)
+			log.Printf("THICC: Pinning preview tab on panel switch: %s", activeTab.Name)
 			lm.TabBar.PinTab(lm.TabBar.ActiveIndex)
 		}
 	}
@@ -859,7 +859,7 @@ func (lm *LayoutManager) cycleFocus() {
 // Uses lazy loading - creates a preview tab first, then loads the buffer
 // Preview tabs are italicized and get replaced when navigating to another file
 func (lm *LayoutManager) previewFileInEditor(path string) {
-	log.Printf("THOCK: Previewing file: %s", path)
+	log.Printf("THICC: Previewing file: %s", path)
 
 	// Make path absolute for dedup check
 	absPath, err := filepath.Abs(path)
@@ -871,7 +871,7 @@ func (lm *LayoutManager) previewFileInEditor(path string) {
 	if lm.TabBar != nil {
 		existingIdx := lm.TabBar.FindTabByPath(absPath)
 		if existingIdx >= 0 {
-			log.Printf("THOCK: File already open in tab %d, switching to it", existingIdx)
+			log.Printf("THICC: File already open in tab %d, switching to it", existingIdx)
 			lm.switchToTab(existingIdx)
 			return
 		}
@@ -880,13 +880,13 @@ func (lm *LayoutManager) previewFileInEditor(path string) {
 	// Create preview tab (replaces existing preview if any)
 	if lm.TabBar != nil {
 		lm.TabBar.AddPreviewTabStub(absPath)
-		log.Printf("THOCK: Created preview tab, now have %d tabs, active=%d", len(lm.TabBar.Tabs), lm.TabBar.ActiveIndex)
+		log.Printf("THICC: Created preview tab, now have %d tabs, active=%d", len(lm.TabBar.Tabs), lm.TabBar.ActiveIndex)
 	}
 
 	// Load and display the active tab
 	lm.loadAndDisplayActiveTab()
 
-	log.Printf("THOCK: File previewed in editor, focus stays on tree")
+	log.Printf("THICC: File previewed in editor, focus stays on tree")
 }
 
 // loadAndDisplayActiveTab loads the buffer for the active tab (if not loaded) and displays it
@@ -897,28 +897,28 @@ func (lm *LayoutManager) loadAndDisplayActiveTab() {
 
 	tab := lm.TabBar.GetActiveTab()
 	if tab == nil {
-		log.Println("THOCK: No active tab to load")
+		log.Println("THICC: No active tab to load")
 		return
 	}
 
 	// If already loaded, just display the buffer
 	if tab.Loaded && tab.Buffer != nil {
-		log.Printf("THOCK: Tab already loaded, displaying buffer")
+		log.Printf("THICC: Tab already loaded, displaying buffer")
 		lm.displayBufferInEditor(tab.Buffer)
 		return
 	}
 
 	// Load the buffer
-	log.Printf("THOCK: Loading buffer for %s (currently %d buffers open)", tab.Path, len(buffer.OpenBuffers))
+	log.Printf("THICC: Loading buffer for %s (currently %d buffers open)", tab.Path, len(buffer.OpenBuffers))
 	buf, err := buffer.NewBufferFromFile(tab.Path, buffer.BTDefault)
 	if err != nil {
-		log.Printf("THOCK: Error loading file: %v", err)
+		log.Printf("THICC: Error loading file: %v", err)
 		action.InfoBar.Error(err.Error())
 		// Close the stub tab since loading failed
 		lm.CloseTabAtIndex(lm.TabBar.ActiveIndex)
 		return
 	}
-	log.Printf("THOCK: Buffer loaded successfully, now %d buffers open", len(buffer.OpenBuffers))
+	log.Printf("THICC: Buffer loaded successfully, now %d buffers open", len(buffer.OpenBuffers))
 
 	// Mark tab as loaded
 	lm.TabBar.MarkTabLoaded(lm.TabBar.ActiveIndex, buf)
@@ -935,7 +935,7 @@ func (lm *LayoutManager) displayBufferInEditor(buf *buffer.Buffer) {
 
 	tab := action.MainTab()
 	if tab == nil {
-		log.Println("THOCK: No main tab found")
+		log.Println("THICC: No main tab found")
 		return
 	}
 
@@ -946,7 +946,7 @@ func (lm *LayoutManager) displayBufferInEditor(buf *buffer.Buffer) {
 		}
 	}
 
-	log.Println("THOCK: No BufPane found in tab")
+	log.Println("THICC: No BufPane found in tab")
 }
 
 // switchToTab switches to the tab at the given index
@@ -957,7 +957,7 @@ func (lm *LayoutManager) switchToTab(index int) {
 	}
 
 	lm.TabBar.ActiveIndex = index
-	log.Printf("THOCK: Switching to tab %d (%s)", index, lm.TabBar.Tabs[index].Name)
+	log.Printf("THICC: Switching to tab %d (%s)", index, lm.TabBar.Tabs[index].Name)
 
 	// Load and display the buffer (lazy loading handles unloaded tabs)
 	lm.loadAndDisplayActiveTab()
@@ -1007,7 +1007,7 @@ func (lm *LayoutManager) CloseActiveTab() {
 
 	// Don't close if it's the only tab AND it's Untitled
 	if len(lm.TabBar.Tabs) == 1 && activeTab.Name == "Untitled" {
-		log.Println("THOCK: Can't close the only Untitled tab")
+		log.Println("THICC: Can't close the only Untitled tab")
 		return
 	}
 
@@ -1021,11 +1021,11 @@ func (lm *LayoutManager) CloseActiveTab() {
 
 	// Remove from tab bar
 	lm.TabBar.CloseTab(closingIdx)
-	log.Printf("THOCK: Closed tab %d, now have %d tabs", closingIdx, len(lm.TabBar.Tabs))
+	log.Printf("THICC: Closed tab %d, now have %d tabs", closingIdx, len(lm.TabBar.Tabs))
 
 	// If no tabs left, create a new Untitled buffer
 	if len(lm.TabBar.Tabs) == 0 {
-		log.Println("THOCK: No tabs left, creating new Untitled buffer")
+		log.Println("THICC: No tabs left, creating new Untitled buffer")
 		newBuf := buffer.NewBufferFromString("", "", buffer.BTDefault)
 		lm.TabBar.AddTab(newBuf)
 		lm.displayBufferInEditor(newBuf)
@@ -1238,7 +1238,7 @@ func (lm *LayoutManager) Resize(w, h int) {
 		_ = term.Resize(termW, h)
 	}
 
-	log.Printf("THOCK: Layout resized to %dx%d (tree=%d, editor=%d, term=%d)",
+	log.Printf("THICC: Layout resized to %dx%d (tree=%d, editor=%d, term=%d)",
 		w, h, lm.TreeWidth, lm.getEditorWidth(), lm.getTermWidth())
 }
 
@@ -1256,14 +1256,14 @@ func (lm *LayoutManager) Close() {
 		term.Close()
 	}
 
-	log.Println("THOCK: Layout closed")
+	log.Println("THICC: Layout closed")
 }
 
 // FocusTree sets focus to file browser
 func (lm *LayoutManager) FocusTree() {
 	if lm.FileBrowser != nil {
 		lm.setActivePanel(0)
-		log.Println("THOCK: Focus set to file browser")
+		log.Println("THICC: Focus set to file browser")
 	}
 }
 
@@ -1275,12 +1275,12 @@ func (lm *LayoutManager) FocusEditor() {
 	if lm.TabBar != nil {
 		activeTab := lm.TabBar.GetActiveTab()
 		if activeTab != nil && activeTab.IsPreview {
-			log.Printf("THOCK: Pinning preview tab on editor focus: %s", activeTab.Name)
+			log.Printf("THICC: Pinning preview tab on editor focus: %s", activeTab.Name)
 			lm.TabBar.PinTab(lm.TabBar.ActiveIndex)
 		}
 	}
 
-	log.Println("THOCK: Focus set to editor")
+	log.Println("THICC: Focus set to editor")
 }
 
 // FocusTerminal sets focus to terminal
@@ -1291,14 +1291,14 @@ func (lm *LayoutManager) FocusTerminal() {
 
 	if hasTerminal {
 		lm.setActivePanel(2)
-		log.Println("THOCK: Focus set to terminal")
+		log.Println("THICC: Focus set to terminal")
 	}
 }
 
 // ToggleTree toggles the visibility of the tree pane
 func (lm *LayoutManager) ToggleTree() {
 	lm.TreeVisible = !lm.TreeVisible
-	log.Printf("THOCK: Tree visibility toggled to %v", lm.TreeVisible)
+	log.Printf("THICC: Tree visibility toggled to %v", lm.TreeVisible)
 
 	// If we just hid the focused pane, move focus to next visible pane
 	if !lm.TreeVisible && lm.ActivePanel == 0 {
@@ -1313,7 +1313,7 @@ func (lm *LayoutManager) ToggleTree() {
 // ToggleEditor toggles the visibility of the editor pane
 func (lm *LayoutManager) ToggleEditor() {
 	lm.EditorVisible = !lm.EditorVisible
-	log.Printf("THOCK: Editor visibility toggled to %v", lm.EditorVisible)
+	log.Printf("THICC: Editor visibility toggled to %v", lm.EditorVisible)
 
 	// If we just hid the focused pane, move focus to next visible pane
 	if !lm.EditorVisible && lm.ActivePanel == 1 {
@@ -1328,7 +1328,7 @@ func (lm *LayoutManager) ToggleEditor() {
 // ToggleTerminal toggles the visibility of the terminal pane
 func (lm *LayoutManager) ToggleTerminal() {
 	lm.TerminalVisible = !lm.TerminalVisible
-	log.Printf("THOCK: Terminal visibility toggled to %v", lm.TerminalVisible)
+	log.Printf("THICC: Terminal visibility toggled to %v", lm.TerminalVisible)
 
 	// If we just hid the focused pane, move focus to next visible pane
 	if !lm.TerminalVisible && lm.ActivePanel == 2 {
@@ -1346,7 +1346,7 @@ func (lm *LayoutManager) focusNextVisiblePane() {
 	// Try editor first
 	if lm.EditorVisible {
 		lm.setActivePanel(1)
-		log.Println("THOCK: Focus moved to editor")
+		log.Println("THICC: Focus moved to editor")
 		return
 	}
 
@@ -1357,7 +1357,7 @@ func (lm *LayoutManager) focusNextVisiblePane() {
 		lm.mu.RUnlock()
 		if hasTerminal {
 			lm.setActivePanel(2)
-			log.Println("THOCK: Focus moved to terminal")
+			log.Println("THICC: Focus moved to terminal")
 			return
 		}
 	}
@@ -1365,12 +1365,12 @@ func (lm *LayoutManager) focusNextVisiblePane() {
 	// Try tree
 	if lm.TreeVisible && lm.FileBrowser != nil {
 		lm.setActivePanel(0)
-		log.Println("THOCK: Focus moved to tree")
+		log.Println("THICC: Focus moved to tree")
 		return
 	}
 
 	// No visible pane with focus capability
-	log.Println("THOCK: No visible pane to focus")
+	log.Println("THICC: No visible pane to focus")
 }
 
 // updatePanelRegions recalculates and updates all panel regions based on visibility
@@ -1402,7 +1402,7 @@ func (lm *LayoutManager) updatePanelRegions() {
 		}
 	}
 
-	log.Printf("THOCK: Panel regions updated (tree=%d, editor=%d, term=%d)",
+	log.Printf("THICC: Panel regions updated (tree=%d, editor=%d, term=%d)",
 		lm.getTreeWidth(), lm.getEditorWidth(), lm.getTermWidth())
 }
 
@@ -1427,7 +1427,7 @@ func (lm *LayoutManager) SyncInitialTab() {
 			for _, pane := range tab.Panes {
 				if bp, ok := pane.(*action.BufPane); ok {
 					lm.TabBar.AddTab(bp.Buf)
-					log.Println("THOCK: Synced initial buffer to tab bar")
+					log.Println("THICC: Synced initial buffer to tab bar")
 					break
 				}
 			}
@@ -1449,7 +1449,7 @@ func (lm *LayoutManager) checkAndPinOnModification() {
 
 	// If the buffer has been modified, pin the tab
 	if activeTab.Buffer != nil && activeTab.Buffer.Modified() {
-		log.Printf("THOCK: Pinning preview tab due to modification: %s", activeTab.Name)
+		log.Printf("THICC: Pinning preview tab due to modification: %s", activeTab.Name)
 		lm.TabBar.PinTab(lm.TabBar.ActiveIndex)
 	}
 }
@@ -1521,7 +1521,7 @@ func (lm *LayoutManager) ShowTerminalCursor(screen tcell.Screen) {
 // triggerRedraw posts a resize event to wake up the event loop and trigger a screen refresh
 func (lm *LayoutManager) triggerRedraw() {
 	if lm.Screen != nil {
-		log.Println("THOCK: Posting resize event to trigger screen refresh")
+		log.Println("THICC: Posting resize event to trigger screen refresh")
 		// Post a resize event with current dimensions to wake up event loop
 		w, h := lm.Screen.Size()
 		lm.Screen.PostEvent(tcell.NewEventResize(w, h))
@@ -1541,7 +1541,7 @@ func (lm *LayoutManager) handleTerminalPaste(event tcell.Event) bool {
 
 	// Handle tcell.EventPaste (bracketed paste from outer terminal)
 	if ev, ok := event.(*tcell.EventPaste); ok {
-		log.Printf("THOCK: EventPaste for terminal, len=%d", len(ev.Text()))
+		log.Printf("THICC: EventPaste for terminal, len=%d", len(ev.Text()))
 		term.Write([]byte(ev.Text()))
 		return true
 	}
@@ -1563,13 +1563,13 @@ func (lm *LayoutManager) handleTerminalPaste(event tcell.Event) bool {
 		}
 
 		if isPaste {
-			log.Println("THOCK: Paste keybinding for terminal")
+			log.Println("THICC: Paste keybinding for terminal")
 			clip, err := clipboard.Read(clipboard.ClipboardReg)
 			if err != nil {
-				log.Printf("THOCK: Clipboard read failed: %v", err)
+				log.Printf("THICC: Clipboard read failed: %v", err)
 				return true // Still consume to prevent editor paste
 			}
-			log.Printf("THOCK: Pasting %d bytes to terminal", len(clip))
+			log.Printf("THICC: Pasting %d bytes to terminal", len(clip))
 			term.Write([]byte(clip))
 			return true
 		}
@@ -1659,7 +1659,7 @@ func (lm *LayoutManager) clearEditorIfPathDeleted(deletedPath string, isDir bool
 		}
 
 		if shouldClose {
-			log.Printf("THOCK: Closing tab - deleted file was open: %s", tabPath)
+			log.Printf("THICC: Closing tab - deleted file was open: %s", tabPath)
 			lm.doCloseTab(i)
 		}
 	}
@@ -1680,7 +1680,7 @@ func (lm *LayoutManager) CloseTabAtIndex(index int) {
 
 	// Don't close if it's the only tab AND it's Untitled
 	if len(lm.TabBar.Tabs) == 1 && openTab.Name == "Untitled" {
-		log.Println("THOCK: Can't close the only Untitled tab")
+		log.Println("THICC: Can't close the only Untitled tab")
 		return
 	}
 
@@ -1707,7 +1707,7 @@ func (lm *LayoutManager) doCloseTab(index int) {
 		return
 	}
 
-	log.Printf("THOCK: Closing tab %d", index)
+	log.Printf("THICC: Closing tab %d", index)
 
 	// Close the buffer
 	openTab := lm.TabBar.Tabs[index]
@@ -1721,7 +1721,7 @@ func (lm *LayoutManager) doCloseTab(index int) {
 	// Switch to appropriate tab or reset to empty
 	if len(lm.TabBar.Tabs) == 0 {
 		// No tabs left - create empty buffer
-		log.Println("THOCK: No tabs left, creating empty buffer")
+		log.Println("THICC: No tabs left, creating empty buffer")
 		lm.resetToEmptyBuffer()
 	} else {
 		// Switch to the new active tab
@@ -1770,13 +1770,13 @@ func (lm *LayoutManager) SaveCurrentBuffer() bool {
 		if bp, ok := pane.(*action.BufPane); ok {
 			if bp.Buf.Path == "" {
 				// New file - show input modal for filename
-				log.Println("THOCK: New file, showing input modal for filename")
+				log.Println("THICC: New file, showing input modal for filename")
 				lm.ShowInputModal("Save File", "Enter filename:", "", func(filename string, canceled bool) {
 					if canceled || filename == "" {
-						log.Println("THOCK: Save canceled or empty filename")
+						log.Println("THICC: Save canceled or empty filename")
 						return
 					}
-					log.Printf("THOCK: Saving new file as: %s", filename)
+					log.Printf("THICC: Saving new file as: %s", filename)
 
 					// Save the file
 					err := bp.Buf.SaveAs(filename)
@@ -1799,7 +1799,7 @@ func (lm *LayoutManager) SaveCurrentBuffer() bool {
 				return true
 			} else {
 				// Existing file - just save
-				log.Printf("THOCK: Saving existing file: %s", bp.Buf.Path)
+				log.Printf("THICC: Saving existing file: %s", bp.Buf.Path)
 				bp.Save()
 
 				// Update tab name (in case it changed)
@@ -1832,7 +1832,7 @@ func (lm *LayoutManager) ShowProjectPicker() {
 
 // navigateToProject changes the root directory and reinitializes the file browser
 func (lm *LayoutManager) navigateToProject(newRoot string) {
-	log.Printf("THOCK: Navigating to new project: %s", newRoot)
+	log.Printf("THICC: Navigating to new project: %s", newRoot)
 
 	// Hide the picker
 	if lm.ProjectPicker != nil {
@@ -1863,7 +1863,7 @@ func (lm *LayoutManager) navigateToProject(newRoot string) {
 	lm.FileBrowser.OnProjectPathClick = lm.ShowProjectPicker
 
 	lm.FileBrowser.OnFileSaved = func(path string) {
-		log.Printf("THOCK: File saved callback - refreshing tree and selecting: %s", path)
+		log.Printf("THICC: File saved callback - refreshing tree and selecting: %s", path)
 		lm.FileBrowser.SelectFile(path)
 		lm.triggerRedraw()
 	}
@@ -1881,7 +1881,7 @@ func (lm *LayoutManager) navigateToProject(newRoot string) {
 			"This action cannot be undone!",
 			func(confirmed bool) {
 				if confirmed {
-					log.Printf("THOCK: Deleting %s: %s", itemType, path)
+					log.Printf("THICC: Deleting %s: %s", itemType, path)
 					err := os.RemoveAll(path)
 					if err != nil {
 						action.InfoBar.Error("Delete failed: " + err.Error())
@@ -1905,7 +1905,7 @@ func (lm *LayoutManager) navigateToProject(newRoot string) {
 			}
 
 			newPath := filepath.Join(filepath.Dir(oldPath), newName)
-			log.Printf("THOCK: Renaming %s -> %s", oldPath, newPath)
+			log.Printf("THICC: Renaming %s -> %s", oldPath, newPath)
 
 			err := os.Rename(oldPath, newPath)
 			if err != nil {
@@ -1930,7 +1930,7 @@ func (lm *LayoutManager) navigateToProject(newRoot string) {
 			}
 
 			newPath := filepath.Join(dirPath, fileName)
-			log.Printf("THOCK: Creating new file: %s", newPath)
+			log.Printf("THICC: Creating new file: %s", newPath)
 
 			file, err := os.Create(newPath)
 			if err != nil {
@@ -1964,7 +1964,7 @@ func (lm *LayoutManager) navigateToProject(newRoot string) {
 			}
 
 			newPath := filepath.Join(dirPath, folderName)
-			log.Printf("THOCK: Creating new folder: %s", newPath)
+			log.Printf("THICC: Creating new folder: %s", newPath)
 
 			err := os.MkdirAll(newPath, 0755)
 			if err != nil {

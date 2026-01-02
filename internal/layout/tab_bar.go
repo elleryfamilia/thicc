@@ -3,9 +3,9 @@ package layout
 import (
 	"path/filepath"
 
-	"github.com/ellery/thock/internal/action"
-	"github.com/ellery/thock/internal/buffer"
-	"github.com/ellery/thock/internal/filemanager"
+	"github.com/ellery/thicc/internal/action"
+	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/filemanager"
 	"github.com/micro-editor/tcell/v2"
 )
 

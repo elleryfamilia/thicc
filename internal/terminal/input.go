@@ -4,7 +4,7 @@ import (
 	"log"
 	"unicode/utf8"
 
-	"github.com/ellery/thock/internal/clipboard"
+	"github.com/ellery/thicc/internal/clipboard"
 	"github.com/micro-editor/tcell/v2"
 )
 

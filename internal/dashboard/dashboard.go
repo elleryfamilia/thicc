@@ -1,7 +1,7 @@
 package dashboard
 
 import (
-	"github.com/ellery/thock/internal/aiterminal"
+	"github.com/ellery/thicc/internal/aiterminal"
 	"github.com/micro-editor/tcell/v2"
 )
 

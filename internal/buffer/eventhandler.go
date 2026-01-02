@@ -5,10 +5,10 @@ import (
 	"time"
 
 	dmp "github.com/sergi/go-diff/diffmatchpatch"
-	"github.com/ellery/thock/internal/config"
-	ulua "github.com/ellery/thock/internal/lua"
-	"github.com/ellery/thock/internal/screen"
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/config"
+	ulua "github.com/ellery/thicc/internal/lua"
+	"github.com/ellery/thicc/internal/screen"
+	"github.com/ellery/thicc/internal/util"
 	luar "layeh.com/gopher-luar"
 )
 

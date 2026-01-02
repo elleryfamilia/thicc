@@ -1,9 +1,11 @@
-module github.com/ellery/thock
+module github.com/ellery/thicc
 
 require (
 	github.com/blang/semver v3.5.1+incompatible
+	github.com/creack/pty v1.1.18
 	github.com/dustin/go-humanize v1.0.0
 	github.com/go-errors/errors v1.0.1
+	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 	github.com/mattn/go-isatty v0.0.20
 	github.com/mattn/go-runewidth v0.0.16
@@ -22,10 +24,8 @@ require (
 )
 
 require (
-	github.com/creack/pty v1.1.18 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/gdamore/encoding v1.0.0 // indirect
-	github.com/hinshun/vt10x v0.0.0-20220301184237-5011da428d02 // indirect
 	github.com/lucasb-eyer/go-colorful v1.0.3 // indirect
 	github.com/pmezard/go-difflib v1.0.0 // indirect
 	github.com/rivo/uniseg v0.2.0 // indirect

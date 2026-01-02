@@ -1,19 +1,19 @@
-# THOCK Project Status & Plan
+# THICC Project Status & Plan
 
 **Last Updated:** December 27, 2024
 **Status:** In Development - TreePane Integration Blocked by Hang Issue
 
 ## Project Overview
 
-**THOCK** is a hard fork of micro editor v2.0.14 designed to be an IDE-like terminal editor with:
+**THICC** is a hard fork of micro editor v2.0.14 designed to be an IDE-like terminal editor with:
 - Built-in file tree browser (native Go, not Lua plugin)
 - AI terminal integration (auto-detects Claude, Aider, Gemini, etc.)
 - 3-pane layout: Tree + Editor + AI Terminal
 - Optimized for AI-assisted development workflows
 
-**Repository:** `/Users/ellery/_git/thock` (forked from micro v2.0.14)
-**Module:** `github.com/ellery/thock`
-**Config:** `~/.config/thock/` (separate from micro)
+**Repository:** `/Users/ellery/_git/thicc` (forked from micro v2.0.14)
+**Module:** `github.com/ellery/thicc`
+**Config:** `~/.config/thicc/` (separate from micro)
 
 ---
 
@@ -47,11 +47,11 @@
 ## Completed Work
 
 ### Phase 1: Repository Setup ✅
-- [x] Forked micro v2.0.14 to `/Users/ellery/_git/thock`
-- [x] Renamed module: `github.com/zyedidia/micro/v2` → `github.com/ellery/thock`
+- [x] Forked micro v2.0.14 to `/Users/ellery/_git/thicc`
+- [x] Renamed module: `github.com/zyedidia/micro/v2` → `github.com/ellery/thicc`
 - [x] Updated all import paths across codebase
-- [x] Renamed binary: `micro` → `thock`
-- [x] Created separate config directory: `~/.config/thock/`
+- [x] Renamed binary: `micro` → `thicc`
+- [x] Created separate config directory: `~/.config/thicc/`
 
 ### Phase 2: Native Filemanager Implementation ✅
 - [x] Created `internal/filemanager/` package:
@@ -85,7 +85,7 @@
   - `:treerefresh` - Refresh file tree
   - `:aiterm` - Quick launch first AI CLI
   - `:ailauncher` - Show AI tool selection menu
-- [x] Created keybindings (`~/.config/thock/bindings.json`):
+- [x] Created keybindings (`~/.config/thicc/bindings.json`):
   - `Alt-t` → Toggle tree
   - `Alt-e` → Focus editor
   - `Ctrl-Q` → Quit all
@@ -99,10 +99,10 @@
 
 ### Phase 6: Build System ✅
 - [x] Updated Makefile:
-  - Changed binary output to `thock`
+  - Changed binary output to `thicc`
   - Updated module paths
   - Added `build-dbg` target for debug builds
-- [x] Created launcher script: `run-thock.sh`
+- [x] Created launcher script: `run-thicc.sh`
 - [x] Verified compilation works on macOS
 
 ---
@@ -121,7 +121,7 @@
 
 **Investigation Done:**
 1. Added extensive logging to `toggleTree()` function (lines 674-747 in micro.go)
-2. Built debug version with `-X github.com/ellery/thock/internal/util.Debug=ON`
+2. Built debug version with `-X github.com/ellery/thicc/internal/util.Debug=ON`
 3. Attempted to capture logs during hang - no log.txt created
 
 **Suspected Causes:**
@@ -131,9 +131,9 @@
 4. Display system integration issue
 
 **Files Involved:**
-- `/Users/ellery/_git/thock/cmd/thock/micro.go:674-747` - toggleTree function
-- `/Users/ellery/_git/thock/internal/action/treepane.go` - TreePane wrapper
-- `/Users/ellery/_git/thock/internal/filemanager/pane.go` - TreePane implementation
+- `/Users/ellery/_git/thicc/cmd/thicc/micro.go:674-747` - toggleTree function
+- `/Users/ellery/_git/thicc/internal/action/treepane.go` - TreePane wrapper
+- `/Users/ellery/_git/thicc/internal/filemanager/pane.go` - TreePane implementation
 
 **Next Steps to Debug:**
 1. ✅ Ensure debug build is actually running (timestamp: Dec 27 17:43)
@@ -158,7 +158,7 @@
 ### Challenge 2: Debug Logging Not Working
 **Problem:** Log statements not appearing in log.txt
 **Root Cause:** Debug logging requires compile-time flag, not runtime flag
-**Solution:** Use `make build-dbg` instead of `./thock -debug`
+**Solution:** Use `make build-dbg` instead of `./thicc -debug`
 **Learning:** `util.Debug == "ON"` must be set via `-ldflags` during build
 
 ### Challenge 3: Buffer Creation Signature Changed
@@ -168,7 +168,7 @@
 **Learning:** Check function signatures when porting code between versions
 
 ### Challenge 4: Import Path Migration
-**Problem:** All imports needed updating from zyedidia/micro to ellery/thock
+**Problem:** All imports needed updating from zyedidia/micro to ellery/thicc
 **Solution:** Systematic find/replace across entire codebase
 **Files Changed:** ~50 Go files
 
@@ -188,9 +188,9 @@
 ## File Structure
 
 ```
-/Users/ellery/_git/thock/
-├── cmd/thock/
-│   ├── micro.go              # Main entry, InitThockLayout, toggleTree
+/Users/ellery/_git/thicc/
+├── cmd/thicc/
+│   ├── micro.go              # Main entry, InitThiccLayout, toggleTree
 │   └── debug.go              # Debug logging setup
 ├── internal/
 │   ├── filemanager/          # Native Go file tree (NEW)
@@ -215,14 +215,14 @@
 │   ├── plugins/              # Built-in plugins (no filemanager)
 │   └── help/                 # Help documentation
 ├── Makefile                  # Build system (MODIFIED)
-├── run-thock.sh              # Launcher script (NEW)
-├── THOCK_PROJECT_STATUS.md   # This file (NEW)
+├── run-thicc.sh              # Launcher script (NEW)
+├── THICC_PROJECT_STATUS.md   # This file (NEW)
 └── log.txt                   # Debug log (generated by debug builds)
 ```
 
 **Config Location:**
 ```
-~/.config/thock/
+~/.config/thicc/
 ├── bindings.json             # Keybindings (Alt-t, Ctrl-Q)
 └── settings.json             # Settings (auto-generated)
 ```
@@ -233,29 +233,29 @@
 
 ### Standard Build
 ```bash
-cd /Users/ellery/_git/thock
+cd /Users/ellery/_git/thicc
 make quick                    # Fast build without generate step
 ```
 
 ### Debug Build (with logging)
 ```bash
-cd /Users/ellery/_git/thock
+cd /Users/ellery/_git/thicc
 make build-dbg                # Enables log.txt output
 ```
 
 ### Clean Build
 ```bash
-cd /Users/ellery/_git/thock
+cd /Users/ellery/_git/thicc
 make clean
 make build                    # Full build with generate step
 ```
 
 ### Run
 ```bash
-cd /Users/ellery/_git/thock
-./run-thock.sh                # Uses clean config, clears old logs
+cd /Users/ellery/_git/thicc
+./run-thicc.sh                # Uses clean config, clears old logs
 # OR directly:
-./thock
+./thicc
 ```
 
 **Important:** After making code changes, always rebuild before testing!
@@ -264,7 +264,7 @@ cd /Users/ellery/_git/thock
 
 ## Commands Reference
 
-### In THOCK Editor
+### In THICC Editor
 
 **Open Command Prompt:** `Ctrl-e`
 
@@ -340,7 +340,7 @@ Once hang is fixed:
 
 ### Phase 9: Polish & UX
 - [ ] Create welcome screen on first launch
-- [ ] Add `:help thock` documentation
+- [ ] Add `:help thicc` documentation
 - [ ] Improve error messages
 - [ ] Add progress indicators for slow operations
 - [ ] Create installation script
@@ -396,7 +396,7 @@ Once hang is fixed:
    - Config directory created manually
 
 6. **Limited documentation**
-   - No built-in help for THOCK features
+   - No built-in help for THICC features
    - Keybindings not discoverable
    - No tutorial or quickstart
 
@@ -430,8 +430,8 @@ User installs these for AI features:
 ## Environment Variables
 
 ```bash
-# Config directory (defaults to ~/.config/micro or ~/.config/thock)
-export MICRO_CONFIG_HOME=~/.config/thock
+# Config directory (defaults to ~/.config/micro or ~/.config/thicc)
+export MICRO_CONFIG_HOME=~/.config/thicc
 
 # AI API Keys (for AI terminal features)
 export ANTHROPIC_API_KEY="your_key"      # Claude
@@ -444,30 +444,30 @@ export OPENAI_API_KEY="your_key"         # ChatGPT/Codex
 ## Debug Information
 
 ### Log Locations
-- Debug log: `/Users/ellery/_git/thock/log.txt` (only with debug build)
+- Debug log: `/Users/ellery/_git/thicc/log.txt` (only with debug build)
 - Must build with: `make build-dbg`
 - Log created on startup if debug flag set
 
 ### Debug Build Verification
 ```bash
 # Check if debug build
-strings thock | grep "Debug=ON"  # Should output if debug build
-ls -lh thock                      # Check timestamp
+strings thicc | grep "Debug=ON"  # Should output if debug build
+ls -lh thicc                      # Check timestamp
 ```
 
 ### Common Debug Tasks
 ```bash
 # View recent logs
-tail -f /Users/ellery/_git/thock/log.txt
+tail -f /Users/ellery/_git/thicc/log.txt
 
 # Search for errors
-grep -i error /Users/ellery/_git/thock/log.txt
+grep -i error /Users/ellery/_git/thicc/log.txt
 
 # Find where execution stopped
-grep "THOCK:" /Users/ellery/_git/thock/log.txt | tail -20
+grep "THICC:" /Users/ellery/_git/thicc/log.txt | tail -20
 
 # Clear logs before test
-rm /Users/ellery/_git/thock/log.txt
+rm /Users/ellery/_git/thicc/log.txt
 ```
 
 ---
@@ -539,7 +539,7 @@ rm /Users/ellery/_git/thock/log.txt
 - Expects hover highlighting
 
 **Workflow:**
-1. User runs: `/Users/ellery/_git/thock/run-thock.sh`
+1. User runs: `/Users/ellery/_git/thicc/run-thicc.sh`
 2. Types commands via `Ctrl-e` prompt
 3. Uses `Ctrl-Q` to quit
 4. Reports issues via terminal output
@@ -547,15 +547,15 @@ rm /Users/ellery/_git/thock/log.txt
 
 **Build Process:**
 - User runs `make quick` or `make build-dbg`
-- Testing from `/Users/ellery/_git/thock`
-- Uses separate config in `~/.config/thock`
+- Testing from `/Users/ellery/_git/thicc`
+- Uses separate config in `~/.config/thicc`
 
 ---
 
 ## Success Criteria
 
 ### MVP Complete When:
-- [x] THOCK binary builds and runs
+- [x] THICC binary builds and runs
 - [x] Editor works (typing, saving, basic editing)
 - [x] Commands system working (Ctrl-e)
 - [x] AI detection working

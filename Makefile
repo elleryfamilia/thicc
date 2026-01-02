@@ -6,8 +6,8 @@ HASH = $(shell git rev-parse --short HEAD)
 DATE = $(shell GOOS=$(shell go env GOHOSTOS) GOARCH=$(shell go env GOHOSTARCH) \
 	go run tools/build-date.go)
 GOBIN ?= $(shell go env GOPATH)/bin
-GOVARS = -X github.com/ellery/thock/internal/util.Version=$(VERSION) -X github.com/ellery/thock/internal/util.CommitHash=$(HASH) -X 'github.com/ellery/thock/internal/util.CompileDate=$(DATE)'
-DEBUGVAR = -X github.com/ellery/thock/internal/util.Debug=ON
+GOVARS = -X github.com/ellery/thicc/internal/util.Version=$(VERSION) -X github.com/ellery/thicc/internal/util.CommitHash=$(HASH) -X 'github.com/ellery/thicc/internal/util.CompileDate=$(DATE)'
+DEBUGVAR = -X github.com/ellery/thicc/internal/util.Debug=ON
 VSCODE_TESTS_BASE_URL = 'https://raw.githubusercontent.com/microsoft/vscode/e6a45f4242ebddb7aa9a229f85555e8a3bd987e2/src/vs/editor/test/common/model/'
 CGO_ENABLED := $(if $(CGO_ENABLED),$(CGO_ENABLED),0)
 
@@ -24,17 +24,17 @@ endif
 build: generate build-quick
 
 build-quick:
-	CGO_ENABLED=$(CGO_ENABLED) go build -trimpath -ldflags "-s -w $(GOVARS) $(ADDITIONAL_GO_LINKER_FLAGS)" -o thock ./cmd/thock
+	CGO_ENABLED=$(CGO_ENABLED) go build -trimpath -ldflags "-s -w $(GOVARS) $(ADDITIONAL_GO_LINKER_FLAGS)" -o thicc ./cmd/thicc
 
 build-dbg:
-	CGO_ENABLED=$(CGO_ENABLED) go build -trimpath -ldflags "$(ADDITIONAL_GO_LINKER_FLAGS) $(DEBUGVAR)" -o thock ./cmd/thock
+	CGO_ENABLED=$(CGO_ENABLED) go build -trimpath -ldflags "$(ADDITIONAL_GO_LINKER_FLAGS) $(DEBUGVAR)" -o thicc ./cmd/thicc
 
 build-tags: fetch-tags build
 
 build-all: build
 
 install: generate
-	go install -ldflags "-s -w $(GOVARS) $(ADDITIONAL_GO_LINKER_FLAGS)" ./cmd/thock
+	go install -ldflags "-s -w $(GOVARS) $(ADDITIONAL_GO_LINKER_FLAGS)" ./cmd/thicc
 
 install-all: install
 
@@ -75,13 +75,13 @@ bench-compare:
 	benchstat -alpha 0.15 benchmark_results_baseline benchmark_results
 
 clean:
-	rm -f thock
+	rm -f thicc
 	rm -f log.txt
 
-# THOCK: Quick build (includes generate for syntax highlighting)
+# THICC: Quick build (includes generate for syntax highlighting)
 quick: generate
-	CGO_ENABLED=$(CGO_ENABLED) go build -o thock ./cmd/thock
+	CGO_ENABLED=$(CGO_ENABLED) go build -o thicc ./cmd/thicc
 
-# THOCK: Run with debug logging
+# THICC: Run with debug logging
 dev: quick
-	./thock -debug
+	./thicc -debug

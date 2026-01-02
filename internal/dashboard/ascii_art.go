@@ -30,8 +30,8 @@ var MarshmallowColors = []ArtColorRegion{
 	{Line: 1, StartX: 9, EndX: 10, Style: StyleArtSecondary},
 }
 
-// ThockLogo - THICC logo in DOS Rebel font
-var ThockLogo = []string{
+// ThiccLogo - THICC logo in DOS Rebel font
+var ThiccLogo = []string{
 	`███████████ █████   █████ █████   █████████    █████████ `,
 	`░█░░░███░░░█░░███   ░░███ ░░███   ███░░░░░███  ███░░░░░███`,
 	`░   ░███  ░  ░███    ░███  ░███  ███     ░░░  ███     ░░░ `,
@@ -42,14 +42,14 @@ var ThockLogo = []string{
 	`   ░░░░░    ░░░░░   ░░░░░ ░░░░░   ░░░░░░░░░    ░░░░░░░░░  `,
 }
 
-// ThockLogoWidth is the width of the logo
-var ThockLogoWidth = 58
+// ThiccLogoWidth is the width of the logo
+var ThiccLogoWidth = 58
 
-// ThockLogoHeight is the height of the logo
-var ThockLogoHeight = len(ThockLogo)
+// ThiccLogoHeight is the height of the logo
+var ThiccLogoHeight = len(ThiccLogo)
 
-// ThockTagline appears under the logo
-var ThockTagline = "a terminal editor that sparks joy"
+// ThiccTagline appears under the logo
+var ThiccTagline = "a terminal editor that sparks joy"
 
 // GetLogoColorForChar returns the color style based on the character type
 // Solid blocks (█) get one color, shaded blocks (▒, ░) get another for depth

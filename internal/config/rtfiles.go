@@ -8,7 +8,7 @@ import (
 	"regexp"
 	"strings"
 
-	rt "github.com/ellery/thock/runtime"
+	rt "github.com/ellery/thicc/runtime"
 )
 
 const (
@@ -119,10 +119,10 @@ func AddRuntimeFilesFromDirectory(fileType RTFiletype, directory, pattern string
 func AddRuntimeFilesFromAssets(fileType RTFiletype, directory, pattern string) {
 	files, err := rt.AssetDir(directory)
 	if err != nil {
-		log.Printf("THOCK: AssetDir(%s) error: %v", directory, err)
+		log.Printf("THICC: AssetDir(%s) error: %v", directory, err)
 		return
 	}
-	log.Printf("THOCK: AssetDir(%s) found %d files", directory, len(files))
+	log.Printf("THICC: AssetDir(%s) found %d files", directory, len(files))
 
 assetLoop:
 	for _, f := range files {

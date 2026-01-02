@@ -48,37 +48,37 @@ func ColorschemeExists(colorschemeName string) bool {
 	return FindRuntimeFile(RTColorscheme, colorschemeName) != nil
 }
 
-// ThockBackground is the default background color for all panels
-var ThockBackground = tcell.GetColor("#0b0614")
+// ThiccBackground is the default background color for all panels
+var ThiccBackground = tcell.GetColor("#0b0614")
 
 // InitColorscheme picks and initializes the colorscheme when micro starts
 func InitColorscheme() error {
 	Colorscheme = make(map[string]tcell.Style)
-	DefStyle = tcell.StyleDefault.Background(ThockBackground)
+	DefStyle = tcell.StyleDefault.Background(ThiccBackground)
 
-	log.Printf("THOCK: InitColorscheme starting, colorscheme setting = %v", GlobalSettings["colorscheme"])
+	log.Printf("THICC: InitColorscheme starting, colorscheme setting = %v", GlobalSettings["colorscheme"])
 
 	c, err := LoadDefaultColorscheme()
 	if err == nil {
 		Colorscheme = c
-		log.Printf("THOCK: Colorscheme loaded successfully with %d styles", len(c))
+		log.Printf("THICC: Colorscheme loaded successfully with %d styles", len(c))
 	} else {
-		log.Printf("THOCK: LoadDefaultColorscheme failed: %v", err)
+		log.Printf("THICC: LoadDefaultColorscheme failed: %v", err)
 		// The colorscheme setting seems broken (maybe because we have not validated
 		// it earlier, see comment in verifySetting()). So reset it to the default
 		// colorscheme and try again.
 		GlobalSettings["colorscheme"] = DefaultGlobalOnlySettings["colorscheme"]
 		if c, err2 := LoadDefaultColorscheme(); err2 == nil {
 			Colorscheme = c
-			log.Printf("THOCK: Fallback colorscheme loaded with %d styles", len(c))
+			log.Printf("THICC: Fallback colorscheme loaded with %d styles", len(c))
 		} else {
-			log.Printf("THOCK: Fallback colorscheme also failed: %v", err2)
+			log.Printf("THICC: Fallback colorscheme also failed: %v", err2)
 		}
 	}
 
 	// Ensure DefStyle uses the Thock background color
 	fg, _, _ := DefStyle.Decompose()
-	DefStyle = DefStyle.Foreground(fg).Background(ThockBackground)
+	DefStyle = DefStyle.Foreground(fg).Background(ThiccBackground)
 
 	return err
 }
@@ -176,7 +176,7 @@ lineLoop:
 // StringToStyle returns a style from a string
 // The strings must be in the format "extra foregroundcolor,backgroundcolor"
 // The 'extra' can be bold, reverse, italic or underline
-// Note: Background colors from colorschemes are ignored - we always use ThockBackground
+// Note: Background colors from colorschemes are ignored - we always use ThiccBackground
 // for visual consistency across the editor
 func StringToStyle(str string) tcell.Style {
 	var fg string
@@ -196,8 +196,8 @@ func StringToStyle(str string) tcell.Style {
 		}
 	}
 
-	// Always use ThockBackground for consistent editor appearance
-	style := DefStyle.Foreground(fgColor).Background(ThockBackground)
+	// Always use ThiccBackground for consistent editor appearance
+	style := DefStyle.Foreground(fgColor).Background(ThiccBackground)
 	if strings.Contains(str, "bold") {
 		style = style.Bold(true)
 	}

@@ -19,16 +19,16 @@ import (
 	isatty "github.com/mattn/go-isatty"
 	"github.com/micro-editor/tcell/v2"
 	lua "github.com/yuin/gopher-lua"
-	"github.com/ellery/thock/internal/action"
-	"github.com/ellery/thock/internal/aiterminal"
-	"github.com/ellery/thock/internal/buffer"
-	"github.com/ellery/thock/internal/clipboard"
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/dashboard"
-	"github.com/ellery/thock/internal/layout"
-	"github.com/ellery/thock/internal/screen"
-	"github.com/ellery/thock/internal/shell"
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/action"
+	"github.com/ellery/thicc/internal/aiterminal"
+	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/clipboard"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/dashboard"
+	"github.com/ellery/thicc/internal/layout"
+	"github.com/ellery/thicc/internal/screen"
+	"github.com/ellery/thicc/internal/shell"
+	"github.com/ellery/thicc/internal/util"
 )
 
 var (
@@ -47,10 +47,10 @@ var (
 	timerChan chan func()
 
 	// THOCK: Global layout manager
-	thockLayout *layout.LayoutManager
+	thiccLayout *layout.LayoutManager
 
 	// THOCK: Dashboard state
-	thockDashboard *dashboard.Dashboard
+	thiccDashboard *dashboard.Dashboard
 	showDashboard  bool
 )
 
@@ -323,19 +323,19 @@ func main() {
 	}
 
 	InitLog()
-	log.Println("THOCK: After InitLog")
+	log.Println("THICC: After InitLog")
 
 	err = config.InitConfigDir(*flagConfigDir)
-	log.Println("THOCK: After InitConfigDir")
+	log.Println("THICC: After InitConfigDir")
 	if err != nil {
 		screen.TermMessage(err)
 	}
 
-	log.Println("THOCK: Before InitRuntimeFiles")
+	log.Println("THICC: Before InitRuntimeFiles")
 	config.InitRuntimeFiles(true)
-	log.Println("THOCK: Before InitPlugins")
+	log.Println("THICC: Before InitPlugins")
 	config.InitPlugins()
-	log.Println("THOCK: After InitPlugins")
+	log.Println("THICC: After InitPlugins")
 
 	err = checkBackup("settings.json")
 	if err != nil {
@@ -371,9 +371,9 @@ func main() {
 
 	DoPluginFlags()
 
-	log.Println("THOCK: Before screen.Init")
+	log.Println("THICC: Before screen.Init")
 	err = screen.Init()
-	log.Println("THOCK: After screen.Init")
+	log.Println("THICC: After screen.Init")
 	if err != nil {
 		fmt.Println(err)
 		fmt.Println("Fatal: Micro could not initialize a Screen.")
@@ -416,50 +416,50 @@ func main() {
 	action.InitBindings()
 	action.InitCommands()
 
-	log.Println("THOCK: Before preinit")
+	log.Println("THICC: Before preinit")
 	err = config.RunPluginFn("preinit")
 	if err != nil {
 		screen.TermMessage(err)
 	}
-	log.Println("THOCK: After preinit")
+	log.Println("THICC: After preinit")
 
-	log.Println("THOCK: Before InitGlobals")
+	log.Println("THICC: Before InitGlobals")
 	action.InitGlobals()
-	log.Println("THOCK: After InitGlobals")
+	log.Println("THICC: After InitGlobals")
 
 	buffer.SetMessager(action.InfoBar)
 	args := flag.Args()
-	log.Println("THOCK: Before LoadInput, args:", args)
+	log.Println("THICC: Before LoadInput, args:", args)
 
 	// THOCK: Check if we should show the dashboard (no args and interactive terminal)
 	if len(args) == 0 && isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd()) {
-		log.Println("THOCK: No args provided, showing dashboard")
+		log.Println("THICC: No args provided, showing dashboard")
 		showDashboard = true
 	}
 
 	var b []*buffer.Buffer
 	if !showDashboard {
 		b = LoadInput(args)
-		log.Println("THOCK: After LoadInput, buffers:", len(b))
+		log.Println("THICC: After LoadInput, buffers:", len(b))
 
 		// THOCK: Always open at least an empty buffer
 		if len(b) == 0 {
-			log.Println("THOCK: No buffers, creating empty buffer")
+			log.Println("THICC: No buffers, creating empty buffer")
 			b = append(b, buffer.NewBufferFromString("", "", buffer.BTDefault))
 		}
-		log.Println("THOCK: Buffers count:", len(b))
+		log.Println("THICC: Buffers count:", len(b))
 
-		log.Println("THOCK: Calling InitTabs")
+		log.Println("THICC: Calling InitTabs")
 		action.InitTabs(b)
-		log.Println("THOCK: InitTabs completed")
+		log.Println("THICC: InitTabs completed")
 	}
 
 	// THOCK: Create layout manager (panels will be initialized later after screen size is known)
 	// Skip if showing dashboard - will be initialized after dashboard exits
 	if !showDashboard {
-		log.Println("THOCK: About to call InitThockLayout")
-		InitThockLayout()
-		log.Println("THOCK: InitThockLayout completed")
+		log.Println("THICC: About to call InitThiccLayout")
+		InitThiccLayout()
+		log.Println("THICC: InitThiccLayout completed")
 	}
 
 	err = config.RunPluginFn("init")
@@ -526,7 +526,7 @@ func main() {
 	// THOCK: Show dashboard if no files were specified
 	dashboardWasShown := false
 	if showDashboard {
-		log.Println("THOCK: Starting dashboard")
+		log.Println("THICC: Starting dashboard")
 		dashboardWasShown = true
 		InitDashboard()
 
@@ -535,13 +535,13 @@ func main() {
 			DoDashboardEvent()
 		}
 
-		log.Println("THOCK: Dashboard exited, transitioning to editor")
+		log.Println("THICC: Dashboard exited, transitioning to editor")
 		// TransitionToEditor already initialized the layout, so skip below
 	}
 
 	// THOCK: Initialize layout panels now that screen size is known
 	// Skip if we just came from dashboard (TransitionToEditor already did this)
-	if thockLayout != nil && !dashboardWasShown {
+	if thiccLayout != nil && !dashboardWasShown {
 		// Load AI tool preference for non-dashboard startup
 		prefsStore := dashboard.NewPreferencesStore()
 		prefsStore.Load()
@@ -550,19 +550,19 @@ func main() {
 			tools := aiterminal.GetAvailableToolsOnly()
 			for _, t := range tools {
 				if t.Command == selectedTool {
-					log.Printf("THOCK: Setting AI tool command from preferences: %v", t.GetCommandLine())
-					thockLayout.SetAIToolCommand(t.GetCommandLine())
+					log.Printf("THICC: Setting AI tool command from preferences: %v", t.GetCommandLine())
+					thiccLayout.SetAIToolCommand(t.GetCommandLine())
 					break
 				}
 			}
 		}
 
-		log.Println("THOCK: Initializing layout panels")
-		if err := thockLayout.Initialize(screen.Screen); err != nil {
-			log.Printf("THOCK: Failed to initialize layout: %v", err)
-			thockLayout = nil // Fallback to standard micro
+		log.Println("THICC: Initializing layout panels")
+		if err := thiccLayout.Initialize(screen.Screen); err != nil {
+			log.Printf("THICC: Failed to initialize layout: %v", err)
+			thiccLayout = nil // Fallback to standard micro
 		} else {
-			log.Println("THOCK: Layout panels initialized successfully")
+			log.Println("THICC: Layout panels initialized successfully")
 		}
 	}
 
@@ -579,12 +579,12 @@ func DoEvent() {
 	screen.Screen.Fill(' ', config.DefStyle)
 	screen.Screen.HideCursor()
 
-	if thockLayout != nil {
+	if thiccLayout != nil {
 		// THOCK 3-pane layout
-		thockLayout.RenderFrame(screen.Screen) // File browser + terminal
+		thiccLayout.RenderFrame(screen.Screen) // File browser + terminal
 
 		// Constrain editor to middle region
-		thockLayout.ConstrainEditorRegion()
+		thiccLayout.ConstrainEditorRegion()
 
 		// Render editor tabs in middle region
 		action.Tabs.Display()                       // Tab bar (if multiple tabs)
@@ -593,7 +593,7 @@ func DoEvent() {
 		}
 
 		// Draw overlays ON TOP of editor (focus border, etc.)
-		thockLayout.RenderOverlay(screen.Screen)
+		thiccLayout.RenderOverlay(screen.Screen)
 	} else {
 		// Fallback: Standard micro rendering (for compatibility)
 		action.Tabs.Display()
@@ -607,10 +607,10 @@ func DoEvent() {
 
 	// THOCK: Control cursor visibility based on which panel has focus
 	// Editor always shows its cursor during Display(), so we need to override after rendering
-	if thockLayout != nil && thockLayout.ActivePanel != 1 {
-		if thockLayout.ActivePanel == 2 {
+	if thiccLayout != nil && thiccLayout.ActivePanel != 1 {
+		if thiccLayout.ActivePanel == 2 {
 			// Terminal focused - re-show terminal cursor (editor overwrote it)
-			thockLayout.ShowTerminalCursor(screen.Screen)
+			thiccLayout.ShowTerminalCursor(screen.Screen)
 		} else {
 			// Tree focused - hide cursor (tree doesn't have a cursor)
 			screen.Screen.HideCursor()
@@ -660,20 +660,20 @@ func DoEvent() {
 			action.Tabs.HandleEvent(event)
 
 			// THOCK: Resize layout panels
-			if thockLayout != nil {
+			if thiccLayout != nil {
 				w, h := resize.Size()
-				thockLayout.Resize(w, h)
+				thiccLayout.Resize(w, h)
 				// Constrain editor after resize
-				thockLayout.ConstrainEditorRegion()
+				thiccLayout.ConstrainEditorRegion()
 			}
 		} else if action.InfoBar.HasPrompt {
 			action.InfoBar.HandleEvent(event)
-		} else if thockLayout != nil {
+		} else if thiccLayout != nil {
 			// THOCK: Try layout manager first
-			if !thockLayout.HandleEvent(event) {
+			if !thiccLayout.HandleEvent(event) {
 				// Layout didn't consume event - pass to tabs for global actions (quit, etc.)
 				// Always pass through for editor, and for global keys like Ctrl+Q from any panel
-				log.Println("THOCK: Layout returned false, passing to Tabs.HandleEvent")
+				log.Println("THICC: Layout returned false, passing to Tabs.HandleEvent")
 				action.Tabs.HandleEvent(event)
 			}
 		} else {
@@ -688,74 +688,74 @@ func DoEvent() {
 	}
 }
 
-// InitThockLayout initializes the THOCK 3-pane layout (tree + editor + terminal)
-func InitThockLayout() {
-	log.Println("THOCK: InitThockLayout started")
+// InitThiccLayout initializes the THOCK 3-pane layout (tree + editor + terminal)
+func InitThiccLayout() {
+	log.Println("THICC: InitThiccLayout started")
 
 	// Get current working directory for tree root
 	root, err := os.Getwd()
 	if err != nil {
-		log.Println("THOCK: Error getting working directory:", err)
+		log.Println("THICC: Error getting working directory:", err)
 		root = "."
 	}
-	log.Println("THOCK: Using root directory:", root)
+	log.Println("THICC: Using root directory:", root)
 
 	// Create layout manager
-	thockLayout = layout.NewLayoutManager(root)
+	thiccLayout = layout.NewLayoutManager(root)
 
-	log.Println("THOCK: Layout manager created")
+	log.Println("THICC: Layout manager created")
 
 	// Register tree pane actions
-	registerThockActions()
+	registerThiccActions()
 
-	log.Println("THOCK: InitThockLayout completed successfully")
+	log.Println("THICC: InitThiccLayout completed successfully")
 
 	// TODO: Add tree pane after verifying basic editor works
 	// The tree pane integration was causing hangs, so we'll add it back
 	// after confirming the basic editor loads properly
 }
 
-// registerThockActions registers keybindings for THOCK layout
-func registerThockActions() {
+// registerThiccActions registers keybindings for THOCK layout
+func registerThiccActions() {
 	// Register focus commands for new layout
 	action.MakeCommand("treefocus", func(bp *action.BufPane, args []string) {
-		if thockLayout != nil {
-			thockLayout.FocusTree()
+		if thiccLayout != nil {
+			thiccLayout.FocusTree()
 			action.InfoBar.Message("Focused file tree")
 		}
 	}, nil)
 
 	action.MakeCommand("editorfocus", func(bp *action.BufPane, args []string) {
-		if thockLayout != nil {
-			thockLayout.FocusEditor()
+		if thiccLayout != nil {
+			thiccLayout.FocusEditor()
 			action.InfoBar.Message("Focused editor")
 		}
 	}, nil)
 
 	action.MakeCommand("termfocus", func(bp *action.BufPane, args []string) {
-		if thockLayout != nil {
-			thockLayout.FocusTerminal()
+		if thiccLayout != nil {
+			thiccLayout.FocusTerminal()
 			action.InfoBar.Message("Focused terminal")
 		}
 	}, nil)
 
-	action.InfoBar.Message("THOCK initialized - Ctrl+Space to switch panels | Ctrl-Q to quit")
+	action.InfoBar.Message("THICC initialized - Ctrl+Space to switch panels | Ctrl-Q to quit")
 }
 
 // InitDashboard initializes the dashboard screen
 func InitDashboard() {
-	log.Println("THOCK: InitDashboard started")
+	log.Println("THICC: InitDashboard started")
 
-	thockDashboard = dashboard.NewDashboard(screen.Screen)
+	thiccDashboard = dashboard.NewDashboard(screen.Screen)
 
 	// Set up callbacks
-	thockDashboard.OnNewFile = func() {
+	thiccDashboard.OnNewFile = func() {
 		log.Println("THOCK Dashboard: New File selected")
 		showDashboard = false
 		TransitionToEditor(nil, "")
 	}
 
-	thockDashboard.OnOpenProject = func(path string) {
+	thiccDashboard.OnOpenProject = func(path string) {
 		log.Println("THOCK Dashboard: Opening project:", path)
 		showDashboard = false
 		// Change to the project folder
@@ -764,22 +764,22 @@ func InitDashboard() {
 		}
 		TransitionToEditor(nil, "")
 		// Add to recent projects
-		thockDashboard.RecentStore.AddProject(path, true)
+		thiccDashboard.RecentStore.AddProject(path, true)
 		// Focus the file browser so user can see the project
-		if thockLayout != nil {
-			thockLayout.FocusTree()
+		if thiccLayout != nil {
+			thiccLayout.FocusTree()
 		}
 	}
 
-	thockDashboard.OnOpenFile = func(path string) {
+	thiccDashboard.OnOpenFile = func(path string) {
 		log.Println("THOCK Dashboard: Opening file:", path)
 		showDashboard = false
 		TransitionToEditor(nil, path)
 		// Add to recent projects
-		thockDashboard.RecentStore.AddProject(path, false)
+		thiccDashboard.RecentStore.AddProject(path, false)
 	}
 
-	thockDashboard.OnOpenFolder = func(path string) {
+	thiccDashboard.OnOpenFolder = func(path string) {
 		log.Println("THOCK Dashboard: Opening folder:", path)
 		showDashboard = false
 		// Change to the folder
@@ -788,15 +788,15 @@ func InitDashboard() {
 		}
 		TransitionToEditor(nil, "")
 		// Add to recent projects
-		thockDashboard.RecentStore.AddProject(path, true)
+		thiccDashboard.RecentStore.AddProject(path, true)
 	}
 
-	thockDashboard.OnExit = func() {
+	thiccDashboard.OnExit = func() {
 		log.Println("THOCK Dashboard: Exit selected")
 		exit(0)
 	}
 
-	log.Println("THOCK: InitDashboard completed")
+	log.Println("THICC: InitDashboard completed")
 }
 
 // DoDashboardEvent runs a single iteration of the dashboard event loop
@@ -805,7 +805,7 @@ func DoDashboardEvent() {
 	screen.Screen.Fill(' ', config.DefStyle)
 	screen.Screen.HideCursor()
 
-	thockDashboard.Render(screen.Screen)
+	thiccDashboard.Render(screen.Screen)
 	screen.Screen.Show()
 
 	// Wait for event
@@ -813,9 +813,9 @@ func DoDashboardEvent() {
 	case event := <-screen.Events:
 		if e, ok := event.(*tcell.EventResize); ok {
 			w, h := e.Size()
-			thockDashboard.Resize(w, h)
+			thiccDashboard.Resize(w, h)
 		} else {
-			thockDashboard.HandleEvent(event)
+			thiccDashboard.HandleEvent(event)
 		}
 	case <-util.Sigterm:
 		exit(0)
@@ -826,7 +826,7 @@ func DoDashboardEvent() {
 
 // TransitionToEditor switches from dashboard to editor mode
 func TransitionToEditor(buffers []*buffer.Buffer, filePath string) {
-	log.Println("THOCK: TransitionToEditor started")
+	log.Println("THICC: TransitionToEditor started")
 
 	// Create buffer(s) if needed
 	if len(buffers) == 0 {
@@ -834,7 +834,7 @@ func TransitionToEditor(buffers []*buffer.Buffer, filePath string) {
 			// Open the specified file
 			buf, err := buffer.NewBufferFromFile(filePath, buffer.BTDefault)
 			if err != nil {
-				log.Printf("THOCK: Failed to open file %s: %v", filePath, err)
+				log.Printf("THICC: Failed to open file %s: %v", filePath, err)
 				// Fall back to empty buffer
 				buffers = append(buffers, buffer.NewBufferFromString("", "", buffer.BTDefault))
 			} else {
@@ -850,23 +850,23 @@ func TransitionToEditor(buffers []*buffer.Buffer, filePath string) {
 	action.InitTabs(buffers)
 
 	// Initialize the layout
-	InitThockLayout()
+	InitThiccLayout()
 
 	// Configure AI tool auto-launch from dashboard preferences
-	if thockLayout != nil && thockDashboard != nil {
-		if cmd := thockDashboard.GetSelectedAIToolCommand(); cmd != nil {
-			log.Printf("THOCK: Setting AI tool command from dashboard: %v", cmd)
-			thockLayout.SetAIToolCommand(cmd)
+	if thiccLayout != nil && thiccDashboard != nil {
+		if cmd := thiccDashboard.GetSelectedAIToolCommand(); cmd != nil {
+			log.Printf("THICC: Setting AI tool command from dashboard: %v", cmd)
+			thiccLayout.SetAIToolCommand(cmd)
 		}
 	}
 
 	// Initialize layout panels
-	if thockLayout != nil {
-		if err := thockLayout.Initialize(screen.Screen); err != nil {
-			log.Printf("THOCK: Failed to initialize layout: %v", err)
-			thockLayout = nil
+	if thiccLayout != nil {
+		if err := thiccLayout.Initialize(screen.Screen); err != nil {
+			log.Printf("THICC: Failed to initialize layout: %v", err)
+			thiccLayout = nil
 		}
 	}
 
-	log.Println("THOCK: TransitionToEditor completed")
+	log.Println("THICC: TransitionToEditor completed")
 }

@@ -3,7 +3,7 @@ package terminal
 import (
 	"reflect"
 
-	"github.com/ellery/thock/internal/config"
+	"github.com/ellery/thicc/internal/config"
 	"github.com/hinshun/vt10x"
 	"github.com/micro-editor/tcell/v2"
 )

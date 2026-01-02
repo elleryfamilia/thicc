@@ -5,10 +5,10 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/ellery/thock/internal/buffer"
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/util"
-	"github.com/ellery/thock/pkg/highlight"
+	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/util"
+	"github.com/ellery/thicc/pkg/highlight"
 )
 
 // This file is meant (for now) for autocompletion in command mode, not

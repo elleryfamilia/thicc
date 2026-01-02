@@ -9,10 +9,10 @@ import (
 	"github.com/go-errors/errors"
 	"github.com/micro-editor/tcell/v2"
 	"github.com/stretchr/testify/assert"
-	"github.com/ellery/thock/internal/action"
-	"github.com/ellery/thock/internal/buffer"
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/screen"
+	"github.com/ellery/thicc/internal/action"
+	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/screen"
 )
 
 var tempDir string

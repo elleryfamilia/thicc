@@ -1,4 +1,4 @@
-# THOCK Build Instructions
+# THICC Build Instructions
 
 ## Prerequisites
 
@@ -16,51 +16,51 @@
    # Should output: go version go1.xx.x darwin/amd64
    ```
 
-## Building THOCK
+## Building THICC
 
 ### Option 1: Quick Build
 
 ```bash
-cd ~/_git/thock
-go build -o thock ./cmd/thock
+cd ~/_git/thicc
+go build -o thicc ./cmd/thicc
 ```
 
-This creates a `thock` binary in the current directory.
+This creates a `thicc` binary in the current directory.
 
 ### Option 2: Build with Make
 
 ```bash
-cd ~/_git/thock
+cd ~/_git/thicc
 make build
 ```
 
 ### Option 3: Install to PATH
 
 ```bash
-cd ~/_git/thock
-go install ./cmd/thock
+cd ~/_git/thicc
+go install ./cmd/thicc
 ```
 
-This installs `thock` to `$GOPATH/bin` (usually `~/go/bin`).
+This installs `thicc` to `$GOPATH/bin` (usually `~/go/bin`).
 
-## Running THOCK
+## Running THICC
 
 ### Run directly
 
 ```bash
-./thock
+./thicc
 ```
 
 ### Run with a specific file
 
 ```bash
-./thock README.md
+./thicc README.md
 ```
 
 ### Run with debug logging
 
 ```bash
-./thock -debug
+./thicc -debug
 # Check ./log.txt for debug output
 ```
 
@@ -68,9 +68,9 @@ This installs `thock` to `$GOPATH/bin` (usually `~/go/bin`).
 
 ### What to Test
 
-1. **Launch thock**
+1. **Launch thicc**
    ```bash
-   ./thock
+   ./thicc
    ```
 
 2. **Check the log file**
@@ -79,9 +79,9 @@ This installs `thock` to `$GOPATH/bin` (usually `~/go/bin`).
    ```
 
    You should see:
-   - "THOCK: Setting up layout with root: /path/to/dir"
-   - "THOCK layout initialized with root: /path/to/dir"
-   - "THOCK file tree initialized - Use Alt-t to focus tree"
+   - "THICC: Setting up layout with root: /path/to/dir"
+   - "THICC layout initialized with root: /path/to/dir"
+   - "THICC file tree initialized - Use Alt-t to focus tree"
 
 3. **Verify micro still works**
    - File editing should work normally
@@ -94,8 +94,8 @@ This installs `thock` to `$GOPATH/bin` (usually `~/go/bin`).
 
 - **Repository Setup**
   - Forked micro v2.0.14
-  - Renamed to `thock`
-  - Module renamed to `github.com/ellery/thock`
+  - Renamed to `thicc`
+  - Module renamed to `github.com/ellery/thicc`
   - All imports migrated
 
 - **Filemanager Package** (`internal/filemanager/`)
@@ -108,8 +108,8 @@ This installs `thock` to `$GOPATH/bin` (usually `~/go/bin`).
   - `manager.go`: Basic layout manager (55 lines)
 
 - **Integration**
-  - Modified `cmd/thock/micro.go` to call `InitThockLayout()`
-  - Added THOCK-specific initialization
+  - Modified `cmd/thicc/micro.go` to call `InitThiccLayout()`
+  - Added THICC-specific initialization
 
 ### ⚠️ Known Limitations (Current Build)
 
@@ -164,16 +164,16 @@ go mod download
 - Terminal emulator not supported
 - Try a different terminal (iTerm2, Alacazitty, kitty)
 
-**Log shows "Warning: No active tab for THOCK layout"**
+**Log shows "Warning: No active tab for THICC layout"**
 - Normal if no files are opened
-- Try: `./thock README.md`
+- Try: `./thicc README.md`
 
 ## File Structure
 
 ```
-~/_git/thock/
-├── cmd/thock/
-│   ├── micro.go          ← Modified: Added InitThockLayout()
+~/_git/thicc/
+├── cmd/thicc/
+│   ├── micro.go          ← Modified: Added InitThiccLayout()
 │   ├── initlua.go
 │   └── ...
 ├── internal/
@@ -199,7 +199,7 @@ go mod download
 When building, you might see warnings about unused variables/functions. This is normal for the current state - we've created structures that aren't fully integrated yet.
 
 Expected warnings:
-- `thockLayout declared but not used` (in main)
+- `thiccLayout declared but not used` (in main)
 - `TreePane` field unused (in layout manager)
 
 These will be resolved in Phase 3 when we complete the display integration.

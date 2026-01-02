@@ -3,11 +3,11 @@ package display
 import (
 	"github.com/micro-editor/tcell/v2"
 	"github.com/micro-editor/terminal"
-	"github.com/ellery/thock/internal/buffer"
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/screen"
-	"github.com/ellery/thock/internal/shell"
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/screen"
+	"github.com/ellery/thicc/internal/shell"
+	"github.com/ellery/thicc/internal/util"
 )
 
 type TermWindow struct {

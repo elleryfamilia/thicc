@@ -5,8 +5,8 @@ import (
 	"reflect"
 
 	"github.com/micro-editor/tcell/v2"
-	"github.com/ellery/thock/internal/buffer"
-	"github.com/ellery/thock/internal/display"
+	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/display"
 )
 
 type RawPane struct {

@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/util"
 )
 
 // The SerializedBuffer holds the types that get serialized when a buffer is saved

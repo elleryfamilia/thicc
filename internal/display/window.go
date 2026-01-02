@@ -1,7 +1,7 @@
 package display
 
 import (
-	"github.com/ellery/thock/internal/buffer"
+	"github.com/ellery/thicc/internal/buffer"
 )
 
 type View struct {

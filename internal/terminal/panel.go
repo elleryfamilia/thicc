@@ -17,7 +17,7 @@ import (
 func hasStarship() bool {
 	path, err := exec.LookPath("starship")
 	found := err == nil
-	log.Printf("THOCK: hasStarship check - found=%v, path=%s, err=%v", found, path, err)
+	log.Printf("THICC: hasStarship check - found=%v, path=%s, err=%v", found, path, err)
 	return found
 }
 
@@ -212,16 +212,16 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	// Track if we're starting a default shell (to inject sexy prompt)
 	injectPrompt := false
 
-	log.Printf("THOCK: NewPanel called with cmdArgs=%v (nil=%v, len=%d)", cmdArgs, cmdArgs == nil, len(cmdArgs))
+	log.Printf("THICC: NewPanel called with cmdArgs=%v (nil=%v, len=%d)", cmdArgs, cmdArgs == nil, len(cmdArgs))
 
 	// Default to user's shell if no command specified
 	if cmdArgs == nil || len(cmdArgs) == 0 {
 		shell := getDefaultShell()
 		cmdArgs = []string{shell, "-i"} // Just start interactive shell
 		injectPrompt = true             // We'll inject sexy prompt after shell starts
-		log.Printf("THOCK: Using default shell: %s", shell)
+		log.Printf("THICC: Using default shell: %s", shell)
 	} else {
-		log.Printf("THOCK: Using provided cmdArgs: %v", cmdArgs)
+		log.Printf("THICC: Using provided cmdArgs: %v", cmdArgs)
 	}
 
 	// Content area is inside the border (1 cell on each side)
@@ -278,10 +278,10 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 
 	// Inject sexy prompt after shell fully initializes
 	if injectPrompt {
-		log.Printf("THOCK: Will inject sexy prompt for shell")
+		log.Printf("THICC: Will inject sexy prompt for shell")
 		go p.injectSexyPrompt()
 	} else {
-		log.Printf("THOCK: Not injecting prompt (cmdArgs provided)")
+		log.Printf("THICC: Not injecting prompt (cmdArgs provided)")
 	}
 
 	return p, nil
@@ -290,13 +290,13 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 // injectSexyPrompt sends prompt initialization to the shell after it starts
 // This ensures our prompt overrides anything set in rc files
 func (p *Panel) injectSexyPrompt() {
-	log.Printf("THOCK: injectSexyPrompt starting, waiting 500ms...")
+	log.Printf("THICC: injectSexyPrompt starting, waiting 500ms...")
 	// Wait for shell to fully initialize (load rc files, oh-my-zsh, etc.)
 	time.Sleep(500 * time.Millisecond)
 
 	p.mu.Lock()
 	if !p.Running || p.PTY == nil {
-		log.Printf("THOCK: injectSexyPrompt - shell not running or PTY nil, aborting")
+		log.Printf("THICC: injectSexyPrompt - shell not running or PTY nil, aborting")
 		p.mu.Unlock()
 		return
 	}
@@ -305,12 +305,12 @@ func (p *Panel) injectSexyPrompt() {
 
 	// Get the prompt init command
 	initCmd := getPromptInitCommand()
-	log.Printf("THOCK: injectSexyPrompt - sending command: %s", initCmd)
+	log.Printf("THICC: injectSexyPrompt - sending command: %s", initCmd)
 
 	// Send command to override prompt, then clear screen for clean look
 	fullCmd := initCmd + "\nclear\n"
 	n, err := pty.Write([]byte(fullCmd))
-	log.Printf("THOCK: injectSexyPrompt - wrote %d bytes, err=%v", n, err)
+	log.Printf("THICC: injectSexyPrompt - wrote %d bytes, err=%v", n, err)
 }
 
 // getDefaultShell returns the user's default shell
@@ -355,7 +355,7 @@ func (p *Panel) readLoop() {
 
 // RespawnShell starts a new shell in the terminal after the previous process exited
 func (p *Panel) RespawnShell() error {
-	log.Printf("THOCK: RespawnShell called")
+	log.Printf("THICC: RespawnShell called")
 	p.mu.Lock()
 	defer p.mu.Unlock()
 

@@ -4,11 +4,11 @@ import (
 	"bytes"
 
 	"github.com/micro-editor/tcell/v2"
-	"github.com/ellery/thock/internal/buffer"
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/display"
-	"github.com/ellery/thock/internal/info"
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/display"
+	"github.com/ellery/thicc/internal/info"
+	"github.com/ellery/thicc/internal/util"
 )
 
 type InfoKeyAction func(*InfoPane)

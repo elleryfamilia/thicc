@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/ellery/thock/internal/config"
+	"github.com/ellery/thicc/internal/config"
 )
 
 const (
@@ -18,8 +18,8 @@ const (
 	// RecentFileName is the name of the recent projects file
 	RecentFileName = "recent.json"
 
-	// ThockConfigSubdir is the subdirectory for thock-specific config
-	ThockConfigSubdir = "thock"
+	// ThiccConfigSubdir is the subdirectory for thock-specific config
+	ThiccConfigSubdir = "thicc"
 )
 
 // RecentProject represents a recently opened file or folder
@@ -44,7 +44,7 @@ func NewRecentStore() *RecentStore {
 
 // GetConfigDir returns the thock-specific config directory
 func GetConfigDir() string {
-	return filepath.Join(config.ConfigDir, ThockConfigSubdir)
+	return filepath.Join(config.ConfigDir, ThiccConfigSubdir)
 }
 
 // GetRecentFilePath returns the path to the recent.json file

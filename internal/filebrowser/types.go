@@ -1,7 +1,7 @@
 package filebrowser
 
 import (
-	"github.com/ellery/thock/internal/config"
+	"github.com/ellery/thicc/internal/config"
 	"github.com/micro-editor/tcell/v2"
 )
 

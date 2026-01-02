@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 
-	"github.com/ellery/thock/internal/filemanager"
+	"github.com/ellery/thicc/internal/filemanager"
 )
 
 // Panel is a standalone file browser with direct tcell rendering

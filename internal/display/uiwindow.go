@@ -1,11 +1,11 @@
 package display
 
 import (
-	"github.com/ellery/thock/internal/buffer"
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/screen"
-	"github.com/ellery/thock/internal/util"
-	"github.com/ellery/thock/internal/views"
+	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/screen"
+	"github.com/ellery/thicc/internal/util"
+	"github.com/ellery/thicc/internal/views"
 )
 
 type UIWindow struct {

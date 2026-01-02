@@ -2,7 +2,7 @@ package buffer
 
 import (
 	"github.com/micro-editor/tcell/v2"
-	"github.com/ellery/thock/internal/config"
+	"github.com/ellery/thicc/internal/config"
 )
 
 type MsgType int

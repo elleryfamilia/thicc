@@ -7,9 +7,9 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-// Note: StringToStyle always uses ThockBackground for visual consistency.
+// Note: StringToStyle always uses ThiccBackground for visual consistency.
 // These tests verify foreground colors and attributes are parsed correctly,
-// while background is always ThockBackground (#0b0614).
+// while background is always ThiccBackground (#0b0614).
 
 func TestSimpleStringToStyle(t *testing.T) {
 	s := StringToStyle("lightblue,magenta")
@@ -17,8 +17,8 @@ func TestSimpleStringToStyle(t *testing.T) {
 	fg, bg, _ := s.Decompose()
 
 	assert.Equal(t, tcell.ColorBlue, fg)
-	// Background is always ThockBackground for visual consistency
-	assert.Equal(t, ThockBackground, bg)
+	// Background is always ThiccBackground for visual consistency
+	assert.Equal(t, ThiccBackground, bg)
 }
 
 func TestAttributeStringToStyle(t *testing.T) {
@@ -27,8 +27,8 @@ func TestAttributeStringToStyle(t *testing.T) {
 	fg, bg, attr := s.Decompose()
 
 	assert.Equal(t, tcell.ColorTeal, fg)
-	// Background is always ThockBackground for visual consistency
-	assert.Equal(t, ThockBackground, bg)
+	// Background is always ThiccBackground for visual consistency
+	assert.Equal(t, ThiccBackground, bg)
 	assert.NotEqual(t, 0, attr&tcell.AttrBold)
 }
 
@@ -38,8 +38,8 @@ func TestMultiAttributesStringToStyle(t *testing.T) {
 	fg, bg, attr := s.Decompose()
 
 	assert.Equal(t, tcell.ColorTeal, fg)
-	// Background is always ThockBackground for visual consistency
-	assert.Equal(t, ThockBackground, bg)
+	// Background is always ThiccBackground for visual consistency
+	assert.Equal(t, ThiccBackground, bg)
 	assert.NotEqual(t, 0, attr&tcell.AttrBold)
 	assert.NotEqual(t, 0, attr&tcell.AttrItalic)
 	assert.NotEqual(t, 0, attr&tcell.AttrUnderline)
@@ -51,8 +51,8 @@ func TestColor256StringToStyle(t *testing.T) {
 	fg, bg, _ := s.Decompose()
 
 	assert.Equal(t, tcell.Color128, fg)
-	// Background is always ThockBackground for visual consistency
-	assert.Equal(t, ThockBackground, bg)
+	// Background is always ThiccBackground for visual consistency
+	assert.Equal(t, ThiccBackground, bg)
 }
 
 func TestColorHexStringToStyle(t *testing.T) {
@@ -61,8 +61,8 @@ func TestColorHexStringToStyle(t *testing.T) {
 	fg, bg, _ := s.Decompose()
 
 	assert.Equal(t, tcell.NewRGBColor(222, 173, 190), fg)
-	// Background is always ThockBackground for visual consistency
-	assert.Equal(t, ThockBackground, bg)
+	// Background is always ThiccBackground for visual consistency
+	assert.Equal(t, ThiccBackground, bg)
 }
 
 func TestColorschemeParser(t *testing.T) {
@@ -79,6 +79,6 @@ color-link constant.string.char "#BDE6AD,#282828"`
 
 	fg, bg, _ := c["comment"].Decompose()
 	assert.Equal(t, tcell.NewRGBColor(117, 113, 94), fg)
-	// Background is always ThockBackground for visual consistency
-	assert.Equal(t, ThockBackground, bg)
+	// Background is always ThiccBackground for visual consistency
+	assert.Equal(t, ThiccBackground, bg)
 }

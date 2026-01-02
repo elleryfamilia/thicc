@@ -7,9 +7,9 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/screen"
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/screen"
+	"github.com/ellery/thicc/internal/util"
 )
 
 const BackupMsg = `A backup was detected for:

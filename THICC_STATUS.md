@@ -1,11 +1,11 @@
-# THOCK Development Status
+# THICC Development Status
 
 **Last Updated:** 2025-12-27
 **Status:** MVP - Editor Working, File Browser Loading with Colors, Terminal Disabled
 
 ## Architecture Overview
 
-THOCK is a hard fork of micro editor v2.0.14 with a 3-panel IDE layout:
+THICC is a hard fork of micro editor v2.0.14 with a 3-panel IDE layout:
 
 ```
 ┌──────────────┬─────────────────────────┬──────────────────┐
@@ -69,11 +69,11 @@ THOCK is a hard fork of micro editor v2.0.14 with a 3-panel IDE layout:
 
 ### Main Files
 
-**`cmd/thock/micro.go`**
+**`cmd/thicc/micro.go`**
 - Main event loop (`DoEvent()` lines 523-617)
 - Layout integration (lines 530-541: rendering, 533: `ConstrainEditorRegion()`)
 - Focus switching (lines 591-606: event routing through layout manager)
-- Resize handling (lines 589-600: calls `thockLayout.Resize()`)
+- Resize handling (lines 589-600: calls `thiccLayout.Resize()`)
 
 **`internal/layout/manager.go`**
 - Layout manager coordinating 3 panels
@@ -99,7 +99,7 @@ THOCK is a hard fork of micro editor v2.0.14 with a 3-panel IDE layout:
 - Background readLoop for PTY output (line 75-86)
 - Complete implementation ready to enable
 
-**`cmd/thock/debug.go`**
+**`cmd/thicc/debug.go`**
 - Logging always enabled (lines 20-27)
 - Writes to `log.txt` in project root
 
@@ -149,7 +149,7 @@ internal/
 
 **Evidence from logs:**
 ```
-2025/12/27 22:14:07 THOCK FileBrowser: Starting tree refresh with safeguards
+2025/12/27 22:14:07 THICC FileBrowser: Starting tree refresh with safeguards
 [... 2+ minutes later, still no completion message ...]
 ```
 
@@ -187,15 +187,15 @@ internal/
 ### How to Test
 
 ```bash
-cd ~/_git/thock
+cd ~/_git/thicc
 make quick
-./run-thock.sh
+./run-thicc.sh
 ```
 
 ### Check Logs
 
 ```bash
-cat ~/_git/thock/log.txt
+cat ~/_git/thicc/log.txt
 ```
 
 ### Expected Behavior (Current State)
@@ -231,18 +231,18 @@ cat ~/_git/thock/log.txt
 
 **Testing Command:**
 ```bash
-cd ~/_git/thock && make quick && ./run-thock.sh
+cd ~/_git/thicc && make quick && ./run-thicc.sh
 ```
 
 **Expected Behavior:**
 - File browser should load within 1-2 seconds
-- Log should show: "THOCK Tree: Scan() complete" message
+- Log should show: "THICC Tree: Scan() complete" message
 - Files should be visible in left panel
 - No hanging
 
 **Check Logs:**
 ```bash
-cat ~/_git/thock/log.txt | grep "THOCK Tree"
+cat ~/_git/thicc/log.txt | grep "THICC Tree"
 ```
 
 **Success Criteria:**
@@ -359,14 +359,14 @@ These were replaced with independent implementations.
 
 ```bash
 # Build
-cd /Users/ellery/_git/thock
+cd /Users/ellery/_git/thicc
 make quick
 
 # Run
-./run-thock.sh
+./run-thicc.sh
 
 # Or directly
-./thock
+./thicc
 
 # Check logs
 cat log.txt
@@ -407,6 +407,6 @@ cat log.txt
 ## Contact / Notes
 
 - Fork of micro v2.0.14
-- Module: `github.com/ellery/thock`
+- Module: `github.com/ellery/thicc`
 - Architecture: Independent panels with direct tcell rendering
 - Goal: VSCode-like 3-panel layout with micro as editor core

@@ -5,8 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/filemanager"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/filemanager"
 	"github.com/micro-editor/tcell/v2"
 )
 

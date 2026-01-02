@@ -6,8 +6,8 @@ import (
 	"strconv"
 
 	"github.com/micro-editor/terminal"
-	"github.com/ellery/thock/internal/buffer"
-	"github.com/ellery/thock/internal/screen"
+	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/screen"
 )
 
 type TermType int

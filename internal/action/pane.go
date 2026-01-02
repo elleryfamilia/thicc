@@ -1,7 +1,7 @@
 package action
 
 import (
-	"github.com/ellery/thock/internal/display"
+	"github.com/ellery/thicc/internal/display"
 )
 
 // A Pane is a general interface for a window in the editor.

@@ -3,7 +3,7 @@ package info
 import (
 	"fmt"
 
-	"github.com/ellery/thock/internal/buffer"
+	"github.com/ellery/thicc/internal/buffer"
 )
 
 // The InfoBuf displays messages and other info at the bottom of the screen.

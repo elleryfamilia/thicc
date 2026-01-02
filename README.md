@@ -23,13 +23,13 @@ You can also check out the website for Micro at https://micro-editor.github.io.
 
 - - -
 
-## THOCK-Specific Requirements
+## THICC-Specific Requirements
 
 **Note**: This is a hard fork of micro v2.0.14 with IDE-like features including a file browser and integrated terminal.
 
 ### Nerd Font (Required for Icons)
 
-THOCK uses **Nerd Font** icons in the file browser and terminal output. To see icons properly instead of boxes/blanks, you need to install a Nerd Font and configure your terminal emulator to use it.
+THICC uses **Nerd Font** icons in the file browser and terminal output. To see icons properly instead of boxes/blanks, you need to install a Nerd Font and configure your terminal emulator to use it.
 
 **Install a Nerd Font:**
 
@@ -63,7 +63,7 @@ fc-cache -fv
   ```
 - **GNOME Terminal**: Edit → Preferences → Profiles → Text → Custom font → Select "JetBrainsMono Nerd Font"
 
-After installing and configuring, restart your terminal and run THOCK again.
+After installing and configuring, restart your terminal and run THICC again.
 
 - - -
 

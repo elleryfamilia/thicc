@@ -7,8 +7,8 @@ import (
 	"sync"
 
 	"github.com/micro-editor/tcell/v2"
-	"github.com/ellery/thock/internal/config"
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/util"
 )
 
 // Screen is the tcell screen we use to draw to the terminal

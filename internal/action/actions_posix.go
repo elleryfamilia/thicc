@@ -5,7 +5,7 @@ package action
 import (
 	"syscall"
 
-	"github.com/ellery/thock/internal/screen"
+	"github.com/ellery/thicc/internal/screen"
 )
 
 // Suspend sends micro to the background. This is the same as pressing CtrlZ in most unix programs.

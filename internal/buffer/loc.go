@@ -1,7 +1,7 @@
 package buffer
 
 import (
-	"github.com/ellery/thock/internal/util"
+	"github.com/ellery/thicc/internal/util"
 )
 
 // Loc stores a location
