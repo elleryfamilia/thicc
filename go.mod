@@ -18,7 +18,8 @@ require (
 	github.com/yuin/gopher-lua v1.1.1
 	github.com/zyedidia/clipper v0.1.1
 	github.com/zyedidia/glob v0.0.0-20170209203856-dd4023a66dc3
-	golang.org/x/text v0.4.0
+	golang.org/x/image v0.34.0
+	golang.org/x/text v0.32.0
 	gopkg.in/yaml.v2 v2.2.8
 	layeh.com/gopher-luar v1.0.11
 )
@@ -38,4 +39,4 @@ replace github.com/kballard/go-shellquote => github.com/micro-editor/go-shellquo
 
 replace layeh.com/gopher-luar v1.0.11 => github.com/layeh/gopher-luar v1.0.11
 
-go 1.19
+go 1.24.0
