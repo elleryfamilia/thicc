@@ -200,6 +200,11 @@ type Panel struct {
 	// Selection state for copy/paste
 	Selection     [2]Loc // Start and end of selection
 	mouseReleased bool   // Track mouse button state for drag detection
+
+	// Scrollback support
+	Scrollback     *ScrollbackBuffer // Circular buffer for terminal history
+	scrollOffset   int               // 0 = live view, >0 = scrolled up N lines
+	previousTopRow []vt10x.Glyph     // For detecting scroll events
 }
 
 // NewPanel creates a new terminal panel
@@ -261,6 +266,9 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 		Cols: uint16(contentW),
 	})
 
+	// Load settings and create scrollback buffer
+	settings := LoadSettings()
+
 	p := &Panel{
 		VT:            vt,
 		PTY:           ptmx,
@@ -271,6 +279,8 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 		throttleDelay: 16 * time.Millisecond, // 60fps max
 		autoRespawn:   autoRespawn,
 		mouseReleased: true, // Start with mouse released
+		Scrollback:    NewScrollbackBuffer(settings.ScrollbackLines),
+		scrollOffset:  0,
 	}
 
 	// Start reading from PTY in background
@@ -344,12 +354,58 @@ func (p *Panel) readLoop() {
 		}
 
 		if n > 0 {
+			// Capture top row before write (for scroll detection)
+			p.captureTopRowBefore()
+
 			// Write to VT emulator
 			p.VT.Write(buf[:n])
+
+			// Check if scroll occurred and capture scrolled lines
+			p.captureScrolledLines()
 
 			// Schedule throttled redraw
 			p.scheduleRedraw()
 		}
+	}
+}
+
+// captureTopRowBefore captures the top row before VT.Write for scroll detection
+func (p *Panel) captureTopRowBefore() {
+	cols, _ := p.VT.Size()
+	p.previousTopRow = make([]vt10x.Glyph, cols)
+	for x := 0; x < cols; x++ {
+		p.previousTopRow[x] = p.VT.Cell(x, 0)
+	}
+}
+
+// captureScrolledLines checks if the top row changed and captures it to scrollback
+func (p *Panel) captureScrolledLines() {
+	if len(p.previousTopRow) == 0 {
+		return
+	}
+
+	cols, _ := p.VT.Size()
+	if cols != len(p.previousTopRow) {
+		return // Size changed, skip
+	}
+
+	// Compare current top row with previous
+	changed := false
+	for x := 0; x < cols; x++ {
+		current := p.VT.Cell(x, 0)
+		if current.Char != p.previousTopRow[x].Char {
+			changed = true
+			break
+		}
+	}
+
+	if changed {
+		// Line scrolled off - add previous top row to scrollback
+		line := ScrollbackLine{
+			Cells: make([]vt10x.Glyph, len(p.previousTopRow)),
+		}
+		copy(line.Cells, p.previousTopRow)
+		p.Scrollback.Push(line)
 	}
 }
 
@@ -401,6 +457,10 @@ func (p *Panel) RespawnShell() error {
 	p.Cmd = cmd
 	p.Running = true
 	p.autoRespawn = false // Don't auto-respawn again (now running shell)
+
+	// Clear scrollback on respawn
+	p.Scrollback.Clear()
+	p.scrollOffset = 0
 
 	// Start new read loop
 	go p.readLoop()
@@ -585,4 +645,65 @@ func (p *Panel) isSelected(x, y int) bool {
 	}
 
 	return loc.GreaterEqual(start) && loc.LessThan(end)
+}
+
+// ScrollUp scrolls the view up (into history)
+func (p *Panel) ScrollUp(lines int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	maxScroll := p.Scrollback.Count()
+	p.scrollOffset += lines
+	if p.scrollOffset > maxScroll {
+		p.scrollOffset = maxScroll
+	}
+
+	if p.OnRedraw != nil {
+		p.OnRedraw()
+	}
+}
+
+// ScrollDown scrolls the view down (toward live)
+func (p *Panel) ScrollDown(lines int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	p.scrollOffset -= lines
+	if p.scrollOffset < 0 {
+		p.scrollOffset = 0
+	}
+
+	if p.OnRedraw != nil {
+		p.OnRedraw()
+	}
+}
+
+// ScrollToBottom returns to live view
+func (p *Panel) ScrollToBottom() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.scrollOffset == 0 {
+		return // Already at bottom
+	}
+
+	p.scrollOffset = 0
+
+	if p.OnRedraw != nil {
+		p.OnRedraw()
+	}
+}
+
+// IsScrolledUp returns true if viewing scrollback history
+func (p *Panel) IsScrolledUp() bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.scrollOffset > 0
+}
+
+// ScrollOffset returns the current scroll offset (0 = live view)
+func (p *Panel) ScrollOffset() int {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	return p.scrollOffset
 }

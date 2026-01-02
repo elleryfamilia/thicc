@@ -75,8 +75,8 @@ type LayoutManager struct {
 func NewLayoutManager(root string) *LayoutManager {
 	return &LayoutManager{
 		TreeWidth:       30,                // Fixed tree width
-		LeftPanelsPct:   60,                // Tree + Editor = 60% of screen
-		TermWidthPct:    40,                // Terminal = 40% of screen
+		LeftPanelsPct:   55,                // Tree + Editor = 55% of screen
+		TermWidthPct:    45,                // Terminal = 45% of screen
 		Root:            root,
 		ActivePanel:     1,                 // Start with editor focused
 		TreeVisible:     true,              // All panes visible by default
@@ -114,17 +114,13 @@ func (lm *LayoutManager) getTermWidth() int {
 		return 0
 	}
 
-	// Calculate available space after tree
-	availableWidth := lm.ScreenW - lm.getTreeWidth()
-
-	// If editor is also visible, split the space
+	// If editor is also visible, terminal gets its percentage of TOTAL screen width
 	if lm.EditorVisible {
-		// Terminal gets its percentage of remaining space
-		return availableWidth * lm.TermWidthPct / 100
+		return lm.ScreenW * lm.TermWidthPct / 100
 	}
 
-	// Terminal takes all remaining space
-	return availableWidth
+	// Terminal takes all space after tree
+	return lm.ScreenW - lm.getTreeWidth()
 }
 
 // getEditorX returns the X position of the editor
@@ -143,18 +139,13 @@ func (lm *LayoutManager) getEditorWidth() int {
 		return 0
 	}
 
-	// Calculate available space after tree
-	availableWidth := lm.ScreenW - lm.getTreeWidth()
-
-	// If terminal is also visible, split the space
+	// If terminal is also visible, editor gets remaining space after tree and terminal
 	if lm.TerminalVisible {
-		// Editor gets the remaining space after terminal's percentage
-		termWidth := availableWidth * lm.TermWidthPct / 100
-		return availableWidth - termWidth
+		return lm.ScreenW - lm.getTreeWidth() - lm.getTermWidth()
 	}
 
-	// Editor takes all remaining space
-	return availableWidth
+	// Editor takes all space after tree
+	return lm.ScreenW - lm.getTreeWidth()
 }
 
 // needsPlaceholders returns true if we need to show placeholders

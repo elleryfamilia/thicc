@@ -20,6 +20,18 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 	case *tcell.EventKey:
 		log.Printf("THOCK Terminal: Key event, Key=%v, Rune=%c", ev.Key(), ev.Rune())
 
+		// Handle Shift+PageUp/Down for scrolling (before other key handling)
+		if ev.Key() == tcell.KeyPgUp && ev.Modifiers()&tcell.ModShift != 0 {
+			_, rows := p.VT.Size()
+			p.ScrollUp(rows - 1) // Scroll nearly one page
+			return true
+		}
+		if ev.Key() == tcell.KeyPgDn && ev.Modifiers()&tcell.ModShift != 0 {
+			_, rows := p.VT.Size()
+			p.ScrollDown(rows - 1) // Scroll nearly one page
+			return true
+		}
+
 		// Handle Ctrl+C: copy selection if exists, otherwise send SIGINT
 		if ev.Key() == tcell.KeyCtrlC {
 			if p.HasSelection() {
@@ -34,6 +46,11 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 				return true
 			}
 			// No selection - fall through to send SIGINT to terminal
+		}
+
+		// If any key is pressed while scrolled up, snap back to live view
+		if p.IsScrolledUp() {
+			p.ScrollToBottom()
 		}
 
 		result := p.handleKey(ev)
@@ -51,8 +68,18 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 	return false
 }
 
-// handleMouse processes mouse events for text selection
+// handleMouse processes mouse events for text selection and scrolling
 func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
+	// Handle scroll wheel (no lock needed, ScrollUp/Down handle it)
+	if ev.Buttons() == tcell.WheelUp {
+		p.ScrollUp(3) // Scroll 3 lines up (into history)
+		return true
+	}
+	if ev.Buttons() == tcell.WheelDown {
+		p.ScrollDown(3) // Scroll 3 lines down (toward live)
+		return true
+	}
+
 	// Calculate position relative to content area (inside border)
 	mouseX, mouseY := ev.Position()
 	contentX := p.Region.X + 1

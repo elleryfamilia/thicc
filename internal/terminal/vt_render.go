@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"fmt"
 	"reflect"
 
 	"github.com/ellery/thicc/internal/config"
@@ -42,48 +43,25 @@ func (p *Panel) Render(screen tcell.Screen) {
 	// Get terminal size from VT emulator
 	cols, rows := p.VT.Size()
 
-	// Check if we're in alternate screen mode
+	// Check if we're in alternate screen mode (disable scrollback for fullscreen apps)
 	mode := p.VT.Mode()
 	useAltScreen := mode&vt10x.ModeAltScreen != 0
 
-	// Render each cell from the active buffer (in content area)
-	for y := 0; y < contentH && y < rows; y++ {
-		for x := 0; x < contentW && x < cols; x++ {
-			// Get cell from active buffer
-			var glyph vt10x.Glyph
-
-			if useAltScreen {
-				glyph = p.getAltCell(x, y)
-			} else {
-				glyph = p.VT.Cell(x, y)
-			}
-
-			// Convert VT cell to tcell
-			r := glyph.Char
-			if r == 0 {
-				r = ' ' // Empty cells render as space
-			}
-
-			style := glyphToTcellStyle(glyph)
-
-			// Apply selection highlight (reverse video)
-			if p.isSelected(x, y) {
-				style = style.Reverse(true)
-			}
-
-			// Draw to screen (in content area)
-			screen.SetContent(
-				contentX+x,
-				contentY+y,
-				r,
-				nil,
-				style,
-			)
-		}
+	// If scrolled up and not in alt screen, render scrollback view
+	if p.scrollOffset > 0 && !useAltScreen {
+		p.renderScrolledView(screen, contentX, contentY, contentW, contentH, cols, rows)
+	} else {
+		// Render live view (normal rendering)
+		p.renderLiveView(screen, contentX, contentY, contentW, contentH, cols, rows, useAltScreen)
 	}
 
-	// Show cursor if focused (offset by content area)
-	if p.Focus && p.VT.CursorVisible() {
+	// Draw scroll indicator if scrolled up
+	if p.scrollOffset > 0 && !useAltScreen {
+		p.drawScrollIndicator(screen)
+	}
+
+	// Show cursor if focused and NOT scrolled (offset by content area)
+	if p.Focus && p.VT.CursorVisible() && p.scrollOffset == 0 {
 		cursor := p.VT.Cursor()
 		cx, cy := cursor.X, cursor.Y
 		if cx >= 0 && cx < contentW && cy >= 0 && cy < contentH {
@@ -93,6 +71,118 @@ func (p *Panel) Render(screen tcell.Screen) {
 
 	// Draw border (always draw, but style changes based on focus)
 	p.drawBorder(screen)
+}
+
+// renderLiveView renders the current terminal content (not scrolled)
+func (p *Panel) renderLiveView(screen tcell.Screen, contentX, contentY, contentW, contentH, cols, rows int, useAltScreen bool) {
+	for y := 0; y < contentH && y < rows; y++ {
+		for x := 0; x < contentW && x < cols; x++ {
+			var glyph vt10x.Glyph
+
+			if useAltScreen {
+				glyph = p.getAltCell(x, y)
+			} else {
+				glyph = p.VT.Cell(x, y)
+			}
+
+			r := glyph.Char
+			if r == 0 {
+				r = ' '
+			}
+
+			style := glyphToTcellStyle(glyph)
+
+			if p.isSelected(x, y) {
+				style = style.Reverse(true)
+			}
+
+			screen.SetContent(contentX+x, contentY+y, r, nil, style)
+		}
+	}
+}
+
+// renderScrolledView renders scrollback history + partial live view
+func (p *Panel) renderScrolledView(screen tcell.Screen, contentX, contentY, contentW, contentH, cols, rows int) {
+	scrollbackCount := p.Scrollback.Count()
+
+	for y := 0; y < contentH; y++ {
+		// Calculate which line to show:
+		// lineIndex = scrollbackCount - scrollOffset + y
+		// When scrollOffset = scrollbackCount, we show from line 0 (oldest)
+		// When scrollOffset = 1, we show scrollbackCount-1 (newest scrollback) at top
+		lineIndex := scrollbackCount - p.scrollOffset + y
+
+		if lineIndex < 0 {
+			// Above scrollback - render empty line
+			for x := 0; x < contentW; x++ {
+				screen.SetContent(contentX+x, contentY+y, ' ', nil, config.DefStyle)
+			}
+		} else if lineIndex < scrollbackCount {
+			// In scrollback buffer
+			line := p.Scrollback.Get(lineIndex)
+			if line != nil {
+				for x := 0; x < contentW; x++ {
+					var r rune = ' '
+					style := config.DefStyle
+
+					if x < len(line.Cells) {
+						glyph := line.Cells[x]
+						r = glyph.Char
+						if r == 0 {
+							r = ' '
+						}
+						style = glyphToTcellStyle(glyph)
+					}
+
+					screen.SetContent(contentX+x, contentY+y, r, nil, style)
+				}
+			} else {
+				// Nil line (shouldn't happen) - render empty
+				for x := 0; x < contentW; x++ {
+					screen.SetContent(contentX+x, contentY+y, ' ', nil, config.DefStyle)
+				}
+			}
+		} else {
+			// In live terminal view
+			liveY := lineIndex - scrollbackCount
+			if liveY < rows {
+				for x := 0; x < contentW && x < cols; x++ {
+					glyph := p.VT.Cell(x, liveY)
+					r := glyph.Char
+					if r == 0 {
+						r = ' '
+					}
+					style := glyphToTcellStyle(glyph)
+					screen.SetContent(contentX+x, contentY+y, r, nil, style)
+				}
+				// Fill remaining width if cols < contentW
+				for x := cols; x < contentW; x++ {
+					screen.SetContent(contentX+x, contentY+y, ' ', nil, config.DefStyle)
+				}
+			} else {
+				// Beyond live view - render empty
+				for x := 0; x < contentW; x++ {
+					screen.SetContent(contentX+x, contentY+y, ' ', nil, config.DefStyle)
+				}
+			}
+		}
+	}
+}
+
+// drawScrollIndicator draws "[+N]" at top-right corner when scrolled
+func (p *Panel) drawScrollIndicator(screen tcell.Screen) {
+	indicator := fmt.Sprintf("[+%d]", p.scrollOffset)
+	indicatorStyle := config.DefStyle.Foreground(tcell.ColorYellow).Bold(true)
+
+	// Position at top-right of border (inside the top border line)
+	x := p.Region.X + p.Region.Width - len(indicator) - 2
+	if x < p.Region.X+2 {
+		x = p.Region.X + 2 // Ensure it doesn't overlap left border
+	}
+
+	for i, r := range indicator {
+		screen.SetContent(x+i, p.Region.Y, r, nil, indicatorStyle)
+	}
 }
 
 // getAltCell retrieves a cell from the alternate screen buffer using reflection
