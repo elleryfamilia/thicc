@@ -4,10 +4,6 @@
 
 **thicc** — a fork of [micro](https://micro-editor.github.io) that's heavy on opinions, not bloat.
 
-<p align="center">
-  <img src="./assets/thicc_main.png" alt="thicc main view" width="800">
-</p>
-
 ## What is thicc?
 
 File browser. Editor. Terminal. AI tools. One vibe.
@@ -15,7 +11,9 @@ File browser. Editor. Terminal. AI tools. One vibe.
 thicc is for developers who pair with AI but still read the diff. We made the decisions so you don't have to—no config rabbit holes, no theme paralysis. Just open it and go.
 
 <p align="center">
-  <img src="./assets/thicc_dashboard.png" alt="thicc dashboard" width="600">
+  <img src="./assets/thicc_dashboard.png" alt="thicc dashboard" width="400">
+  &nbsp;&nbsp;&nbsp;&nbsp;
+  <img src="./assets/thicc_main.png" alt="thicc main view" width="400">
 </p>
 
 ## Why thicc?
