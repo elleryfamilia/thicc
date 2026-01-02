@@ -349,10 +349,17 @@ func (d *Dashboard) GetSelectedAITool() *aiterminal.AITool {
 }
 
 // GetSelectedAIToolCommand returns the command line for the selected AI tool
-// Returns nil if no tool is selected (should use default shell)
+// Returns nil if no tool is selected OR if the default shell is selected
+// (we return nil for shell so that the terminal uses its built-in shell handling
+// which includes injecting the pretty prompt)
 func (d *Dashboard) GetSelectedAIToolCommand() []string {
 	tool := d.GetSelectedAITool()
 	if tool == nil {
+		return nil
+	}
+	// If "Shell (default)" is selected, return nil to use built-in shell handling
+	// which includes the pretty prompt injection
+	if tool.Name == "Shell (default)" {
 		return nil
 	}
 	return tool.GetCommandLine()

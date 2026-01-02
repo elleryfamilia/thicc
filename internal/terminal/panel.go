@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"fmt"
 	"io"
 	"log"
 	"os"
@@ -217,16 +218,16 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	// Track if we're starting a default shell (to inject sexy prompt)
 	injectPrompt := false
 
-	log.Printf("THICC: NewPanel called with cmdArgs=%v (nil=%v, len=%d)", cmdArgs, cmdArgs == nil, len(cmdArgs))
+	log.Printf("THICC: NewPanel called with cmdArgs=%v (nil=%v, len=%d, autoRespawn=%v)", cmdArgs, cmdArgs == nil, len(cmdArgs), autoRespawn)
 
 	// Default to user's shell if no command specified
 	if cmdArgs == nil || len(cmdArgs) == 0 {
 		shell := getDefaultShell()
 		cmdArgs = []string{shell, "-i"} // Just start interactive shell
 		injectPrompt = true             // We'll inject sexy prompt after shell starts
-		log.Printf("THICC: Using default shell: %s", shell)
+		log.Printf("THICC: Using default shell: %s, injectPrompt=true", shell)
 	} else {
-		log.Printf("THICC: Using provided cmdArgs: %v", cmdArgs)
+		log.Printf("THICC: Using provided cmdArgs: %v, injectPrompt=false", cmdArgs)
 	}
 
 	// Content area is inside the border (1 cell on each side)
@@ -300,9 +301,10 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 // injectSexyPrompt sends prompt initialization to the shell after it starts
 // This ensures our prompt overrides anything set in rc files
 func (p *Panel) injectSexyPrompt() {
-	log.Printf("THICC: injectSexyPrompt starting, waiting 500ms...")
-	// Wait for shell to fully initialize (load rc files, oh-my-zsh, etc.)
-	time.Sleep(500 * time.Millisecond)
+	log.Printf("THICC: injectSexyPrompt starting, waiting 1000ms...")
+	// Wait for shell frameworks (oh-my-zsh, powerlevel10k, etc.) to fully initialize
+	// This needs to be long enough for the shell to be at a prompt
+	time.Sleep(1000 * time.Millisecond)
 
 	p.mu.Lock()
 	if !p.Running || p.PTY == nil {
@@ -315,12 +317,25 @@ func (p *Panel) injectSexyPrompt() {
 
 	// Get the prompt init command
 	initCmd := getPromptInitCommand()
-	log.Printf("THICC: injectSexyPrompt - sending command: %s", initCmd)
 
-	// Send command to override prompt, then clear screen for clean look
-	fullCmd := initCmd + "\nclear\n"
-	n, err := pty.Write([]byte(fullCmd))
-	log.Printf("THICC: injectSexyPrompt - wrote %d bytes, err=%v", n, err)
+	// Write prompt config to temp file, then source it
+	// This is more reliable than sending raw commands which might get
+	// mangled by shell line editing or overwritten by shell frameworks
+	tmpFile := "/tmp/.thicc_prompt_init"
+	if err := os.WriteFile(tmpFile, []byte(initCmd), 0644); err != nil {
+		log.Printf("THICC: injectSexyPrompt - failed to write temp file: %v", err)
+		return
+	}
+
+	// Source the file and clear screen
+	// Using exec to bypass any shell aliases or functions
+	sourceCmd := fmt.Sprintf("source %s && clear\n", tmpFile)
+	log.Printf("THICC: injectSexyPrompt - sourcing prompt from %s", tmpFile)
+
+	_, err := pty.Write([]byte(sourceCmd))
+	if err != nil {
+		log.Printf("THICC: injectSexyPrompt - write error: %v", err)
+	}
 }
 
 // getDefaultShell returns the user's default shell

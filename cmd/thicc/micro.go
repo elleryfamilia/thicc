@@ -455,12 +455,10 @@ func main() {
 	}
 
 	// THOCK: Create layout manager (panels will be initialized later after screen size is known)
-	// Skip if showing dashboard - will be initialized after dashboard exits
-	if !showDashboard {
-		log.Println("THICC: About to call InitThiccLayout")
-		InitThiccLayout()
-		log.Println("THICC: InitThiccLayout completed")
-	}
+	// Create it now even for dashboard - we'll preload the terminal in the background
+	log.Println("THICC: About to call InitThiccLayout")
+	InitThiccLayout()
+	log.Println("THICC: InitThiccLayout completed")
 
 	err = config.RunPluginFn("init")
 	if err != nil {
@@ -529,6 +527,21 @@ func main() {
 		log.Println("THICC: Starting dashboard")
 		dashboardWasShown = true
 		InitDashboard()
+
+		// THOCK: Preload terminal in background while dashboard is showing
+		// Only preload for default shell - AI tools don't need it (no prompt injection delay)
+		// If user changes selection while on dashboard, we'll handle it in TransitionToEditor
+		if thiccLayout != nil && thiccDashboard != nil {
+			cmd := thiccDashboard.GetSelectedAIToolCommand()
+			if cmd == nil {
+				// Default shell selected - preload to avoid ugly-to-pretty prompt transition
+				w, h := screen.Screen.Size()
+				log.Printf("THICC: Preloading shell terminal in background (%dx%d)", w, h)
+				thiccLayout.PreloadTerminal(w, h)
+			} else {
+				log.Printf("THICC: AI tool selected (%v), skipping preload", cmd)
+			}
+		}
 
 		// Run dashboard event loop
 		for showDashboard {
@@ -849,10 +862,12 @@ func TransitionToEditor(buffers []*buffer.Buffer, filePath string) {
 	// Initialize tabs with the new buffers
 	action.InitTabs(buffers)
 
-	// Initialize the layout
-	InitThiccLayout()
+	// Initialize the layout (only if not already created)
+	if thiccLayout == nil {
+		InitThiccLayout()
+	}
 
-	// Configure AI tool auto-launch from dashboard preferences
+	// Configure AI tool auto-launch from dashboard preferences (if not already set during preload)
 	if thiccLayout != nil && thiccDashboard != nil {
 		if cmd := thiccDashboard.GetSelectedAIToolCommand(); cmd != nil {
 			log.Printf("THICC: Setting AI tool command from dashboard: %v", cmd)

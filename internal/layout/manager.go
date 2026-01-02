@@ -67,6 +67,10 @@ type LayoutManager struct {
 	// AI Tool command to auto-launch in terminal (nil = default shell)
 	AIToolCommand []string
 
+	// Track what command the preloaded terminal was created with
+	// Used to detect if selection changed and we need to recreate terminal
+	preloadedWithCommand []string
+
 	// Mutex to protect Terminal access during async creation
 	mu sync.RWMutex
 }
@@ -95,6 +99,70 @@ func NewLayoutManager(root string) *LayoutManager {
 // Must be called before Initialize() for the command to take effect
 func (lm *LayoutManager) SetAIToolCommand(cmd []string) {
 	lm.AIToolCommand = cmd
+}
+
+// PreloadTerminal creates the terminal in the background while dashboard is showing
+// This allows the shell prompt to initialize before the user sees it
+func (lm *LayoutManager) PreloadTerminal(screenW, screenH int) {
+	lm.mu.Lock()
+	if lm.Terminal != nil {
+		lm.mu.Unlock()
+		return // Already preloaded
+	}
+	lm.mu.Unlock()
+
+	// Store screen size for later
+	lm.ScreenW = screenW
+	lm.ScreenH = screenH
+
+	// Calculate terminal region (same logic as Initialize)
+	termX := lm.getTermX()
+	termW := lm.getTermWidth()
+
+	// Record what command we're preloading with (for later comparison)
+	lm.preloadedWithCommand = lm.AIToolCommand
+
+	log.Println("THICC: Preloading terminal panel in background")
+	go func() {
+		// Use configured AI tool command, or default shell if nil
+		cmdArgs := lm.AIToolCommand
+		if cmdArgs != nil && len(cmdArgs) > 0 {
+			log.Printf("THICC: Auto-launching AI tool: %v", cmdArgs)
+		}
+		term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, cmdArgs)
+		if err != nil {
+			log.Printf("THICC: Failed to preload terminal: %v", err)
+			return
+		}
+
+		// Set callback to trigger screen refresh when terminal has new output
+		term.OnRedraw = lm.triggerRedraw
+
+		// Safely set terminal (prevent race with Initialize)
+		lm.mu.Lock()
+		if lm.Terminal == nil {
+			lm.Terminal = term
+			log.Println("THICC: Terminal panel preloaded successfully")
+		} else {
+			// Another goroutine already created a terminal, close this one
+			log.Println("THICC: Terminal already exists, closing preloaded one")
+			term.Close()
+		}
+		lm.mu.Unlock()
+	}()
+}
+
+// slicesEqual compares two string slices for equality
+func slicesEqual(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // PlaceholderWidth is the width of placeholder boxes when both editor and terminal are hidden
@@ -322,30 +390,68 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 	termX := lm.getTermX()
 	termW := lm.getTermWidth()
 
-	// Create terminal asynchronously (to avoid blocking UI)
-	log.Println("THICC: Creating terminal panel asynchronously")
-	go func() {
-		// Use configured AI tool command, or default shell if nil
-		cmdArgs := lm.AIToolCommand
-		if cmdArgs != nil && len(cmdArgs) > 0 {
-			log.Printf("THICC: Auto-launching AI tool: %v", cmdArgs)
-		}
-		term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, cmdArgs)
-		if err != nil {
-			log.Printf("THICC: Failed to create terminal: %v", err)
-			return
-		}
+	// Check if terminal was already preloaded
+	lm.mu.RLock()
+	terminalExists := lm.Terminal != nil
+	lm.mu.RUnlock()
 
-		// Set callback to trigger screen refresh when terminal has new output
-		term.OnRedraw = lm.triggerRedraw
-
+	// Check if the AI tool selection changed since preload
+	selectionChanged := !slicesEqual(lm.AIToolCommand, lm.preloadedWithCommand)
+	if selectionChanged && terminalExists {
+		log.Printf("THICC: AI tool selection changed (was %v, now %v), recreating terminal",
+			lm.preloadedWithCommand, lm.AIToolCommand)
+		// Close the preloaded terminal
 		lm.mu.Lock()
-		lm.Terminal = term
+		if lm.Terminal != nil {
+			lm.Terminal.Close()
+			lm.Terminal = nil
+		}
 		lm.mu.Unlock()
+		terminalExists = false
+	}
 
-		log.Println("THICC: Terminal panel created successfully")
-		lm.triggerRedraw()
-	}()
+	if terminalExists {
+		// Terminal was preloaded with correct command - just update its region
+		log.Println("THICC: Using preloaded terminal panel")
+		lm.mu.Lock()
+		lm.Terminal.Region.X = termX
+		lm.Terminal.Region.Width = termW
+		lm.Terminal.Region.Height = lm.ScreenH
+		_ = lm.Terminal.Resize(termW, lm.ScreenH)
+		lm.mu.Unlock()
+	} else {
+		// Create terminal asynchronously (to avoid blocking UI)
+		log.Println("THICC: Creating terminal panel asynchronously")
+		go func() {
+			// Use configured AI tool command, or default shell if nil
+			cmdArgs := lm.AIToolCommand
+			if cmdArgs != nil && len(cmdArgs) > 0 {
+				log.Printf("THICC: Auto-launching AI tool: %v", cmdArgs)
+			}
+			term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, cmdArgs)
+			if err != nil {
+				log.Printf("THICC: Failed to create terminal: %v", err)
+				return
+			}
+
+			// Set callback to trigger screen refresh when terminal has new output
+			term.OnRedraw = lm.triggerRedraw
+
+			// Safely set terminal (prevent race with PreloadTerminal)
+			lm.mu.Lock()
+			if lm.Terminal == nil {
+				lm.Terminal = term
+				log.Println("THICC: Terminal panel created successfully")
+			} else {
+				// PreloadTerminal already created one, close this
+				log.Println("THICC: Preloaded terminal exists, closing duplicate")
+				term.Close()
+			}
+			lm.mu.Unlock()
+
+			lm.triggerRedraw()
+		}()
+	}
 
 	// Initialize project picker
 	lm.ProjectPicker = dashboard.NewProjectPicker(screen,
