@@ -7,6 +7,7 @@ import (
 	"log"
 	"os/exec"
 	"strings"
+	"time"
 
 	"github.com/blang/semver"
 )
@@ -75,6 +76,9 @@ func main() {
 
 	// append how many commits we are ahead of the last release
 	version.Pre = append(version.Pre, *ahead)
+
+	// add build timestamp
+	version.Build = []string{time.Now().Format("200601021504")}
 
 	fmt.Println(version.String())
 }
