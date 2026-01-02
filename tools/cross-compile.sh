@@ -15,7 +15,7 @@ cp README.md thicc-$VERSION
 cp LICENSE-THIRD-PARTY thicc-$VERSION
 cp assets/packaging/thicc.1 thicc-$VERSION
 cp assets/packaging/thicc.desktop thicc-$VERSION
-cp assets/thicc-logo-mark.svg thicc-$VERSION/thicc.svg
+# cp assets/thicc-logo-mark.svg thicc-$VERSION/thicc.svg  # TODO: add SVG logo
 
 create_artefact_generic()
 {
