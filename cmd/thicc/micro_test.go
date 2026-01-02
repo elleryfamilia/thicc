@@ -62,7 +62,7 @@ func startup(args []string) (tcell.SimulationScreen, error) {
 				}
 			}
 			// Print the stack trace too
-			log.Fatalf(errors.Wrap(err, 2).ErrorStack())
+			log.Fatalf("%s", errors.Wrap(err, 2).ErrorStack())
 		}
 	}()
 
