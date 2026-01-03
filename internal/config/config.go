@@ -15,12 +15,15 @@ var ConfigDir string
 func InitConfigDir(flagConfigDir string) error {
 	var e error
 
-	microHome := os.Getenv("MICRO_CONFIG_HOME")
-	if microHome == "" {
-		// The user has not set $MICRO_CONFIG_HOME so we'll try $XDG_CONFIG_HOME
+	// Check THICC_CONFIG_HOME first, fall back to MICRO_CONFIG_HOME for compatibility
+	configHome := os.Getenv("THICC_CONFIG_HOME")
+	if configHome == "" {
+		configHome = os.Getenv("MICRO_CONFIG_HOME")
+	}
+	if configHome == "" {
+		// No config home set, use XDG_CONFIG_HOME or default to ~/.config
 		xdgHome := os.Getenv("XDG_CONFIG_HOME")
 		if xdgHome == "" {
-			// The user has not set $XDG_CONFIG_HOME so we should act like it was set to ~/.config
 			home, err := homedir.Dir()
 			if err != nil {
 				return errors.New("Error finding your home directory\nCan't load config files: " + err.Error())
@@ -28,9 +31,9 @@ func InitConfigDir(flagConfigDir string) error {
 			xdgHome = filepath.Join(home, ".config")
 		}
 
-		microHome = filepath.Join(xdgHome, "micro")
+		configHome = filepath.Join(xdgHome, "thicc")
 	}
-	ConfigDir = microHome
+	ConfigDir = configHome
 
 	if len(flagConfigDir) > 0 {
 		if _, err := os.Stat(flagConfigDir); os.IsNotExist(err) {
