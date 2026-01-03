@@ -1,37 +1,62 @@
-# This script creates releases on Github for micro
-# You must have the correct Github access token to run this script
+#!/bin/bash
+# This script creates stable releases on GitHub for thicc
+# Requires: GitHub CLI (gh) authenticated
+#
+# Usage: ./release.sh VERSION [DESCRIPTION]
+# Example: ./release.sh 1.2.3 "Bug fixes and performance improvements"
 
-# $1 is the title, $2 is the description
+set -e
 
-commitID=$(git rev-parse HEAD)
-tag="v$1"
+if [ -z "$1" ]; then
+    echo "Usage: $0 VERSION [DESCRIPTION]"
+    echo "Example: $0 1.2.3 \"Bug fixes and performance improvements\""
+    exit 1
+fi
 
-echo "Creating tag"
-git tag $tag $commitID
-hub push --tags
+VERSION="$1"
+DESCRIPTION="${2:-Release v$VERSION}"
+TAG="v$VERSION"
 
-NL=$'\n'
+# Ensure we're in the repo root
+cd "$(git rev-parse --show-toplevel)"
 
-echo "Cross compiling binaries"
-./cross-compile.sh $1
-mv ../binaries .
+# Check for uncommitted changes
+if ! git diff-index --quiet HEAD --; then
+    echo "Error: You have uncommitted changes. Please commit or stash them first."
+    exit 1
+fi
 
-echo "Creating new release"
-hub release create $tag \
-    --message "$1${NL}${NL}$2" \
-    --attach "binaries/micro-$1-osx.tar.gz" \
-    --attach "binaries/micro-$1-macos-arm64.tar.gz" \
-    --attach "binaries/micro-$1-linux64.tar.gz" \
-    --attach "binaries/micro-$1-linux64-static.tar.gz" \
-    --attach "binaries/micro-$1-amd64.deb" \
-    --attach "binaries/micro-$1-linux32.tar.gz" \
-    --attach "binaries/micro-$1-linux-arm.tar.gz" \
-    --attach "binaries/micro-$1-linux-arm64.tar.gz" \
-    --attach "binaries/micro-$1-freebsd64.tar.gz" \
-    --attach "binaries/micro-$1-freebsd32.tar.gz" \
-    --attach "binaries/micro-$1-openbsd64.tar.gz" \
-    --attach "binaries/micro-$1-openbsd32.tar.gz" \
-    --attach "binaries/micro-$1-netbsd64.tar.gz" \
-    --attach "binaries/micro-$1-netbsd32.tar.gz" \
-    --attach "binaries/micro-$1-win64.zip" \
-    --attach "binaries/micro-$1-win32.zip"
+# Check if tag already exists
+if git rev-parse "$TAG" >/dev/null 2>&1; then
+    echo "Error: Tag $TAG already exists"
+    exit 1
+fi
+
+echo "Creating tag $TAG..."
+git tag -a "$TAG" -m "Release $TAG"
+
+echo "Pushing tag to origin..."
+git push origin "$TAG"
+
+echo "Cross compiling binaries..."
+./tools/cross-compile.sh "$VERSION"
+
+echo "Creating GitHub release..."
+gh release create "$TAG" \
+    --title "$TAG" \
+    --notes "$DESCRIPTION" \
+    binaries/thicc-"$VERSION"-*.tar.gz \
+    binaries/thicc-"$VERSION"-*.zip \
+    binaries/thicc-"$VERSION"-*.deb \
+    binaries/thicc-"$VERSION"-*.sha 2>/dev/null || \
+gh release create "$TAG" \
+    --title "$TAG" \
+    --notes "$DESCRIPTION" \
+    binaries/thicc-"$VERSION"-*
+
+echo "Cleaning up..."
+rm -rf binaries
+
+echo ""
+echo "Release $TAG created successfully!"
+echo "View at: https://github.com/elleryfamilia/thicc/releases/tag/$TAG"

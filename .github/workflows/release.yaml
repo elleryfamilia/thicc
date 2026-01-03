@@ -1,9 +1,13 @@
 name: Release builds
 on:
-  workflow_dispatch: # Allows manual trigger
-  # push:
-  #   tags:
-  #     - 'v*.*.*' # automatically react on semantic versioned tags
+  workflow_dispatch: # Allows manual trigger (requires tag to exist)
+  push:
+    tags:
+      - 'v*.*.*' # Automatically trigger on semantic version tags
+
+permissions:
+  contents: write
+
 jobs:
   release:
     strategy:
@@ -24,13 +28,26 @@ jobs:
         fetch-depth: 0
         fetch-tags: true
 
+    - name: Get version from tag
+      id: version
+      run: |
+        if [[ "${{ github.ref_type }}" == "tag" ]]; then
+          VERSION="${{ github.ref_name }}"
+        else
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+        fi
+        echo "version=${VERSION#v}" >> $GITHUB_OUTPUT
+        echo "Building version: ${VERSION#v}"
+
     - name: Build
-      run: tools/cross-compile.sh
+      run: tools/cross-compile.sh ${{ steps.version.outputs.version }}
 
     - name: Publish
       uses: softprops/action-gh-release@v2
       with:
         files: binaries/*
+        generate_release_notes: true
+        prerelease: false
 
     - name: Cleanup
       run: rm -rf binaries

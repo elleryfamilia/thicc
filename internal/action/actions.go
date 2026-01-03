@@ -18,6 +18,7 @@ import (
 	"github.com/ellery/thicc/internal/display"
 	"github.com/ellery/thicc/internal/screen"
 	"github.com/ellery/thicc/internal/shell"
+	"github.com/ellery/thicc/internal/update"
 	"github.com/ellery/thicc/internal/util"
 )
 
@@ -1952,21 +1953,34 @@ func (h *BufPane) QuitAll() bool {
 		}
 	}
 
-	quit := func() {
+	// doQuit performs the actual quit after update check
+	doQuit := func() {
 		buffer.CloseOpenBuffers()
 		screen.Screen.Fini()
 		InfoBar.Close()
 		runtime.Goexit()
 	}
 
+	// checkUpdatesAndQuit checks for updates before quitting
+	checkUpdatesAndQuit := func() {
+		update.CheckAndPrompt(
+			InfoBar.YNPrompt,
+			InfoBar.Message,
+			func(result update.Result, err error) {
+				// Proceed with quit regardless of update result
+				doQuit()
+			},
+		)
+	}
+
 	if anyModified {
 		InfoBar.YNPrompt("Quit micro? (all open buffers will be closed without saving)", func(yes, canceled bool) {
 			if !canceled && yes {
-				quit()
+				checkUpdatesAndQuit()
 			}
 		})
 	} else {
-		quit()
+		checkUpdatesAndQuit()
 	}
 
 	return true

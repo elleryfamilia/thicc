@@ -167,6 +167,8 @@ func LoadInput(args []string) []*buffer.Buffer {
 	// 3. If there is no input file and the input is a terminal, an empty buffer
 	// should be opened
 
+	// 4. If a directory is given, change to that directory and show file browser
+
 	buffers := make([]*buffer.Buffer, 0, len(args))
 
 	files := make([]string, 0, len(args))
@@ -223,6 +225,24 @@ func LoadInput(args []string) []*buffer.Buffer {
 		// Option 1
 		// We go through each file and load it
 		for i := 0; i < len(files); i++ {
+			// Check if this is a directory
+			if info, err := os.Stat(files[i]); err == nil && info.IsDir() {
+				// Change to the directory
+				absPath, err := filepath.Abs(files[i])
+				if err != nil {
+					screen.TermMessage(err)
+					continue
+				}
+				if err := os.Chdir(absPath); err != nil {
+					screen.TermMessage(err)
+					continue
+				}
+				// Open with file browser in this directory (create empty buffer)
+				log.Printf("THICC: Changed to directory: %s, opening with file browser", absPath)
+				buffers = append(buffers, buffer.NewBufferFromString("", "", buffer.BTDefault))
+				continue
+			}
+
 			buf, err := buffer.NewBufferFromFileWithCommand(files[i], buffer.BTDefault, command)
 			if err != nil {
 				screen.TermMessage(err)
@@ -390,7 +410,7 @@ func main() {
 			if e, ok := err.(*lua.ApiError); ok {
 				fmt.Println("Lua API error:", e)
 			} else {
-				fmt.Println("Micro encountered an error:", errors.Wrap(err, 2).ErrorStack(), "\nIf you can reproduce this error, please report it at https://github.com/zyedidia/micro/issues")
+				fmt.Println("thicc encountered an error:", errors.Wrap(err, 2).ErrorStack(), "\nIf you can reproduce this error, please report it at https://github.com/elleryfamilia/thicc/issues")
 			}
 			// immediately backup all buffers with unsaved changes
 			for _, b := range buffer.OpenBuffers {
@@ -560,15 +580,32 @@ func main() {
 		prefsStore.Load()
 		if selectedTool := prefsStore.GetSelectedAITool(); selectedTool != "" {
 			// Find matching tool and get command line
+			// Skip "Shell (default)" - let terminal use its built-in shell handling
+			// which includes the pretty prompt injection
 			tools := aiterminal.GetAvailableToolsOnly()
 			for _, t := range tools {
 				if t.Command == selectedTool {
-					log.Printf("THICC: Setting AI tool command from preferences: %v", t.GetCommandLine())
-					thiccLayout.SetAIToolCommand(t.GetCommandLine())
+					if t.Name == "Shell (default)" {
+						log.Printf("THICC: Default shell selected, using built-in shell handling")
+					} else {
+						log.Printf("THICC: Setting AI tool command from preferences: %v", t.GetCommandLine())
+						thiccLayout.SetAIToolCommand(t.GetCommandLine())
+					}
 					break
 				}
 			}
 		}
+
+		// Preload terminal to give it time to initialize the pretty prompt
+		// The terminal is created in a goroutine, and prompt injection waits 1000ms
+		// before sending the source command. We wait 1500ms total to ensure:
+		// 1. Terminal creation completes
+		// 2. 1000ms prompt injection delay
+		// 3. source command executes and clears screen
+		w, h := screen.Screen.Size()
+		log.Printf("THICC: Preloading terminal before layout init (%dx%d)", w, h)
+		thiccLayout.PreloadTerminal(w, h)
+		time.Sleep(1500 * time.Millisecond)
 
 		log.Println("THICC: Initializing layout panels")
 		if err := thiccLayout.Initialize(screen.Screen); err != nil {

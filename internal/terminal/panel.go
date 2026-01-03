@@ -208,6 +208,19 @@ type Panel struct {
 	previousTopRow []vt10x.Glyph     // For detecting scroll events
 }
 
+// isShellCommand returns true if the command is a shell (bash, zsh, sh, fish, etc.)
+func isShellCommand(cmdArgs []string) bool {
+	if len(cmdArgs) == 0 {
+		return false
+	}
+	base := filepath.Base(cmdArgs[0])
+	switch base {
+	case "bash", "zsh", "sh", "fish", "ksh", "csh", "tcsh", "dash":
+		return true
+	}
+	return false
+}
+
 // NewPanel creates a new terminal panel
 // cmdArgs is the command to run (defaults to user's shell if nil/empty)
 func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
@@ -216,6 +229,7 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	autoRespawn := cmdArgs != nil && len(cmdArgs) > 0
 
 	// Track if we're starting a default shell (to inject sexy prompt)
+	// We inject prompt for: nil/empty cmdArgs, OR when cmdArgs is a shell command
 	injectPrompt := false
 
 	log.Printf("THICC: NewPanel called with cmdArgs=%v (nil=%v, len=%d, autoRespawn=%v)", cmdArgs, cmdArgs == nil, len(cmdArgs), autoRespawn)
@@ -225,9 +239,15 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 		shell := getDefaultShell()
 		cmdArgs = []string{shell, "-i"} // Just start interactive shell
 		injectPrompt = true             // We'll inject sexy prompt after shell starts
+		autoRespawn = false             // Default shell doesn't auto-respawn
 		log.Printf("THICC: Using default shell: %s, injectPrompt=true", shell)
+	} else if isShellCommand(cmdArgs) {
+		// User selected a shell as their "AI tool" - still inject the sexy prompt
+		injectPrompt = true
+		autoRespawn = false // Shells don't auto-respawn
+		log.Printf("THICC: Using shell from cmdArgs: %v, injectPrompt=true (detected as shell)", cmdArgs)
 	} else {
-		log.Printf("THICC: Using provided cmdArgs: %v, injectPrompt=false", cmdArgs)
+		log.Printf("THICC: Using AI tool cmdArgs: %v, injectPrompt=false", cmdArgs)
 	}
 
 	// Content area is inside the border (1 cell on each side)

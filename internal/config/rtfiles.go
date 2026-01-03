@@ -200,6 +200,10 @@ func InitPlugins() {
 	isID := regexp.MustCompile(`^[_A-Za-z0-9]+$`).MatchString
 
 	for _, d := range files {
+		// Skip directories with .disabled suffix
+		if strings.HasSuffix(d.Name(), ".disabled") {
+			continue
+		}
 		plugpath := filepath.Join(plugdir, d.Name())
 		if stat, err := os.Stat(plugpath); err == nil && stat.IsDir() {
 			srcs, _ := os.ReadDir(plugpath)

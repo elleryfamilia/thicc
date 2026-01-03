@@ -37,6 +37,7 @@ var optionValidators = map[string]optionValidator{
 	"scrollspeed":     validateNonNegativeValue,
 	"tabsize":         validatePositiveValue,
 	"truecolor":       validateChoice,
+	"updatefrequency": validateNonNegativeValue,
 }
 
 // a list of settings with pre-defined choices
@@ -129,9 +130,11 @@ var DefaultGlobalOnlySettings = map[string]any{
 	"savehistory":    true,
 	"scrollbarchar":  "|",
 	"sucmd":          "sudo",
-	"tabhighlight":   false,
-	"tabreverse":     true,
-	"xterm":          false,
+	"tabhighlight":     false,
+	"tabreverse":       true,
+	"updatecheck":      true,
+	"updatefrequency":  float64(7),
+	"xterm":            false,
 }
 
 // a list of settings that should never be globally modified
