@@ -242,7 +242,7 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 		// Available AI tool items with radio buttons
 		for i, tool := range d.AITools {
 			isFocused := d.InAIToolsPane && d.AIToolsIdx == i
-			isToolSelected := d.IsAIToolSelected(tool.Command)
+			isToolSelected := d.IsAIToolSelected(tool.Name)
 			d.drawAIToolItem(screen, r.X+2, y, r.Width-4, tool, isFocused, isToolSelected)
 			y++
 		}

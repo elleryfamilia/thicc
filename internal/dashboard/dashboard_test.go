@@ -350,3 +350,47 @@ func TestState_RecentIdxResetOnPaneSwitch(t *testing.T) {
 	d.SwitchToMenuPane()
 	assert.Equal(t, -1, d.RecentIdx, "RecentIdx should be -1 when not in recent pane")
 }
+
+// =============================================================================
+// AI Tool Selection Tests (Bug: Claude YOLO selected both Claude variants)
+// =============================================================================
+
+func TestAIToolSelection_SameCommand_DifferentName(t *testing.T) {
+	// Regression test: Claude and Claude YOLO both have command "claude"
+	// but should be selectable independently (stored by Name, not Command)
+	d := newTestDashboard(t)
+	defer d.Screen.Fini()
+
+	// Find Claude and Claude YOLO in the tools list
+	var claudeIdx, yoloIdx int = -1, -1
+	for i, tool := range d.AITools {
+		if tool.Name == "Claude Code" {
+			claudeIdx = i
+		}
+		if tool.Name == "Claude Code (YOLO)" {
+			yoloIdx = i
+		}
+	}
+
+	// Skip if Claude tools aren't available
+	if claudeIdx == -1 || yoloIdx == -1 {
+		t.Skip("Claude tools not available on this system")
+	}
+
+	// Select Claude YOLO
+	d.SwitchToAIToolsPane()
+	d.AIToolsIdx = yoloIdx
+	d.ToggleAIToolSelection()
+
+	// Verify YOLO is selected but regular Claude is NOT
+	assert.True(t, d.IsAIToolSelected("Claude Code (YOLO)"), "Claude YOLO should be selected")
+	assert.False(t, d.IsAIToolSelected("Claude Code"), "Regular Claude should NOT be selected")
+
+	// Now select regular Claude
+	d.AIToolsIdx = claudeIdx
+	d.ToggleAIToolSelection()
+
+	// Verify Claude is selected but YOLO is NOT
+	assert.True(t, d.IsAIToolSelected("Claude Code"), "Claude should be selected")
+	assert.False(t, d.IsAIToolSelected("Claude Code (YOLO)"), "Claude YOLO should NOT be selected")
+}

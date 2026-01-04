@@ -134,9 +134,9 @@ func (d *Dashboard) initAIToolsIdx() {
 		return
 	}
 
-	// Find the index of the saved tool
+	// Find the index of the saved tool (match by Name since it's unique)
 	for i, tool := range d.AITools {
-		if tool.Command == savedTool {
+		if tool.Name == savedTool {
 			d.AIToolsIdx = i
 			return
 		}
@@ -393,26 +393,27 @@ func (d *Dashboard) ToggleAIToolSelection() {
 	d.SelectedInstallCmd = ""
 	selectedTool := &d.AITools[d.AIToolsIdx]
 
-	// Check if this tool is already selected
+	// Check if this tool is already selected (use Name since it's unique)
 	currentSelected := d.PrefsStore.GetSelectedAITool()
-	if currentSelected == selectedTool.Command {
+	if currentSelected == selectedTool.Name {
 		// Deselect (go back to shell/none)
 		d.PrefsStore.ClearSelectedAITool()
 	} else {
-		// Select this tool
-		d.PrefsStore.SetSelectedAITool(selectedTool.Command)
+		// Select this tool (store by Name, not Command)
+		d.PrefsStore.SetSelectedAITool(selectedTool.Name)
 	}
 }
 
 // GetSelectedAITool returns the currently selected AI tool, or nil if none selected
 func (d *Dashboard) GetSelectedAITool() *aiterminal.AITool {
-	selectedCmd := d.PrefsStore.GetSelectedAITool()
-	if selectedCmd == "" {
+	selectedName := d.PrefsStore.GetSelectedAITool()
+	if selectedName == "" {
 		return nil
 	}
 
+	// Match by Name since it's unique (Command is not unique, e.g., Claude vs Claude YOLO)
 	for i := range d.AITools {
-		if d.AITools[i].Command == selectedCmd {
+		if d.AITools[i].Name == selectedName {
 			return &d.AITools[i]
 		}
 	}
@@ -436,9 +437,9 @@ func (d *Dashboard) GetSelectedAIToolCommand() []string {
 	return tool.GetCommandLine()
 }
 
-// IsAIToolSelected returns true if the given tool command is currently selected
-func (d *Dashboard) IsAIToolSelected(command string) bool {
-	return d.PrefsStore.GetSelectedAITool() == command
+// IsAIToolSelected returns true if the given tool name is currently selected
+func (d *Dashboard) IsAIToolSelected(name string) bool {
+	return d.PrefsStore.GetSelectedAITool() == name
 }
 
 // IsInstallToolSelected returns true if an installable tool with the given install command is selected
