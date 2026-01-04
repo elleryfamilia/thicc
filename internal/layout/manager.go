@@ -1741,6 +1741,10 @@ func (lm *LayoutManager) showToolSelectorFor(panel int) {
 			// Tool selected - create terminal with this command
 			lm.createTerminalForPanel(panel, cmdArgs)
 		},
+		func(installCmd string) {
+			// Install selected - create shell terminal and run install command
+			lm.createTerminalWithInstallCommand(panel, installCmd)
+		},
 		func() {
 			// Cancelled - default to shell
 			lm.createTerminalForPanel(panel, nil)
@@ -1794,6 +1798,90 @@ func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
 		lm.updatePanelRegions()
 		lm.setActivePanel(panel)
 		lm.ShowingToolSelector = false
+		lm.triggerRedraw()
+	}()
+}
+
+// createTerminalWithInstallCommand creates a shell terminal and types the install command
+func (lm *LayoutManager) createTerminalWithInstallCommand(panel int, installCmd string) {
+	var termX, termW int
+
+	switch panel {
+	case 3: // Terminal2
+		termX = lm.getTerm2X()
+		termW = lm.getTerm2Width()
+	case 4: // Terminal3
+		termX = lm.getTerm3X()
+		termW = lm.getTerm3Width()
+	default:
+		log.Printf("THICC: Invalid panel for terminal creation: %d", panel)
+		return
+	}
+
+	log.Printf("THICC: Creating terminal for panel %d with install command: %s", panel, installCmd)
+
+	go func() {
+		// Create a shell terminal (nil cmdArgs = default shell)
+		term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, nil)
+		if err != nil {
+			log.Printf("THICC: Failed to create terminal for panel %d: %v", panel, err)
+			return
+		}
+
+		term.OnRedraw = lm.triggerRedraw
+
+		lm.mu.Lock()
+		switch panel {
+		case 3:
+			lm.Terminal2 = term
+			lm.Terminal2Initialized = true
+		case 4:
+			lm.Terminal3 = term
+			lm.Terminal3Initialized = true
+		}
+		lm.mu.Unlock()
+
+		log.Printf("THICC: Terminal for panel %d created successfully", panel)
+
+		// Wait a bit for shell to initialize, then type the install command
+		go func() {
+			// Give the shell time to start and show prompt
+			time.Sleep(500 * time.Millisecond)
+
+			// Type the install command (user needs to press Enter to execute)
+			term.Write([]byte(installCmd))
+			log.Printf("THICC: Typed install command: %s", installCmd)
+		}()
+
+		// Update regions and focus
+		lm.updatePanelRegions()
+		lm.setActivePanel(panel)
+		lm.ShowingToolSelector = false
+		lm.triggerRedraw()
+	}()
+}
+
+// SpawnTerminalWithInstallCommand spawns the main terminal with an install command typed
+// This is used when user selects an installable tool from the dashboard
+func (lm *LayoutManager) SpawnTerminalWithInstallCommand(installCmd string) {
+	if lm.Terminal == nil {
+		log.Println("THICC: Cannot spawn install command - terminal not initialized")
+		return
+	}
+
+	log.Printf("THICC: Spawning terminal with install command: %s", installCmd)
+
+	// Wait for terminal to be ready, then type the install command
+	go func() {
+		// Give the terminal time to initialize
+		time.Sleep(500 * time.Millisecond)
+
+		// Type the install command (user needs to press Enter to execute)
+		lm.Terminal.Write([]byte(installCmd))
+		log.Printf("THICC: Typed install command: %s", installCmd)
+
+		// Focus the terminal
+		lm.setActivePanel(2)
 		lm.triggerRedraw()
 	}()
 }

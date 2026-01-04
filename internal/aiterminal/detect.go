@@ -8,33 +8,43 @@ import (
 
 // AITool represents an AI CLI tool
 type AITool struct {
-	Name        string // Display name
-	Command     string // Command to execute
-	Args        []string // Default arguments
-	Description string
-	Available   bool
+	Name           string   // Display name
+	Command        string   // Command to execute
+	Args           []string // Default arguments
+	Description    string
+	Available      bool
+	InstallCommand string // Command to install this tool (empty if not installable)
 }
 
 // GetAvailableAITools detects which AI CLI tools are installed
 func GetAvailableAITools() []AITool {
 	tools := []AITool{
 		{
-			Name:        "Claude Code",
+			Name:           "Claude Code",
+			Command:        "claude",
+			Args:           []string{},
+			Description:    "Anthropic's Claude Code CLI",
+			InstallCommand: "npm install -g @anthropic-ai/claude-code",
+		},
+		{
+			Name:        "Claude Code (YOLO)",
 			Command:     "claude",
-			Args:        []string{},
-			Description: "Anthropic's Claude Code CLI",
+			Args:        []string{"--dangerously-skip-permissions"},
+			Description: "Claude Code with auto-accept permissions",
 		},
 		{
-			Name:        "Gemini CLI",
-			Command:     "gemini",
-			Args:        []string{},
-			Description: "Google's Gemini CLI",
+			Name:           "Gemini CLI",
+			Command:        "gemini",
+			Args:           []string{},
+			Description:    "Google's Gemini CLI",
+			InstallCommand: "npm install -g @google/gemini-cli",
 		},
 		{
-			Name:        "Codex CLI",
-			Command:     "codex",
-			Args:        []string{},
-			Description: "OpenAI Codex CLI",
+			Name:           "Codex CLI",
+			Command:        "codex",
+			Args:           []string{},
+			Description:    "OpenAI Codex CLI",
+			InstallCommand: "npm install -g @openai/codex",
 		},
 		{
 			Name:        "OpenCode",
@@ -49,10 +59,11 @@ func GetAvailableAITools() []AITool {
 			Description: "AI pair programming in your terminal",
 		},
 		{
-			Name:        "GitHub Copilot",
-			Command:     "copilot",
-			Args:        []string{},
-			Description: "GitHub Copilot CLI",
+			Name:           "GitHub Copilot",
+			Command:        "copilot",
+			Args:           []string{},
+			Description:    "GitHub Copilot CLI",
+			InstallCommand: "npm install -g @github/copilot",
 		},
 		{
 			Name:        "Ollama",
@@ -83,6 +94,19 @@ func GetAvailableAITools() []AITool {
 		tools[i].Available = isCommandAvailable(tools[i].Command)
 	}
 
+	// YOLO variant inherits availability from regular Claude
+	for i := range tools {
+		if tools[i].Name == "Claude Code (YOLO)" {
+			for _, t := range tools {
+				if t.Name == "Claude Code" {
+					tools[i].Available = t.Available
+					break
+				}
+			}
+			break
+		}
+	}
+
 	return tools
 }
 
@@ -98,6 +122,20 @@ func GetAvailableToolsOnly() []AITool {
 	}
 
 	return available
+}
+
+// GetInstallableTools returns tools that are not installed but can be installed
+func GetInstallableTools() []AITool {
+	all := GetAvailableAITools()
+	installable := make([]AITool, 0)
+
+	for _, tool := range all {
+		if !tool.Available && tool.InstallCommand != "" {
+			installable = append(installable, tool)
+		}
+	}
+
+	return installable
 }
 
 // isCommandAvailable checks if a command is available in PATH

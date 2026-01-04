@@ -58,6 +58,10 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 			return true
 
 		case 'n':
+			// Trigger install if an installable tool is selected
+			if d.SelectedInstallCmd != "" && d.OnInstallTool != nil {
+				d.OnInstallTool(d.SelectedInstallCmd)
+			}
 			if d.OnNewFile != nil {
 				d.OnNewFile()
 			}
@@ -109,12 +113,13 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 
 	case tcell.KeyEnd:
 		// Go to last item (bottom of list)
+		totalTools := d.totalAIToolItems()
 		if len(d.RecentStore.Projects) > 0 {
 			d.SwitchToRecentPane()
 			d.RecentIdx = len(d.RecentStore.Projects) - 1
-		} else if len(d.AITools) > 0 {
+		} else if totalTools > 0 {
 			d.SwitchToAIToolsPane()
-			d.AIToolsIdx = len(d.AITools) - 1
+			d.AIToolsIdx = totalTools - 1
 		} else {
 			d.SelectedIdx = len(d.MenuItems) - 1
 		}
@@ -136,12 +141,13 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 		return true
 	case 'G':
 		// G - go to last item (bottom of recent or AI tools)
+		totalTools := d.totalAIToolItems()
 		if len(d.RecentStore.Projects) > 0 {
 			d.SwitchToRecentPane()
 			d.RecentIdx = len(d.RecentStore.Projects) - 1
-		} else if len(d.AITools) > 0 {
+		} else if totalTools > 0 {
 			d.SwitchToAIToolsPane()
-			d.AIToolsIdx = len(d.AITools) - 1
+			d.AIToolsIdx = totalTools - 1
 		} else {
 			d.SelectedIdx = len(d.MenuItems) - 1
 		}

@@ -1,6 +1,8 @@
 package dashboard
 
 import (
+	"log"
+
 	"github.com/ellery/thicc/internal/aiterminal"
 	"github.com/micro-editor/tcell/v2"
 )
@@ -40,10 +42,12 @@ type Dashboard struct {
 	RecentScrollOffset int  // Scroll offset for recent projects
 
 	// AI Tools section
-	PrefsStore    *PreferencesStore      // Persistent preferences
-	AITools       []aiterminal.AITool    // Available AI tools (cached)
-	AIToolsIdx    int                    // Selected index in AI tools list
-	InAIToolsPane bool                   // True if focus is on AI tools section
+	PrefsStore         *PreferencesStore      // Persistent preferences
+	AITools            []aiterminal.AITool    // Available AI tools (cached)
+	InstallTools       []aiterminal.AITool    // Installable but not installed tools
+	AIToolsIdx         int                    // Selected index in AI tools list (includes both available and installable)
+	InAIToolsPane      bool                   // True if focus is on AI tools section
+	SelectedInstallCmd string                 // Install command if an installable tool is selected (non-persisted)
 
 	// Layout regions (calculated during render)
 	menuRegion    Region
@@ -58,6 +62,7 @@ type Dashboard struct {
 	OnOpenProject func(path string)  // Open a project folder
 	OnOpenFile    func(path string)  // Open specific file
 	OnOpenFolder  func(path string)  // Open specific folder
+	OnInstallTool func(cmd string)   // Install a tool (opens shell with command)
 	OnExit        func()             // Exit application
 }
 
@@ -97,6 +102,7 @@ func NewDashboard(screen tcell.Screen) *Dashboard {
 
 		PrefsStore:    NewPreferencesStore(),
 		AITools:       aiterminal.GetAvailableToolsOnly(),
+		InstallTools:  aiterminal.GetInstallableTools(),
 		AIToolsIdx:    0,
 		InAIToolsPane: false,
 	}
@@ -134,6 +140,25 @@ func (d *Dashboard) initAIToolsIdx() {
 	d.AIToolsIdx = 0
 }
 
+// totalAIToolItems returns total count of available + installable tools
+func (d *Dashboard) totalAIToolItems() int {
+	return len(d.AITools) + len(d.InstallTools)
+}
+
+// isInstallToolIdx returns true if the index points to an installable tool
+func (d *Dashboard) isInstallToolIdx(idx int) bool {
+	return idx >= len(d.AITools)
+}
+
+// getInstallToolAt returns the install tool at the given index (adjusted for AITools offset)
+func (d *Dashboard) getInstallToolAt(idx int) *aiterminal.AITool {
+	installIdx := idx - len(d.AITools)
+	if installIdx >= 0 && installIdx < len(d.InstallTools) {
+		return &d.InstallTools[installIdx]
+	}
+	return nil
+}
+
 // Resize updates the dashboard dimensions
 func (d *Dashboard) Resize(w, h int) {
 	d.ScreenW = w
@@ -158,8 +183,17 @@ func (d *Dashboard) GetSelectedRecentProject() *RecentProject {
 
 // ActivateSelection activates the current selection (menu item or recent project)
 func (d *Dashboard) ActivateSelection() {
+	// Helper to trigger install if an installable tool is selected
+	triggerInstallIfNeeded := func() {
+		if d.SelectedInstallCmd != "" && d.OnInstallTool != nil {
+			log.Printf("THICC Dashboard: Triggering install command: %s", d.SelectedInstallCmd)
+			d.OnInstallTool(d.SelectedInstallCmd)
+		}
+	}
+
 	if d.InRecentPane {
 		if proj := d.GetSelectedRecentProject(); proj != nil {
+			triggerInstallIfNeeded()
 			if proj.IsFolder {
 				if d.OnOpenFolder != nil {
 					d.OnOpenFolder(proj.Path)
@@ -180,6 +214,7 @@ func (d *Dashboard) ActivateSelection() {
 
 	switch item.ID {
 	case MenuNewFile:
+		triggerInstallIfNeeded()
 		if d.OnNewFile != nil {
 			d.OnNewFile()
 		}
@@ -206,9 +241,10 @@ func (d *Dashboard) MoveNext() {
 		}
 	} else if d.InAIToolsPane {
 		// In AI tools pane - move down or go to recent/menu
-		if len(d.AITools) > 0 {
+		totalTools := d.totalAIToolItems()
+		if totalTools > 0 {
 			d.AIToolsIdx++
-			if d.AIToolsIdx >= len(d.AITools) {
+			if d.AIToolsIdx >= totalTools {
 				// Move to recent projects if available, else wrap to menu
 				if len(d.RecentStore.Projects) > 0 {
 					d.SwitchToRecentPane()
@@ -224,7 +260,7 @@ func (d *Dashboard) MoveNext() {
 		d.SelectedIdx++
 		if d.SelectedIdx >= len(d.MenuItems) {
 			// Move to AI tools if available
-			if len(d.AITools) > 0 {
+			if d.totalAIToolItems() > 0 {
 				d.SwitchToAIToolsPane()
 				d.AIToolsIdx = 0
 			} else if len(d.RecentStore.Projects) > 0 {
@@ -239,15 +275,17 @@ func (d *Dashboard) MoveNext() {
 
 // MovePrevious moves selection to the previous item (seamlessly across all sections)
 func (d *Dashboard) MovePrevious() {
+	totalTools := d.totalAIToolItems()
+
 	if d.InRecentPane {
 		// In recent pane - move up or go to AI tools/menu
 		if len(d.RecentStore.Projects) > 0 {
 			d.RecentIdx--
 			if d.RecentIdx < 0 {
 				// Move to AI tools if available, else menu
-				if len(d.AITools) > 0 {
+				if totalTools > 0 {
 					d.SwitchToAIToolsPane()
-					d.AIToolsIdx = len(d.AITools) - 1
+					d.AIToolsIdx = totalTools - 1
 				} else {
 					d.SwitchToMenuPane()
 					d.SelectedIdx = len(d.MenuItems) - 1
@@ -256,7 +294,7 @@ func (d *Dashboard) MovePrevious() {
 		}
 	} else if d.InAIToolsPane {
 		// In AI tools pane - move up or go to menu
-		if len(d.AITools) > 0 {
+		if totalTools > 0 {
 			d.AIToolsIdx--
 			if d.AIToolsIdx < 0 {
 				// Move to menu
@@ -272,9 +310,9 @@ func (d *Dashboard) MovePrevious() {
 			if len(d.RecentStore.Projects) > 0 {
 				d.SwitchToRecentPane()
 				d.RecentIdx = len(d.RecentStore.Projects) - 1
-			} else if len(d.AITools) > 0 {
+			} else if totalTools > 0 {
 				d.SwitchToAIToolsPane()
-				d.AIToolsIdx = len(d.AITools) - 1
+				d.AIToolsIdx = totalTools - 1
 			} else {
 				d.SelectedIdx = len(d.MenuItems) - 1 // Wrap within menu
 			}
@@ -302,12 +340,13 @@ func (d *Dashboard) SwitchToMenuPane() {
 
 // SwitchToAIToolsPane switches focus to the AI tools pane
 func (d *Dashboard) SwitchToAIToolsPane() {
-	if len(d.AITools) > 0 {
+	totalTools := d.totalAIToolItems()
+	if totalTools > 0 {
 		d.InAIToolsPane = true
 		d.InRecentPane = false
 		d.RecentIdx = -1
 		// Ensure AIToolsIdx is valid
-		if d.AIToolsIdx < 0 || d.AIToolsIdx >= len(d.AITools) {
+		if d.AIToolsIdx < 0 || d.AIToolsIdx >= totalTools {
 			d.AIToolsIdx = 0
 		}
 	}
@@ -315,11 +354,37 @@ func (d *Dashboard) SwitchToAIToolsPane() {
 
 // ToggleAIToolSelection toggles the selection of the current AI tool
 // This implements radio-button behavior - selecting one deselects others
+// For installable tools, it selects them (install happens when user opens a file/project)
 func (d *Dashboard) ToggleAIToolSelection() {
-	if !d.InAIToolsPane || len(d.AITools) == 0 {
+	log.Printf("THICC Dashboard: ToggleAIToolSelection called, AIToolsIdx=%d, InAIToolsPane=%v, totalItems=%d, availableCount=%d",
+		d.AIToolsIdx, d.InAIToolsPane, d.totalAIToolItems(), len(d.AITools))
+
+	if !d.InAIToolsPane || d.totalAIToolItems() == 0 {
+		log.Println("THICC Dashboard: ToggleAIToolSelection early return - not in pane or no tools")
 		return
 	}
 
+	// Check if this is an installable tool
+	if d.isInstallToolIdx(d.AIToolsIdx) {
+		tool := d.getInstallToolAt(d.AIToolsIdx)
+		log.Printf("THICC Dashboard: Install tool detected at idx %d, tool=%v", d.AIToolsIdx, tool)
+		if tool != nil {
+			if d.SelectedInstallCmd == tool.InstallCommand {
+				// Deselect
+				log.Printf("THICC Dashboard: Deselecting install tool")
+				d.SelectedInstallCmd = ""
+			} else {
+				// Select this installable tool (clears regular tool selection)
+				log.Printf("THICC Dashboard: Selecting install tool: %s", tool.InstallCommand)
+				d.SelectedInstallCmd = tool.InstallCommand
+				d.PrefsStore.ClearSelectedAITool() // Clear regular selection
+			}
+		}
+		return
+	}
+
+	// Regular available tool - clear any install selection
+	d.SelectedInstallCmd = ""
 	selectedTool := &d.AITools[d.AIToolsIdx]
 
 	// Check if this tool is already selected
@@ -370,10 +435,26 @@ func (d *Dashboard) IsAIToolSelected(command string) bool {
 	return d.PrefsStore.GetSelectedAITool() == command
 }
 
+// IsInstallToolSelected returns true if an installable tool with the given install command is selected
+func (d *Dashboard) IsInstallToolSelected(installCmd string) bool {
+	return d.SelectedInstallCmd == installCmd
+}
+
+// HasInstallToolSelected returns true if any installable tool is selected
+func (d *Dashboard) HasInstallToolSelected() bool {
+	return d.SelectedInstallCmd != ""
+}
+
 // OpenRecentByNumber opens a recent project by its displayed number (1-9)
 func (d *Dashboard) OpenRecentByNumber(num int) {
 	idx := num - 1 // Convert 1-based to 0-based
 	if idx >= 0 && idx < len(d.RecentStore.Projects) {
+		// Trigger install if an installable tool is selected
+		if d.SelectedInstallCmd != "" && d.OnInstallTool != nil {
+			log.Printf("THICC Dashboard: Triggering install command: %s", d.SelectedInstallCmd)
+			d.OnInstallTool(d.SelectedInstallCmd)
+		}
+
 		proj := &d.RecentStore.Projects[idx]
 		if proj.IsFolder {
 			if d.OnOpenFolder != nil {
@@ -409,6 +490,13 @@ func (d *Dashboard) ShowProjectPicker() {
 		d.ProjectPicker = NewProjectPicker(d.Screen, func(path string) {
 			// Project selected - call the callback
 			d.ProjectPicker.Hide()
+
+			// Trigger install if an installable tool is selected
+			if d.SelectedInstallCmd != "" && d.OnInstallTool != nil {
+				log.Printf("THICC Dashboard: Triggering install command: %s", d.SelectedInstallCmd)
+				d.OnInstallTool(d.SelectedInstallCmd)
+			}
+
 			if d.OnOpenProject != nil {
 				d.OnOpenProject(path)
 			}

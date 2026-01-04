@@ -50,8 +50,9 @@ var (
 	thiccLayout *layout.LayoutManager
 
 	// THOCK: Dashboard state
-	thiccDashboard *dashboard.Dashboard
-	showDashboard  bool
+	thiccDashboard       *dashboard.Dashboard
+	showDashboard        bool
+	pendingInstallCmd    string // Install command to run after dashboard exits
 )
 
 func InitFlags() {
@@ -841,6 +842,13 @@ func InitDashboard() {
 		thiccDashboard.RecentStore.AddProject(path, true)
 	}
 
+	thiccDashboard.OnInstallTool = func(cmd string) {
+		log.Printf("THOCK Dashboard: Install tool selected: %s", cmd)
+		pendingInstallCmd = cmd
+		TransitionToEditor(nil, "") // Initialize editor with empty buffer
+		showDashboard = false
+	}
+
 	thiccDashboard.OnExit = func() {
 		log.Println("THOCK Dashboard: Exit selected")
 		exit(0)
@@ -918,6 +926,13 @@ func TransitionToEditor(buffers []*buffer.Buffer, filePath string) {
 			log.Printf("THICC: Failed to initialize layout: %v", err)
 			thiccLayout = nil
 		}
+	}
+
+	// Handle pending install command from dashboard
+	if pendingInstallCmd != "" && thiccLayout != nil {
+		log.Printf("THICC: Executing pending install command: %s", pendingInstallCmd)
+		thiccLayout.SpawnTerminalWithInstallCommand(pendingInstallCmd)
+		pendingInstallCmd = "" // Clear after use
 	}
 
 	log.Println("THICC: TransitionToEditor completed")

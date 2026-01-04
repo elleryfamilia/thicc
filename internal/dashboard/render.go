@@ -63,9 +63,14 @@ func (d *Dashboard) calculateLayout() {
 	}
 	menuHeight := 4 + len(d.MenuItems) + 1 // header + items + spacing
 
-	// AI Tools section height
-	if len(d.AITools) > 0 {
-		menuHeight += 3 + len(d.AITools) // section header + separator + tools
+	// AI Tools section height (available + installable)
+	totalTools := d.totalAIToolItems()
+	if totalTools > 0 {
+		extraRows := 0
+		if len(d.InstallTools) > 0 {
+			extraRows = 1 // "Not Installed" separator
+		}
+		menuHeight += 3 + totalTools + extraRows // section header + separator + tools + install separator
 	}
 
 	if recentCount > 0 {
@@ -204,12 +209,17 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 		y++
 	}
 
-	// Draw AI Tools section if there are any available
-	if len(d.AITools) > 0 {
+	// Draw AI Tools section if there are any available or installable
+	totalTools := d.totalAIToolItems()
+	if totalTools > 0 {
 		y++ // spacing
 
 		// Store the start of AI tools region for click detection
-		d.aiToolsRegion = Region{X: r.X + 2, Y: y, Width: r.Width - 4, Height: len(d.AITools) + 2}
+		extraRows := 0
+		if len(d.InstallTools) > 0 {
+			extraRows = 1 // separator line
+		}
+		d.aiToolsRegion = Region{X: r.X + 2, Y: y, Width: r.Width - 4, Height: totalTools + 2 + extraRows}
 
 		// Section header
 		header := "AI Tools"
@@ -224,12 +234,30 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 		}
 		y++
 
-		// AI tool items with radio buttons
+		// Available AI tool items with radio buttons
 		for i, tool := range d.AITools {
 			isFocused := d.InAIToolsPane && d.AIToolsIdx == i
 			isToolSelected := d.IsAIToolSelected(tool.Command)
 			d.drawAIToolItem(screen, r.X+2, y, r.Width-4, tool, isFocused, isToolSelected)
 			y++
+		}
+
+		// Installable tools section
+		if len(d.InstallTools) > 0 {
+			// Draw "Not Installed" separator
+			hintStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+			sepText := "── Not Installed ──"
+			sepX := r.X + (r.Width-len(sepText))/2
+			d.drawText(screen, sepX, y, sepText, hintStyle)
+			y++
+
+			// Installable tool items
+			for i, tool := range d.InstallTools {
+				idx := len(d.AITools) + i
+				isFocused := d.InAIToolsPane && d.AIToolsIdx == idx
+				d.drawInstallToolItem(screen, r.X+2, y, r.Width-4, tool, isFocused)
+				y++
+			}
 		}
 	}
 
@@ -460,6 +488,47 @@ func (d *Dashboard) drawAIToolItem(screen tcell.Screen, x, y, width int, tool ai
 	}
 }
 
+// drawInstallToolItem renders a single installable tool item with [Install] suffix
+func (d *Dashboard) drawInstallToolItem(screen tcell.Screen, x, y, width int, tool aiterminal.AITool, focused bool) {
+	// Check if this install tool is selected
+	isSelected := d.SelectedInstallCmd == tool.InstallCommand
+
+	// Yellow style for installable tools
+	style := tcell.StyleDefault.Foreground(tcell.ColorYellow)
+	if focused {
+		style = tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorYellow)
+	}
+
+	// Radio button character - filled if selected
+	radioChar := "( )"
+	if isSelected {
+		radioChar = "(*)"
+	}
+
+	// Format: "( ) Tool Name [Install]"
+	suffix := " [Install]"
+	name := tool.Name
+	// Truncate name if too long
+	maxNameLen := width - 5 - len(suffix) // "( ) " prefix + suffix
+	if len(name) > maxNameLen && maxNameLen > 3 {
+		name = name[:maxNameLen-1] + "…"
+	}
+
+	line := radioChar + " " + name + suffix
+
+	// Pad to width
+	if len(line) < width {
+		line += strings.Repeat(" ", width-len(line))
+	}
+
+	// Draw the line
+	for i, ch := range line {
+		if x+i < d.ScreenW {
+			screen.SetContent(x+i, y, ch, nil, style)
+		}
+	}
+}
+
 // drawKeyboardHints renders the footer with keyboard shortcuts
 func (d *Dashboard) drawKeyboardHints(screen tcell.Screen) {
 	y := d.ScreenH - 2
@@ -556,8 +625,13 @@ func (d *Dashboard) GetRecentItemAtPosition(x, y int) int {
 
 	// Calculate where recent items start (after menu and AI tools section)
 	recentStartY := r.Y + 2 + len(d.MenuItems) // menu items
-	if len(d.AITools) > 0 {
-		recentStartY += 1 + 2 + len(d.AITools) // spacing + header + separator + tools
+	totalTools := d.totalAIToolItems()
+	if totalTools > 0 {
+		extraRows := 0
+		if len(d.InstallTools) > 0 {
+			extraRows = 1 // "Not Installed" separator
+		}
+		recentStartY += 1 + 2 + totalTools + extraRows // spacing + header + separator + tools + install separator
 	}
 	recentStartY += 3 // spacing + header + separator for recent
 
@@ -576,6 +650,8 @@ func (d *Dashboard) GetRecentItemAtPosition(x, y int) int {
 }
 
 // GetAIToolItemAtPosition returns the AI tool index at the given screen position, or -1
+// The returned index covers both available tools (0 to len(AITools)-1) and
+// installable tools (len(AITools) to totalAIToolItems()-1)
 func (d *Dashboard) GetAIToolItemAtPosition(x, y int) int {
 	r := d.menuRegion
 
@@ -584,16 +660,28 @@ func (d *Dashboard) GetAIToolItemAtPosition(x, y int) int {
 		return -1
 	}
 
-	if len(d.AITools) == 0 {
+	totalTools := d.totalAIToolItems()
+	if totalTools == 0 {
 		return -1
 	}
 
 	// Calculate where AI tools items start
 	aiToolsStartY := r.Y + 2 + len(d.MenuItems) + 1 + 2 // menu items + spacing + header + separator
 
+	// Check available tools
 	for i := 0; i < len(d.AITools); i++ {
 		if y == aiToolsStartY+i {
 			return i
+		}
+	}
+
+	// Check installable tools (after separator line)
+	if len(d.InstallTools) > 0 {
+		installStartY := aiToolsStartY + len(d.AITools) + 1 // +1 for "Not Installed" separator
+		for i := 0; i < len(d.InstallTools); i++ {
+			if y == installStartY+i {
+				return len(d.AITools) + i
+			}
 		}
 	}
 

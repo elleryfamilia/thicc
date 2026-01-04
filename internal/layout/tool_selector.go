@@ -10,11 +10,13 @@ import (
 
 // ToolSelector is a modal for selecting shell or AI tool for a new terminal
 type ToolSelector struct {
-	AITools     []aiterminal.AITool
-	SelectedIdx int
-	Active      bool
-	OnSelect    func(cmdArgs []string) // callback with selected command
-	OnCancel    func()                 // callback when cancelled
+	AITools        []aiterminal.AITool
+	InstallTools   []aiterminal.AITool // Tools that can be installed
+	SelectedIdx    int
+	Active         bool
+	OnSelect       func(cmdArgs []string) // callback with selected command
+	OnInstall      func(installCmd string) // callback to open shell with install command
+	OnCancel       func()                  // callback when cancelled
 }
 
 // NewToolSelector creates a new tool selector with available tools
@@ -35,20 +37,44 @@ func NewToolSelector() *ToolSelector {
 		tools = append([]aiterminal.AITool{shell}, append(tools[:shellIdx], tools[shellIdx+1:]...)...)
 	}
 
+	// Get installable tools (not available but can be installed)
+	installable := aiterminal.GetInstallableTools()
+
 	return &ToolSelector{
-		AITools:     tools,
-		SelectedIdx: 0, // Default to first item (Shell)
-		Active:      false,
+		AITools:      tools,
+		InstallTools: installable,
+		SelectedIdx:  0, // Default to first item (Shell)
+		Active:       false,
 	}
 }
 
 // Show activates the tool selector
-func (ts *ToolSelector) Show(onSelect func(cmdArgs []string), onCancel func()) {
+func (ts *ToolSelector) Show(onSelect func(cmdArgs []string), onInstall func(installCmd string), onCancel func()) {
 	ts.Active = true
 	ts.SelectedIdx = 0 // Reset to shell
 	ts.OnSelect = onSelect
+	ts.OnInstall = onInstall
 	ts.OnCancel = onCancel
 	log.Println("THICC: Tool selector shown")
+}
+
+// totalItems returns the total number of selectable items
+func (ts *ToolSelector) totalItems() int {
+	return len(ts.AITools) + len(ts.InstallTools)
+}
+
+// isInstallItem returns true if the index points to an installable tool
+func (ts *ToolSelector) isInstallItem(idx int) bool {
+	return idx >= len(ts.AITools)
+}
+
+// getInstallTool returns the install tool at the given index (adjusted for AITools offset)
+func (ts *ToolSelector) getInstallTool(idx int) *aiterminal.AITool {
+	installIdx := idx - len(ts.AITools)
+	if installIdx >= 0 && installIdx < len(ts.InstallTools) {
+		return &ts.InstallTools[installIdx]
+	}
+	return nil
 }
 
 // Hide deactivates the tool selector
@@ -68,6 +94,8 @@ func (ts *ToolSelector) HandleEvent(event tcell.Event) bool {
 		return false
 	}
 
+	total := ts.totalItems()
+
 	switch ev := event.(type) {
 	case *tcell.EventKey:
 		switch ev.Key() {
@@ -77,7 +105,7 @@ func (ts *ToolSelector) HandleEvent(event tcell.Event) bool {
 			}
 			return true
 		case tcell.KeyDown, tcell.KeyTab:
-			if ts.SelectedIdx < len(ts.AITools)-1 {
+			if ts.SelectedIdx < total-1 {
 				ts.SelectedIdx++
 			}
 			return true
@@ -91,7 +119,7 @@ func (ts *ToolSelector) HandleEvent(event tcell.Event) bool {
 			// Vim-style navigation
 			switch ev.Rune() {
 			case 'j':
-				if ts.SelectedIdx < len(ts.AITools)-1 {
+				if ts.SelectedIdx < total-1 {
 					ts.SelectedIdx++
 				}
 				return true
@@ -109,6 +137,20 @@ func (ts *ToolSelector) HandleEvent(event tcell.Event) bool {
 
 // selectCurrent selects the current tool and triggers the callback
 func (ts *ToolSelector) selectCurrent() {
+	// Check if it's an install item
+	if ts.isInstallItem(ts.SelectedIdx) {
+		tool := ts.getInstallTool(ts.SelectedIdx)
+		if tool != nil {
+			log.Printf("THICC: Install tool selected: %s", tool.Name)
+			ts.Hide()
+			if ts.OnInstall != nil {
+				ts.OnInstall(tool.InstallCommand)
+			}
+		}
+		return
+	}
+
+	// Regular available tool
 	if ts.SelectedIdx >= 0 && ts.SelectedIdx < len(ts.AITools) {
 		tool := ts.AITools[ts.SelectedIdx]
 		log.Printf("THICC: Tool selected: %s", tool.Name)
@@ -143,11 +185,18 @@ func (ts *ToolSelector) Render(screen tcell.Screen, termRegionX, termRegionW, sc
 	}
 
 	// Calculate modal size
-	modalWidth := 40
+	modalWidth := 48 // Wider to accommodate "[Install]" suffix
 	if modalWidth > termRegionW-4 {
 		modalWidth = termRegionW - 4 // Ensure modal fits in terminal region
 	}
-	modalHeight := len(ts.AITools) + 6 // tools + title + borders + instructions
+
+	// Calculate height: tools + install section + title + borders + instructions
+	hasInstallable := len(ts.InstallTools) > 0
+	extraRows := 0
+	if hasInstallable {
+		extraRows = len(ts.InstallTools) + 1 // +1 for separator
+	}
+	modalHeight := len(ts.AITools) + extraRows + 6 // tools + title + borders + instructions
 
 	// Center the modal within the terminal region
 	startX := termRegionX + (termRegionW-modalWidth)/2
@@ -159,6 +208,8 @@ func (ts *ToolSelector) Render(screen tcell.Screen, termRegionX, termRegionW, sc
 	normalStyle := config.DefStyle
 	selectedStyle := config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorTeal)
 	hintStyle := config.DefStyle.Foreground(tcell.ColorGray)
+	installStyle := config.DefStyle.Foreground(tcell.ColorYellow)
+	installSelectedStyle := config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorYellow)
 
 	// Draw background
 	for y := startY; y < startY+modalHeight; y++ {
@@ -180,7 +231,7 @@ func (ts *ToolSelector) Render(screen tcell.Screen, termRegionX, termRegionW, sc
 		screen.SetContent(x, startY+2, '─', nil, borderStyle)
 	}
 
-	// Draw tool options
+	// Draw available tool options
 	for i, tool := range ts.AITools {
 		y := startY + 3 + i
 		style := normalStyle
@@ -201,6 +252,39 @@ func (ts *ToolSelector) Render(screen tcell.Screen, termRegionX, termRegionW, sc
 		}
 
 		drawString(screen, startX+2, y, line, style)
+	}
+
+	// Draw installable tools section
+	if hasInstallable {
+		separatorY := startY + 3 + len(ts.AITools)
+
+		// Draw "Not installed" separator
+		sepText := "── Not Installed ──"
+		sepX := startX + (modalWidth-len(sepText))/2
+		drawString(screen, sepX, separatorY, sepText, hintStyle)
+
+		for i, tool := range ts.InstallTools {
+			y := separatorY + 1 + i
+			idx := len(ts.AITools) + i
+			style := installStyle
+			if idx == ts.SelectedIdx {
+				style = installSelectedStyle
+			}
+
+			// Radio button
+			radio := "( )"
+			if idx == ts.SelectedIdx {
+				radio = "(*)"
+			}
+
+			line := radio + " " + tool.Name + " [Install]"
+			// Pad to fill width
+			for len(line) < modalWidth-4 {
+				line += " "
+			}
+
+			drawString(screen, startX+2, y, line, style)
+		}
 	}
 
 	// Draw instructions
