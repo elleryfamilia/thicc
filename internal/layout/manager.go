@@ -1151,8 +1151,9 @@ func (lm *LayoutManager) drawDividers(screen tcell.Screen) {
 		Foreground(bgColor).
 		Background(bgColor)
 
-	// Only draw divider after tree if tree is visible and there's something to the right
-	if lm.TreeVisible && (lm.EditorVisible || lm.TerminalVisible || lm.needsPlaceholders()) {
+	// Only draw divider after tree if tree is visible and there's an editor or placeholder
+	// (don't draw if terminal is directly adjacent - it draws its own left border)
+	if lm.TreeVisible && (lm.EditorVisible || lm.needsPlaceholders()) {
 		treeW := lm.getTreeWidth()
 		for y := 0; y < lm.ScreenH; y++ {
 			screen.SetContent(treeW, y, PowerlineArrowRight, nil, powerlineStyle)
