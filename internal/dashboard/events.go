@@ -7,6 +7,15 @@ import (
 // HandleEvent processes all events for the dashboard
 // Returns true if the event was consumed
 func (d *Dashboard) HandleEvent(event tcell.Event) bool {
+	// If onboarding guide is active, route events to it
+	// If guide doesn't consume the event, continue processing (e.g., for Ctrl+Q)
+	if d.IsOnboardingGuideActive() {
+		if d.OnboardingGuide.HandleEvent(event) {
+			return true
+		}
+		// Fall through to handle unprocessed events like Ctrl+Q
+	}
+
 	// If project picker is active, route events to it
 	if d.IsProjectPickerActive() {
 		return d.ProjectPicker.HandleEvent(event)
@@ -75,6 +84,11 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 		case '1', '2', '3', '4', '5', '6', '7', '8', '9':
 			num := int(ev.Rune() - '0')
 			d.OpenRecentByNumber(num)
+			return true
+
+		// Help shortcut - show onboarding guide
+		case '?':
+			d.ShowOnboardingGuide()
 			return true
 		}
 	}

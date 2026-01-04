@@ -37,6 +37,11 @@ func (d *Dashboard) Render(screen tcell.Screen) {
 	if d.IsProjectPickerActive() {
 		d.ProjectPicker.Render(screen)
 	}
+
+	// Draw onboarding guide overlay if active
+	if d.IsOnboardingGuideActive() {
+		d.OnboardingGuide.Render(screen)
+	}
 }
 
 // clearScreen fills the screen with the background color
@@ -541,11 +546,12 @@ func (d *Dashboard) drawKeyboardHints(screen tcell.Screen) {
 		{"o", "Open"},
 		{"q", "Quit"},
 		{"↑↓", "Navigate"},
+		{"?", "Help"},
 	}
 
-	// Add recent hint if there are recent projects
+	// Add recent hint if there are recent projects (insert after Quit, before Navigate)
 	if len(d.RecentStore.Projects) > 0 {
-		hints = append(hints[:3], struct{ key, desc string }{"1-9", "Recent"}, hints[3])
+		hints = append(hints[:3], append([]struct{ key, desc string }{{"1-9", "Recent"}}, hints[3:]...)...)
 	}
 
 	// Build hint string

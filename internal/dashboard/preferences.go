@@ -17,6 +17,9 @@ type Preferences struct {
 	// SelectedAITool is the command name of the selected AI tool (e.g., "claude", "aider")
 	// Empty string means no tool selected (use default shell)
 	SelectedAITool string `json:"selected_ai_tool"`
+
+	// HasSeenOnboarding tracks whether the user has seen the first-run guide
+	HasSeenOnboarding bool `json:"has_seen_onboarding"`
 }
 
 // PreferencesStore manages persistent storage of dashboard preferences
@@ -102,4 +105,15 @@ func (ps *PreferencesStore) ClearSelectedAITool() {
 // HasSelectedAITool returns true if an AI tool is selected
 func (ps *PreferencesStore) HasSelectedAITool() bool {
 	return ps.Prefs.SelectedAITool != ""
+}
+
+// HasSeenOnboarding returns true if the user has seen the first-run guide
+func (ps *PreferencesStore) HasSeenOnboarding() bool {
+	return ps.Prefs.HasSeenOnboarding
+}
+
+// MarkOnboardingComplete marks the onboarding guide as seen and saves
+func (ps *PreferencesStore) MarkOnboardingComplete() {
+	ps.Prefs.HasSeenOnboarding = true
+	ps.Save()
 }

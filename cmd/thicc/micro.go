@@ -494,10 +494,12 @@ func main() {
 	}
 
 	// THOCK: Create layout manager (panels will be initialized later after screen size is known)
-	// Create it now even for dashboard - we'll preload the terminal in the background
-	log.Println("THICC: About to call InitThiccLayout")
-	InitThiccLayout()
-	log.Println("THICC: InitThiccLayout completed")
+	// Only create now if NOT showing dashboard - dashboard will create it after user selects a project
+	if !showDashboard {
+		log.Println("THICC: About to call InitThiccLayout")
+		InitThiccLayout()
+		log.Println("THICC: InitThiccLayout completed")
+	}
 
 	err = config.RunPluginFn("init")
 	if err != nil {
@@ -863,6 +865,8 @@ func InitDashboard() {
 		if err := os.Chdir(path); err != nil {
 			log.Printf("THOCK Dashboard: Failed to chdir to %s: %v", path, err)
 		}
+		// Reset layout so it gets recreated with the new working directory
+		thiccLayout = nil
 		TransitionToEditor(nil, "")
 		// Add to recent projects
 		thiccDashboard.RecentStore.AddProject(path, true)
@@ -887,6 +891,8 @@ func InitDashboard() {
 		if err := os.Chdir(path); err != nil {
 			log.Printf("THOCK Dashboard: Failed to chdir to %s: %v", path, err)
 		}
+		// Reset layout so it gets recreated with the new working directory
+		thiccLayout = nil
 		TransitionToEditor(nil, "")
 		// Add to recent projects
 		thiccDashboard.RecentStore.AddProject(path, true)
@@ -902,6 +908,13 @@ func InitDashboard() {
 	thiccDashboard.OnExit = func() {
 		log.Println("THOCK Dashboard: Exit selected")
 		exit(0)
+	}
+
+	// Check if this is first run and show onboarding guide
+	if !thiccDashboard.PrefsStore.HasSeenOnboarding() {
+		log.Println("THICC: First run detected, showing onboarding guide")
+		thiccDashboard.ShowOnboardingGuide()
+		thiccDashboard.PrefsStore.MarkOnboardingComplete()
 	}
 
 	log.Println("THICC: InitDashboard completed")

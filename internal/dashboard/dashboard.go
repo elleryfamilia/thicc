@@ -57,6 +57,9 @@ type Dashboard struct {
 	// Project Picker modal
 	ProjectPicker *ProjectPicker
 
+	// Onboarding Guide modal
+	OnboardingGuide *OnboardingGuide
+
 	// Callbacks - set by the caller to handle actions
 	OnNewFile     func()             // Create new empty file
 	OnOpenProject func(path string)  // Open a project folder
@@ -115,6 +118,9 @@ func NewDashboard(screen tcell.Screen) *Dashboard {
 
 	// Initialize AIToolsIdx based on saved preference
 	d.initAIToolsIdx()
+
+	// Initialize onboarding guide
+	d.OnboardingGuide = NewOnboardingGuide()
 
 	return d
 }
@@ -511,4 +517,16 @@ func (d *Dashboard) ShowProjectPicker() {
 // IsProjectPickerActive returns true if the project picker is currently shown
 func (d *Dashboard) IsProjectPickerActive() bool {
 	return d.ProjectPicker != nil && d.ProjectPicker.Active
+}
+
+// ShowOnboardingGuide displays the onboarding guide
+func (d *Dashboard) ShowOnboardingGuide() {
+	if d.OnboardingGuide != nil {
+		d.OnboardingGuide.Show(d.ScreenW, d.ScreenH)
+	}
+}
+
+// IsOnboardingGuideActive returns true if the onboarding guide is currently shown
+func (d *Dashboard) IsOnboardingGuideActive() bool {
+	return d.OnboardingGuide != nil && d.OnboardingGuide.Active
 }
