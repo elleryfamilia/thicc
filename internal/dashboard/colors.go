@@ -27,10 +27,13 @@ var (
 )
 
 // Pre-defined styles for dashboard elements
+// NOTE: All styles MUST set both Foreground AND Background explicitly
+// to prevent color changes in light mode terminals
 var (
 	// Title style - big bold pink
 	StyleTitle = tcell.StyleDefault.
 			Foreground(ColorMagenta).
+			Background(ColorBgDark).
 			Bold(true)
 
 	// Menu item styles
@@ -45,7 +48,8 @@ var (
 
 	// Shortcut hints - cyan accent
 	StyleShortcut = tcell.StyleDefault.
-			Foreground(ColorCyan)
+			Foreground(ColorCyan).
+			Background(ColorBgDark)
 
 	// Recent projects list
 	StyleRecentItem = tcell.StyleDefault.
@@ -63,35 +67,44 @@ var (
 
 	// Border style
 	StyleBorder = tcell.StyleDefault.
-			Foreground(ColorMagenta)
+			Foreground(ColorMagenta).
+			Background(ColorBgDark)
 
 	StyleBorderDim = tcell.StyleDefault.
-			Foreground(ColorMagentaDark)
+			Foreground(ColorMagentaDark).
+			Background(ColorBgDark)
 
 	// Version and footer
 	StyleVersion = tcell.StyleDefault.
-			Foreground(ColorTextMuted)
+			Foreground(ColorTextMuted).
+			Background(ColorBgDark)
 
 	StyleFooterHint = tcell.StyleDefault.
-			Foreground(ColorTextDim)
+			Foreground(ColorTextDim).
+			Background(ColorBgDark)
 
 	StyleFooterKey = tcell.StyleDefault.
 			Foreground(ColorYellow).
+			Background(ColorBgDark).
 			Bold(true)
 
 	// ASCII art - gradient effect
 	StyleArtPrimary = tcell.StyleDefault.
-			Foreground(ColorMagenta)
+			Foreground(ColorMagenta).
+			Background(ColorBgDark)
 
 	StyleArtSecondary = tcell.StyleDefault.
-				Foreground(ColorCyan)
+				Foreground(ColorCyan).
+				Background(ColorBgDark)
 
 	StyleArtAccent = tcell.StyleDefault.
-			Foreground(ColorYellow)
+			Foreground(ColorYellow).
+			Background(ColorBgDark)
 
 	// Section header
 	StyleSectionHeader = tcell.StyleDefault.
 				Foreground(ColorCyan).
+				Background(ColorBgDark).
 				Bold(true)
 
 	// Background fill

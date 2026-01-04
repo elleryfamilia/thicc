@@ -53,16 +53,17 @@ var ThiccTagline = "a terminal editor that sparks joy"
 
 // GetLogoColorForChar returns the color style based on the character type
 // Solid blocks (█) get one color, shaded blocks (▒, ░) get another for depth
+// All styles have explicit fg AND bg to prevent color changes in light mode
 func GetLogoColorForChar(ch rune) tcell.Style {
 	switch ch {
 	case '█':
 		// Solid parts - bright magenta/pink
-		return tcell.StyleDefault.Foreground(ColorMagenta).Bold(true)
+		return tcell.StyleDefault.Foreground(ColorMagenta).Background(ColorBgDark).Bold(true)
 	case '▒', '░':
 		// Shaded/outline parts - cyan for contrast
-		return tcell.StyleDefault.Foreground(ColorCyan).Bold(true)
+		return tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark).Bold(true)
 	default:
 		// Everything else (spaces, etc)
-		return tcell.StyleDefault.Foreground(ColorMagenta).Bold(true)
+		return tcell.StyleDefault.Foreground(ColorMagenta).Background(ColorBgDark).Bold(true)
 	}
 }

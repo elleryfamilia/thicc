@@ -165,14 +165,15 @@ func (m *ShortcutsModal) Render(screen tcell.Screen) {
 	startX := (m.ScreenW - boxWidth) / 2
 	startY := (m.ScreenH - boxHeight) / 2
 
-	// Styles
-	borderStyle := tcell.StyleDefault.Foreground(tcell.Color205) // Hot pink
-	bgStyle := tcell.StyleDefault.Background(tcell.ColorBlack)
-	titleStyle := tcell.StyleDefault.Foreground(tcell.Color205).Bold(true)
-	sectionStyle := tcell.StyleDefault.Foreground(tcell.Color51).Bold(true) // Cyan
-	keyStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Bold(true)
-	descStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
-	hintStyle := tcell.StyleDefault.Foreground(tcell.Color243) // Dim gray
+	// Styles - all must have explicit fg AND bg to prevent color changes in light mode
+	bgColor := tcell.ColorBlack
+	borderStyle := tcell.StyleDefault.Foreground(tcell.Color205).Background(bgColor) // Hot pink
+	bgStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(bgColor)
+	titleStyle := tcell.StyleDefault.Foreground(tcell.Color205).Background(bgColor).Bold(true)
+	sectionStyle := tcell.StyleDefault.Foreground(tcell.Color51).Background(bgColor).Bold(true) // Cyan
+	keyStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(bgColor).Bold(true)
+	descStyle := tcell.StyleDefault.Foreground(tcell.ColorGray).Background(bgColor)
+	hintStyle := tcell.StyleDefault.Foreground(tcell.Color243).Background(bgColor) // Dim gray
 
 	// Draw background
 	for y := startY; y < startY+boxHeight; y++ {

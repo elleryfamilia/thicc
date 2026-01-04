@@ -148,14 +148,15 @@ func (m *InputModal) Render(screen tcell.Screen) {
 	startX := (m.ScreenW - boxWidth) / 2
 	startY := (m.ScreenH - boxHeight) / 2
 
-	// Styles
-	borderStyle := tcell.StyleDefault.Foreground(tcell.Color205) // Hot pink
-	bgStyle := tcell.StyleDefault.Background(tcell.ColorBlack)
-	titleStyle := tcell.StyleDefault.Foreground(tcell.Color205).Bold(true)
-	promptStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite)
+	// Styles - all must have explicit fg AND bg to prevent color changes in light mode
+	bgColor := tcell.ColorBlack
+	borderStyle := tcell.StyleDefault.Foreground(tcell.Color205).Background(bgColor) // Hot pink
+	bgStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(bgColor)
+	titleStyle := tcell.StyleDefault.Foreground(tcell.Color205).Background(bgColor).Bold(true)
+	promptStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(bgColor)
 	inputBgStyle := tcell.StyleDefault.Background(tcell.ColorDarkGray).Foreground(tcell.ColorWhite)
 	cursorStyle := tcell.StyleDefault.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
-	optStyle := tcell.StyleDefault.Foreground(tcell.Color51) // Cyan
+	optStyle := tcell.StyleDefault.Foreground(tcell.Color51).Background(bgColor) // Cyan
 
 	// Draw background
 	for y := startY; y < startY+boxHeight; y++ {

@@ -156,7 +156,8 @@ func (g *OnboardingGuide) Render(screen tcell.Screen) {
 	}
 
 	// Fill entire screen with dark background to hide dashboard
-	fullBgStyle := tcell.StyleDefault.Background(ColorBgDark)
+	// Must set both fg and bg explicitly for light mode compatibility
+	fullBgStyle := tcell.StyleDefault.Foreground(ColorTextBright).Background(ColorBgDark)
 	for y := 0; y < g.ScreenH; y++ {
 		for x := 0; x < g.ScreenW; x++ {
 			screen.SetContent(x, y, ' ', nil, fullBgStyle)
@@ -181,17 +182,18 @@ func (g *OnboardingGuide) Render(screen tcell.Screen) {
 	startX := (g.ScreenW - boxWidth) / 2
 	startY := (g.ScreenH - boxHeight) / 2
 
-	// Styles
-	borderStyle := tcell.StyleDefault.Foreground(ColorMagenta).Bold(true)
-	bgStyle := tcell.StyleDefault.Background(ColorBgDark)
-	titleStyle := tcell.StyleDefault.Foreground(ColorMagenta).Bold(true)
-	pageTitleStyle := tcell.StyleDefault.Foreground(ColorCyan).Bold(true)
-	keyStyle := tcell.StyleDefault.Foreground(ColorYellow).Bold(true)
-	valueStyle := tcell.StyleDefault.Foreground(ColorTextDim)
-	descStyle := tcell.StyleDefault.Foreground(ColorTextMuted)
-	hintStyle := tcell.StyleDefault.Foreground(ColorTextMuted)
-	dotActiveStyle := tcell.StyleDefault.Foreground(ColorMagenta)
-	dotInactiveStyle := tcell.StyleDefault.Foreground(ColorTextMuted)
+	// Styles - all must have explicit foreground AND background to prevent
+	// color changes in light mode terminals
+	borderStyle := tcell.StyleDefault.Foreground(ColorMagenta).Background(ColorBgDark).Bold(true)
+	bgStyle := tcell.StyleDefault.Foreground(ColorTextBright).Background(ColorBgDark)
+	titleStyle := tcell.StyleDefault.Foreground(ColorMagenta).Background(ColorBgDark).Bold(true)
+	pageTitleStyle := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark).Bold(true)
+	keyStyle := tcell.StyleDefault.Foreground(ColorYellow).Background(ColorBgDark).Bold(true)
+	valueStyle := tcell.StyleDefault.Foreground(ColorTextDim).Background(ColorBgDark)
+	descStyle := tcell.StyleDefault.Foreground(ColorTextMuted).Background(ColorBgDark)
+	hintStyle := tcell.StyleDefault.Foreground(ColorTextMuted).Background(ColorBgDark)
+	dotActiveStyle := tcell.StyleDefault.Foreground(ColorMagenta).Background(ColorBgDark)
+	dotInactiveStyle := tcell.StyleDefault.Foreground(ColorTextMuted).Background(ColorBgDark)
 
 	// Draw background
 	for y := startY; y < startY+boxHeight; y++ {

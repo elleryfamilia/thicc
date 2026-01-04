@@ -475,7 +475,8 @@ func (p *ProjectPicker) Render(screen tcell.Screen) {
 	y := (h - p.Height) / 2
 
 	// Draw background
-	bgStyle := tcell.StyleDefault.Background(ColorBgDark)
+	// All styles must have explicit fg AND bg to prevent color changes in light mode
+	bgStyle := tcell.StyleDefault.Foreground(ColorTextBright).Background(ColorBgDark)
 	for dy := 0; dy < p.Height; dy++ {
 		for dx := 0; dx < p.Width; dx++ {
 			screen.SetContent(x+dx, y+dy, ' ', nil, bgStyle)
@@ -483,7 +484,7 @@ func (p *ProjectPicker) Render(screen tcell.Screen) {
 	}
 
 	// Draw border
-	borderStyle := tcell.StyleDefault.Foreground(ColorCyan).Bold(true)
+	borderStyle := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark).Bold(true)
 
 	// Top border with title
 	screen.SetContent(x, y, '╔', nil, borderStyle)
@@ -495,7 +496,7 @@ func (p *ProjectPicker) Render(screen tcell.Screen) {
 	// Title
 	title := " Open Project "
 	titleX := x + (p.Width-len(title))/2
-	titleStyle := tcell.StyleDefault.Foreground(ColorCyan).Bold(true)
+	titleStyle := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark).Bold(true)
 	for i, ch := range title {
 		screen.SetContent(titleX+i, y, ch, nil, titleStyle)
 	}
@@ -509,8 +510,8 @@ func (p *ProjectPicker) Render(screen tcell.Screen) {
 
 	// Input field (line 2)
 	inputY := y + 2
-	inputStyle := tcell.StyleDefault.Foreground(ColorTextBright)
-	previewStyle := tcell.StyleDefault.Foreground(ColorTextMuted) // Dimmed for preview
+	inputStyle := tcell.StyleDefault.Foreground(ColorTextBright).Background(ColorBgDark)
+	previewStyle := tcell.StyleDefault.Foreground(ColorTextMuted).Background(ColorBgDark) // Dimmed for preview
 
 	// Draw input with cursor
 	inputX := x + 2
@@ -552,6 +553,7 @@ func (p *ProjectPicker) Render(screen tcell.Screen) {
 	}
 
 	// Draw input characters with appropriate styling
+	// highlightStyle already has explicit fg and bg
 	highlightStyle := tcell.StyleDefault.Foreground(ColorBgDark).Background(ColorYellow)
 	for i := 0; i < inputWidth; i++ {
 		charIdx := inputOffset + i
@@ -589,13 +591,14 @@ func (p *ProjectPicker) Render(screen tcell.Screen) {
 	listSepY := y + 3
 	screen.SetContent(x, listSepY, '╠', nil, borderStyle)
 	screen.SetContent(x+p.Width-1, listSepY, '╣', nil, borderStyle)
+	sepStyle := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark)
 	for i := 1; i < p.Width-1; i++ {
-		screen.SetContent(x+i, listSepY, '─', nil, tcell.StyleDefault.Foreground(ColorCyan))
+		screen.SetContent(x+i, listSepY, '─', nil, sepStyle)
 	}
 
 	// Directory list
 	listY := y + 4
-	listStyle := tcell.StyleDefault.Foreground(ColorTextDim)
+	listStyle := tcell.StyleDefault.Foreground(ColorTextDim).Background(ColorBgDark)
 	selectedStyle := tcell.StyleDefault.Foreground(ColorBgDark).Background(ColorYellow).Bold(true)
 
 	for i := 0; i < p.ListHeight; i++ {
@@ -649,13 +652,13 @@ func (p *ProjectPicker) Render(screen tcell.Screen) {
 	screen.SetContent(x, hintSepY, '╠', nil, borderStyle)
 	screen.SetContent(x+p.Width-1, hintSepY, '╣', nil, borderStyle)
 	for i := 1; i < p.Width-1; i++ {
-		screen.SetContent(x+i, hintSepY, '─', nil, tcell.StyleDefault.Foreground(ColorCyan))
+		screen.SetContent(x+i, hintSepY, '─', nil, sepStyle)
 	}
 
 	// Hints (contextual)
 	hintY := y + p.Height - 2
 	hints := p.getContextualHints()
-	hintStyle := tcell.StyleDefault.Foreground(ColorTextMuted)
+	hintStyle := tcell.StyleDefault.Foreground(ColorTextMuted).Background(ColorBgDark)
 	hintX := x + (p.Width-len(hints))/2
 	for i, ch := range hints {
 		screen.SetContent(hintX+i, hintY, ch, nil, hintStyle)

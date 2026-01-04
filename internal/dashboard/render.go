@@ -194,7 +194,7 @@ func (d *Dashboard) drawLogo(screen tcell.Screen) {
 	taglineX := d.menuRegion.X + (d.menuRegion.Width-len(ThiccTagline))/2
 	taglineY := logoY + ThiccLogoHeight + 1
 	if taglineY < d.menuRegion.Y {
-		taglineStyle := tcell.StyleDefault.Foreground(ColorCyan).Italic(true)
+		taglineStyle := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark).Italic(true)
 		d.drawText(screen, taglineX, taglineY, ThiccTagline, taglineStyle)
 	}
 }
@@ -233,7 +233,7 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 		y++
 
 		// Separator line (cyan to match border)
-		separatorStyle := tcell.StyleDefault.Foreground(ColorCyan)
+		separatorStyle := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark)
 		for x := r.X + 2; x < r.X+r.Width-2; x++ {
 			screen.SetContent(x, y, '─', nil, separatorStyle)
 		}
@@ -250,7 +250,7 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 		// Installable tools section
 		if len(d.InstallTools) > 0 {
 			// Draw "Not Installed" separator
-			hintStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+			hintStyle := tcell.StyleDefault.Foreground(tcell.ColorGray).Background(ColorBgDark)
 			sepText := "── Not Installed ──"
 			sepX := r.X + (r.Width-len(sepText))/2
 			d.drawText(screen, sepX, y, sepText, hintStyle)
@@ -277,9 +277,9 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 		y++
 
 		// Separator line (cyan to match border)
-		separatorStyle := tcell.StyleDefault.Foreground(ColorCyan)
+		recentSepStyle := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark)
 		for x := r.X + 2; x < r.X+r.Width-2; x++ {
-			screen.SetContent(x, y, '─', nil, separatorStyle)
+			screen.SetContent(x, y, '─', nil, recentSepStyle)
 		}
 		y++
 
@@ -308,7 +308,8 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 // drawBorder draws a double-line border around a region
 func (d *Dashboard) drawBorder(screen tcell.Screen, x, y, w, h int) {
 	// Elegant cyan/blue border (comic-book style)
-	style := tcell.StyleDefault.Foreground(ColorCyan).Bold(true)
+	// All styles must have explicit fg AND bg to prevent color changes in light mode
+	style := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark).Bold(true)
 
 	// Corners
 	screen.SetContent(x, y, '╔', nil, style)
@@ -483,7 +484,7 @@ func (d *Dashboard) drawAIToolItem(screen tcell.Screen, x, y, width int, tool ai
 			charStyle := style
 			// Highlight the radio button when selected
 			if selected && i < 3 {
-				charStyle = tcell.StyleDefault.Foreground(ColorMagenta).Bold(true)
+				charStyle = tcell.StyleDefault.Foreground(ColorMagenta).Background(ColorBgDark).Bold(true)
 				if focused {
 					charStyle = style // Keep the focused highlight
 				}
@@ -499,7 +500,8 @@ func (d *Dashboard) drawInstallToolItem(screen tcell.Screen, x, y, width int, to
 	isSelected := d.SelectedInstallCmd == tool.InstallCommand
 
 	// Yellow style for installable tools
-	style := tcell.StyleDefault.Foreground(tcell.ColorYellow)
+	// All styles must have explicit fg AND bg to prevent color changes in light mode
+	style := tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(ColorBgDark)
 	if focused {
 		style = tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorYellow)
 	}

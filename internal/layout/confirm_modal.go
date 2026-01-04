@@ -113,12 +113,14 @@ func (m *ConfirmModal) Render(screen tcell.Screen) {
 	startY := (m.ScreenH - boxHeight) / 2
 
 	// Danger styles - red theme
-	borderStyle := tcell.StyleDefault.Foreground(tcell.Color196) // Bright red
-	bgStyle := tcell.StyleDefault.Background(tcell.ColorBlack)
-	titleStyle := tcell.StyleDefault.Foreground(tcell.Color196).Bold(true)
-	textStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite)
-	warningStyle := tcell.StyleDefault.Foreground(tcell.Color196) // Red warning text
-	optStyle := tcell.StyleDefault.Foreground(tcell.Color51)      // Cyan
+	// All must have explicit fg AND bg to prevent color changes in light mode
+	bgColor := tcell.ColorBlack
+	borderStyle := tcell.StyleDefault.Foreground(tcell.Color196).Background(bgColor) // Bright red
+	bgStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(bgColor)
+	titleStyle := tcell.StyleDefault.Foreground(tcell.Color196).Background(bgColor).Bold(true)
+	textStyle := tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(bgColor)
+	warningStyle := tcell.StyleDefault.Foreground(tcell.Color196).Background(bgColor) // Red warning text
+	optStyle := tcell.StyleDefault.Foreground(tcell.Color51).Background(bgColor)      // Cyan
 
 	// Draw background
 	for y := startY; y < startY+boxHeight; y++ {
