@@ -658,7 +658,7 @@ func DoEvent() {
 	// THOCK: Control cursor visibility based on which panel has focus
 	// Editor always shows its cursor during Display(), so we need to override after rendering
 	if thiccLayout != nil && thiccLayout.ActivePanel != 1 {
-		if thiccLayout.ActivePanel == 2 {
+		if thiccLayout.ActivePanel >= 2 && thiccLayout.ActivePanel <= 4 {
 			// Terminal focused - re-show terminal cursor (editor overwrote it)
 			thiccLayout.ShowTerminalCursor(screen.Screen)
 		} else {

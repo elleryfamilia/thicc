@@ -31,6 +31,8 @@ type LayoutManager struct {
 	// Panels
 	FileBrowser *filebrowser.Panel
 	Terminal    *terminal.Panel
+	Terminal2   *terminal.Panel
+	Terminal3   *terminal.Panel
 	// Editor uses micro's existing action.Tabs (middle region)
 
 	// Modal dialogs for prompts
@@ -51,11 +53,22 @@ type LayoutManager struct {
 	ScreenH         int // Total screen height
 
 	// Pane visibility state
-	TreeVisible     bool // Whether tree pane is visible (default: true)
-	EditorVisible   bool // Whether editor pane is visible (default: true)
-	TerminalVisible bool // Whether terminal pane is visible (default: true)
+	TreeVisible      bool // Whether tree pane is visible (default: true)
+	EditorVisible    bool // Whether editor pane is visible (default: true)
+	TerminalVisible  bool // Whether terminal pane is visible (default: true)
+	Terminal2Visible bool // Whether terminal2 pane is visible (default: false)
+	Terminal3Visible bool // Whether terminal3 pane is visible (default: false)
 
-	// Active panel (0=filebrowser, 1=editor, 2=terminal)
+	// Track if terminals have been initialized (tool selector shown)
+	Terminal2Initialized bool
+	Terminal3Initialized bool
+
+	// Tool selector modal for choosing shell/AI tool
+	ToolSelector        *ToolSelector
+	ToolSelectorTarget  int  // Which terminal (3=term2, 4=term3) is being configured
+	ShowingToolSelector bool
+
+	// Active panel (0=filebrowser, 1=editor, 2=terminal, 3=terminal2, 4=terminal3)
 	ActivePanel int
 
 	// Root directory for file browser
@@ -176,19 +189,72 @@ func (lm *LayoutManager) getTreeWidth() int {
 	return lm.TreeWidth
 }
 
+// getVisibleTerminalCount returns how many terminal panes are currently visible
+func (lm *LayoutManager) getVisibleTerminalCount() int {
+	count := 0
+	if lm.TerminalVisible {
+		count++
+	}
+	if lm.Terminal2Visible {
+		count++
+	}
+	if lm.Terminal3Visible {
+		count++
+	}
+	return count
+}
+
+// anyTerminalVisible returns true if any terminal pane is visible
+func (lm *LayoutManager) anyTerminalVisible() bool {
+	return lm.TerminalVisible || lm.Terminal2Visible || lm.Terminal3Visible
+}
+
+// getTotalTerminalSpace returns total space available for all terminal panes
+func (lm *LayoutManager) getTotalTerminalSpace() int {
+	if !lm.anyTerminalVisible() {
+		return 0
+	}
+
+	// If editor is also visible, terminals get their percentage of TOTAL screen width
+	if lm.EditorVisible {
+		return lm.ScreenW * lm.TermWidthPct / 100
+	}
+
+	// Terminals take all space after tree
+	return lm.ScreenW - lm.getTreeWidth()
+}
+
+// getSingleTerminalWidth returns width for each visible terminal pane
+func (lm *LayoutManager) getSingleTerminalWidth() int {
+	count := lm.getVisibleTerminalCount()
+	if count == 0 {
+		return 0
+	}
+	return lm.getTotalTerminalSpace() / count
+}
+
 // getTermWidth calculates terminal width based on visibility
 func (lm *LayoutManager) getTermWidth() int {
 	if !lm.TerminalVisible {
 		return 0
 	}
+	return lm.getSingleTerminalWidth()
+}
 
-	// If editor is also visible, terminal gets its percentage of TOTAL screen width
-	if lm.EditorVisible {
-		return lm.ScreenW * lm.TermWidthPct / 100
+// getTerm2Width calculates terminal2 width based on visibility
+func (lm *LayoutManager) getTerm2Width() int {
+	if !lm.Terminal2Visible {
+		return 0
 	}
+	return lm.getSingleTerminalWidth()
+}
 
-	// Terminal takes all space after tree
-	return lm.ScreenW - lm.getTreeWidth()
+// getTerm3Width calculates terminal3 width based on visibility
+func (lm *LayoutManager) getTerm3Width() int {
+	if !lm.Terminal3Visible {
+		return 0
+	}
+	return lm.getSingleTerminalWidth()
 }
 
 // getEditorX returns the X position of the editor
@@ -196,9 +262,27 @@ func (lm *LayoutManager) getEditorX() int {
 	return lm.getTreeWidth()
 }
 
-// getTermX returns the X position of the terminal
+// getTermX returns the X position of the first terminal
 func (lm *LayoutManager) getTermX() int {
 	return lm.getTreeWidth() + lm.getEditorWidth()
+}
+
+// getTerm2X returns the X position of terminal2
+func (lm *LayoutManager) getTerm2X() int {
+	x := lm.getTermX()
+	if lm.TerminalVisible {
+		x += lm.getTermWidth()
+	}
+	return x
+}
+
+// getTerm3X returns the X position of terminal3
+func (lm *LayoutManager) getTerm3X() int {
+	x := lm.getTerm2X()
+	if lm.Terminal2Visible {
+		x += lm.getTerm2Width()
+	}
+	return x
 }
 
 // getEditorWidth calculates editor width based on visibility
@@ -207,9 +291,9 @@ func (lm *LayoutManager) getEditorWidth() int {
 		return 0
 	}
 
-	// If terminal is also visible, editor gets remaining space after tree and terminal
-	if lm.TerminalVisible {
-		return lm.ScreenW - lm.getTreeWidth() - lm.getTermWidth()
+	// If any terminal is visible, editor gets remaining space after tree and all terminals
+	if lm.anyTerminalVisible() {
+		return lm.ScreenW - lm.getTreeWidth() - lm.getTotalTerminalSpace()
 	}
 
 	// Editor takes all space after tree
@@ -217,9 +301,9 @@ func (lm *LayoutManager) getEditorWidth() int {
 }
 
 // needsPlaceholders returns true if we need to show placeholders
-// (when both editor AND terminal are hidden)
+// (when both editor AND all terminals are hidden)
 func (lm *LayoutManager) needsPlaceholders() bool {
-	return !lm.EditorVisible && !lm.TerminalVisible
+	return !lm.EditorVisible && !lm.anyTerminalVisible()
 }
 
 // Initialize creates the panels once screen size is known
@@ -482,9 +566,11 @@ func (lm *LayoutManager) RenderFrame(screen tcell.Screen) {
 	//    in DoEvent() after this function returns
 	//    Border is drawn in RenderOverlay() AFTER editor renders
 
-	// 3. Render terminal (right) - only if visible
+	// 3. Render terminals (right side) - only if visible
 	lm.mu.RLock()
 	term := lm.Terminal
+	term2 := lm.Terminal2
+	term3 := lm.Terminal3
 	lm.mu.RUnlock()
 
 	if term != nil && lm.TerminalVisible {
@@ -492,7 +578,17 @@ func (lm *LayoutManager) RenderFrame(screen tcell.Screen) {
 		term.Render(screen)
 	}
 
-	// 4. Draw placeholders if both editor and terminal are hidden
+	if term2 != nil && lm.Terminal2Visible {
+		term2.Focus = (lm.ActivePanel == 3)
+		term2.Render(screen)
+	}
+
+	if term3 != nil && lm.Terminal3Visible {
+		term3.Focus = (lm.ActivePanel == 4)
+		term3.Render(screen)
+	}
+
+	// 4. Draw placeholders if both editor and all terminals are hidden
 	if lm.needsPlaceholders() {
 		lm.drawPlaceholders(screen)
 	}
@@ -547,6 +643,13 @@ func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 		lm.ProjectPicker.Render(screen)
 	}
 
+	// Draw tool selector modal centered over the entire terminal region
+	if lm.ShowingToolSelector && lm.ToolSelector != nil && lm.ToolSelector.IsActive() {
+		termX := lm.getTermX()
+		termW := lm.getTotalTerminalSpace()
+		lm.ToolSelector.Render(screen, termX, termW, lm.ScreenH)
+	}
+
 	// Draw shortcuts modal on top of everything
 	if lm.ShortcutsModal != nil && lm.ShortcutsModal.Active {
 		lm.ShortcutsModal.Render(screen)
@@ -575,17 +678,22 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		return lm.ProjectPicker.HandleEvent(event)
 	}
 
+	// Handle tool selector modal
+	if lm.ShowingToolSelector && lm.ToolSelector != nil && lm.ToolSelector.IsActive() {
+		return lm.ToolSelector.HandleEvent(event)
+	}
+
 	// Handle shortcuts modal
 	if lm.ShortcutsModal != nil && lm.ShortcutsModal.Active {
 		return lm.ShortcutsModal.HandleEvent(event)
 	}
 
-	// CRITICAL: Terminal gets ALL keyboard events when focused (except global shortcuts)
+	// CRITICAL: Terminals get ALL keyboard events when focused (except global shortcuts)
 	// This must happen BEFORE global key handlers to prevent editor from intercepting keys like Esc
-	if lm.ActivePanel == 2 {
+	if lm.ActivePanel >= 2 && lm.ActivePanel <= 4 {
 		if ev, ok := event.(*tcell.EventKey); ok {
 			// Allow global shortcuts to pass through: Ctrl+Q, Ctrl+T, Ctrl+W, Ctrl+Space, Ctrl+[, Ctrl+], Alt+Arrow
-			// Also allow pane toggle shortcuts: Alt+1, Alt+2, Alt+3, Ctrl+/
+			// Also allow pane toggle shortcuts: Alt+1 through Alt+5, Ctrl+/
 			isGlobalShortcut := ev.Key() == tcell.KeyCtrlQ ||
 				ev.Key() == tcell.KeyCtrlT ||
 				ev.Key() == tcell.KeyCtrlW ||
@@ -597,12 +705,22 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 				(ev.Rune() == '1' && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == '2' && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == '3' && ev.Modifiers()&tcell.ModAlt != 0) ||
+				(ev.Rune() == '4' && ev.Modifiers()&tcell.ModAlt != 0) ||
+				(ev.Rune() == '5' && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == '/' && ev.Modifiers()&tcell.ModCtrl != 0) ||
 				ev.Key() == tcell.KeyCtrlUnderscore // Ctrl+/ often sends this
 
 			if !isGlobalShortcut {
 				lm.mu.RLock()
-				term := lm.Terminal
+				var term *terminal.Panel
+				switch lm.ActivePanel {
+				case 2:
+					term = lm.Terminal
+				case 3:
+					term = lm.Terminal2
+				case 4:
+					term = lm.Terminal3
+				}
 				lm.mu.RUnlock()
 
 				if term != nil {
@@ -732,7 +850,7 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 			return true
 		}
 
-		// Pane visibility toggle shortcuts (Alt+1, Alt+2, Alt+3)
+		// Pane visibility toggle shortcuts (Alt+1 through Alt+5)
 		if ev.Key() == tcell.KeyRune && ev.Modifiers()&tcell.ModAlt != 0 {
 			switch ev.Rune() {
 			case '1':
@@ -746,6 +864,14 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 			case '3':
 				log.Println("THICC: Alt+3 detected, toggling terminal")
 				lm.ToggleTerminal()
+				return true
+			case '4':
+				log.Println("THICC: Alt+4 detected, toggling terminal2")
+				lm.ToggleTerminal2()
+				return true
+			case '5':
+				log.Println("THICC: Alt+5 detected, toggling terminal3")
+				lm.ToggleTerminal3()
 				return true
 			}
 		}
@@ -856,10 +982,12 @@ func (lm *LayoutManager) handleFocusSwitch(event tcell.Event) bool {
 }
 
 // panelAtX returns which panel is at the given x coordinate
-// Returns: 0=filebrowser, 1=editor, 2=terminal, -1=none
+// Returns: 0=filebrowser, 1=editor, 2=terminal, 3=terminal2, 4=terminal3, -1=none
 func (lm *LayoutManager) panelAtX(x int) int {
 	treeWidth := lm.getTreeWidth()
 	editorEndX := lm.getTermX()
+	term2X := lm.getTerm2X()
+	term3X := lm.getTerm3X()
 
 	// Tree region
 	if x < treeWidth && lm.TreeVisible {
@@ -873,13 +1001,33 @@ func (lm *LayoutManager) panelAtX(x int) int {
 		return 1
 	}
 
-	// Terminal region
-	if x >= editorEndX && lm.TerminalVisible {
+	// Terminal region (first terminal)
+	if x >= editorEndX && x < term2X && lm.TerminalVisible {
 		lm.mu.RLock()
 		hasTerminal := lm.Terminal != nil
 		lm.mu.RUnlock()
 		if hasTerminal {
 			return 2
+		}
+	}
+
+	// Terminal2 region
+	if x >= term2X && x < term3X && lm.Terminal2Visible {
+		lm.mu.RLock()
+		hasTerminal2 := lm.Terminal2 != nil
+		lm.mu.RUnlock()
+		if hasTerminal2 {
+			return 3
+		}
+	}
+
+	// Terminal3 region
+	if x >= term3X && lm.Terminal3Visible {
+		lm.mu.RLock()
+		hasTerminal3 := lm.Terminal3 != nil
+		lm.mu.RUnlock()
+		if hasTerminal3 {
+			return 4
 		}
 	}
 
@@ -897,9 +1045,18 @@ func (lm *LayoutManager) setActivePanel(panel int) {
 
 	lm.mu.RLock()
 	term := lm.Terminal
+	term2 := lm.Terminal2
+	term3 := lm.Terminal3
 	lm.mu.RUnlock()
+
 	if term != nil {
 		term.Focus = (panel == 2)
+	}
+	if term2 != nil {
+		term2.Focus = (panel == 3)
+	}
+	if term3 != nil {
+		term3.Focus = (panel == 4)
 	}
 
 	// Pin preview tab when switching to editor (user is committing to this file)
@@ -915,38 +1072,60 @@ func (lm *LayoutManager) setActivePanel(panel int) {
 // cycleFocus cycles to the next panel
 func (lm *LayoutManager) cycleFocus() {
 	log.Printf("THOCK cycleFocus: Starting from panel %d", lm.ActivePanel)
-	// Cycle through available panels
-	for i := 0; i < 3; i++ {
-		nextPanel := (lm.ActivePanel + 1) % 3
+	// Cycle through available panels (0-4: tree, editor, term, term2, term3)
+	for i := 0; i < 5; i++ {
+		nextPanel := (lm.ActivePanel + 1) % 5
 		log.Printf("THOCK cycleFocus: Trying panel %d (iteration %d)", nextPanel, i)
 
-		// Check if this panel exists
+		// Check if this panel exists and is visible
 		switch nextPanel {
 		case 0:
-			log.Printf("THOCK cycleFocus: Checking FileBrowser (nil=%v)", lm.FileBrowser == nil)
-			if lm.FileBrowser != nil {
+			if lm.TreeVisible && lm.FileBrowser != nil {
 				log.Println("THOCK cycleFocus: FileBrowser exists, setting active")
 				lm.setActivePanel(nextPanel)
 				return
 			}
 		case 1:
-			log.Println("THOCK cycleFocus: Editor panel (always exists), setting active")
-			lm.setActivePanel(nextPanel)
-			return // Editor always exists
-		case 2:
-			log.Println("THOCK cycleFocus: Checking Terminal with lock")
-			lm.mu.RLock()
-			hasTerminal := lm.Terminal != nil
-			lm.mu.RUnlock()
-			log.Printf("THOCK cycleFocus: Terminal exists: %v", hasTerminal)
-
-			if hasTerminal {
-				log.Println("THOCK cycleFocus: Terminal exists, setting active")
+			if lm.EditorVisible {
+				log.Println("THOCK cycleFocus: Editor visible, setting active")
 				lm.setActivePanel(nextPanel)
 				return
 			}
+		case 2:
+			if lm.TerminalVisible {
+				lm.mu.RLock()
+				hasTerminal := lm.Terminal != nil
+				lm.mu.RUnlock()
+				if hasTerminal {
+					log.Println("THOCK cycleFocus: Terminal exists, setting active")
+					lm.setActivePanel(nextPanel)
+					return
+				}
+			}
+		case 3:
+			if lm.Terminal2Visible {
+				lm.mu.RLock()
+				hasTerminal2 := lm.Terminal2 != nil
+				lm.mu.RUnlock()
+				if hasTerminal2 {
+					log.Println("THOCK cycleFocus: Terminal2 exists, setting active")
+					lm.setActivePanel(nextPanel)
+					return
+				}
+			}
+		case 4:
+			if lm.Terminal3Visible {
+				lm.mu.RLock()
+				hasTerminal3 := lm.Terminal3 != nil
+				lm.mu.RUnlock()
+				if hasTerminal3 {
+					log.Println("THOCK cycleFocus: Terminal3 exists, setting active")
+					lm.setActivePanel(nextPanel)
+					return
+				}
+			}
 		}
-		// Panel doesn't exist, update ActivePanel to continue cycling
+		// Panel doesn't exist or isn't visible, update ActivePanel to continue cycling
 		lm.ActivePanel = nextPanel
 	}
 	log.Println("THOCK cycleFocus: Completed loop without finding panel")
@@ -1164,12 +1343,30 @@ func (lm *LayoutManager) drawDividers(screen tcell.Screen) {
 	// (terminal draws its own border which serves as the divider when visible)
 	lm.mu.RLock()
 	hasTerminal := lm.Terminal != nil
+	hasTerminal2 := lm.Terminal2 != nil
+	hasTerminal3 := lm.Terminal3 != nil
 	lm.mu.RUnlock()
 
 	if !hasTerminal && lm.TerminalVisible {
 		termX := lm.getTermX()
 		for y := 0; y < lm.ScreenH; y++ {
 			screen.SetContent(termX, y, PowerlineArrowRight, nil, powerlineStyle)
+		}
+	}
+
+	// Draw divider between Terminal and Terminal2 if both are visible but Terminal2 not yet created
+	if lm.TerminalVisible && lm.Terminal2Visible && hasTerminal && !hasTerminal2 {
+		term2X := lm.getTerm2X()
+		for y := 0; y < lm.ScreenH; y++ {
+			screen.SetContent(term2X, y, PowerlineArrowRight, nil, powerlineStyle)
+		}
+	}
+
+	// Draw divider between Terminal2 and Terminal3 if both are visible but Terminal3 not yet created
+	if lm.Terminal2Visible && lm.Terminal3Visible && hasTerminal2 && !hasTerminal3 {
+		term3X := lm.getTerm3X()
+		for y := 0; y < lm.ScreenH; y++ {
+			screen.SetContent(term3X, y, PowerlineArrowRight, nil, powerlineStyle)
 		}
 	}
 }
@@ -1323,9 +1520,11 @@ func (lm *LayoutManager) Resize(w, h int) {
 		lm.FileBrowser.Region.Height = h
 	}
 
-	// Resize terminal (starts after tree+editor, takes remaining space)
+	// Resize terminals
 	lm.mu.RLock()
 	term := lm.Terminal
+	term2 := lm.Terminal2
+	term3 := lm.Terminal3
 	lm.mu.RUnlock()
 
 	if term != nil {
@@ -1336,8 +1535,24 @@ func (lm *LayoutManager) Resize(w, h int) {
 		_ = term.Resize(termW, h)
 	}
 
-	log.Printf("THICC: Layout resized to %dx%d (tree=%d, editor=%d, term=%d)",
-		w, h, lm.TreeWidth, lm.getEditorWidth(), lm.getTermWidth())
+	if term2 != nil {
+		term2W := lm.getTerm2Width()
+		term2.Region.X = lm.getTerm2X()
+		term2.Region.Width = term2W
+		term2.Region.Height = h
+		_ = term2.Resize(term2W, h)
+	}
+
+	if term3 != nil {
+		term3W := lm.getTerm3Width()
+		term3.Region.X = lm.getTerm3X()
+		term3.Region.Width = term3W
+		term3.Region.Height = h
+		_ = term3.Resize(term3W, h)
+	}
+
+	log.Printf("THICC: Layout resized to %dx%d (tree=%d, editor=%d, term=%d, term2=%d, term3=%d)",
+		w, h, lm.TreeWidth, lm.getEditorWidth(), lm.getTermWidth(), lm.getTerm2Width(), lm.getTerm3Width())
 }
 
 // Close cleans up resources
@@ -1348,10 +1563,18 @@ func (lm *LayoutManager) Close() {
 
 	lm.mu.RLock()
 	term := lm.Terminal
+	term2 := lm.Terminal2
+	term3 := lm.Terminal3
 	lm.mu.RUnlock()
 
 	if term != nil {
 		term.Close()
+	}
+	if term2 != nil {
+		term2.Close()
+	}
+	if term3 != nil {
+		term3.Close()
 	}
 
 	log.Println("THICC: Layout closed")
@@ -1438,6 +1661,143 @@ func (lm *LayoutManager) ToggleTerminal() {
 	lm.triggerRedraw()
 }
 
+// ToggleTerminal2 toggles the visibility of the second terminal pane
+func (lm *LayoutManager) ToggleTerminal2() {
+	if !lm.Terminal2Visible {
+		// Showing Terminal2
+		lm.Terminal2Visible = true
+		log.Printf("THICC: Terminal2 visibility toggled to %v", lm.Terminal2Visible)
+
+		// If not initialized, show tool selector
+		if !lm.Terminal2Initialized {
+			lm.showToolSelectorFor(3) // 3 = terminal2 panel
+			return
+		}
+
+		// Already initialized, just show it and focus
+		lm.setActivePanel(3)
+		lm.updatePanelRegions()
+		lm.triggerRedraw()
+	} else {
+		// Hiding Terminal2
+		lm.Terminal2Visible = false
+		log.Printf("THICC: Terminal2 visibility toggled to %v", lm.Terminal2Visible)
+
+		// If we just hid the focused pane, move focus to next visible pane
+		if lm.ActivePanel == 3 {
+			lm.focusNextVisiblePane()
+		}
+
+		// Update panel regions
+		lm.updatePanelRegions()
+		lm.triggerRedraw()
+	}
+}
+
+// ToggleTerminal3 toggles the visibility of the third terminal pane
+func (lm *LayoutManager) ToggleTerminal3() {
+	if !lm.Terminal3Visible {
+		// Showing Terminal3
+		lm.Terminal3Visible = true
+		log.Printf("THICC: Terminal3 visibility toggled to %v", lm.Terminal3Visible)
+
+		// If not initialized, show tool selector
+		if !lm.Terminal3Initialized {
+			lm.showToolSelectorFor(4) // 4 = terminal3 panel
+			return
+		}
+
+		// Already initialized, just show it and focus
+		lm.setActivePanel(4)
+		lm.updatePanelRegions()
+		lm.triggerRedraw()
+	} else {
+		// Hiding Terminal3
+		lm.Terminal3Visible = false
+		log.Printf("THICC: Terminal3 visibility toggled to %v", lm.Terminal3Visible)
+
+		// If we just hid the focused pane, move focus to next visible pane
+		if lm.ActivePanel == 4 {
+			lm.focusNextVisiblePane()
+		}
+
+		// Update panel regions
+		lm.updatePanelRegions()
+		lm.triggerRedraw()
+	}
+}
+
+// showToolSelectorFor shows the tool selector for the specified terminal panel
+func (lm *LayoutManager) showToolSelectorFor(panel int) {
+	if lm.ToolSelector == nil {
+		lm.ToolSelector = NewToolSelector()
+	}
+
+	lm.ToolSelectorTarget = panel
+	lm.ShowingToolSelector = true
+
+	lm.ToolSelector.Show(
+		func(cmdArgs []string) {
+			// Tool selected - create terminal with this command
+			lm.createTerminalForPanel(panel, cmdArgs)
+		},
+		func() {
+			// Cancelled - default to shell
+			lm.createTerminalForPanel(panel, nil)
+		},
+	)
+
+	lm.triggerRedraw()
+}
+
+// createTerminalForPanel creates a terminal for the specified panel with the given command
+func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
+	var termX, termW int
+
+	switch panel {
+	case 3: // Terminal2
+		termX = lm.getTerm2X()
+		termW = lm.getTerm2Width()
+	case 4: // Terminal3
+		termX = lm.getTerm3X()
+		termW = lm.getTerm3Width()
+	default:
+		log.Printf("THICC: Invalid panel for terminal creation: %d", panel)
+		return
+	}
+
+	log.Printf("THICC: Creating terminal for panel %d at x=%d, w=%d, cmd=%v", panel, termX, termW, cmdArgs)
+
+	go func() {
+		term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, cmdArgs)
+		if err != nil {
+			log.Printf("THICC: Failed to create terminal for panel %d: %v", panel, err)
+			return
+		}
+
+		term.OnRedraw = lm.triggerRedraw
+
+		lm.mu.Lock()
+		switch panel {
+		case 3:
+			lm.Terminal2 = term
+			lm.Terminal2Initialized = true
+		case 4:
+			lm.Terminal3 = term
+			lm.Terminal3Initialized = true
+		}
+		lm.mu.Unlock()
+
+		log.Printf("THICC: Terminal for panel %d created successfully", panel)
+
+		// Update regions and focus
+		lm.updatePanelRegions()
+		lm.setActivePanel(panel)
+		lm.ShowingToolSelector = false
+		lm.triggerRedraw()
+	}()
+}
+
 // focusNextVisiblePane moves focus to the next visible pane
 // Priority: Editor > Terminal > Tree
 func (lm *LayoutManager) focusNextVisiblePane() {
@@ -1456,6 +1816,30 @@ func (lm *LayoutManager) focusNextVisiblePane() {
 		if hasTerminal {
 			lm.setActivePanel(2)
 			log.Println("THICC: Focus moved to terminal")
+			return
+		}
+	}
+
+	// Try terminal2
+	if lm.Terminal2Visible {
+		lm.mu.RLock()
+		hasTerminal2 := lm.Terminal2 != nil
+		lm.mu.RUnlock()
+		if hasTerminal2 {
+			lm.setActivePanel(3)
+			log.Println("THICC: Focus moved to terminal2")
+			return
+		}
+	}
+
+	// Try terminal3
+	if lm.Terminal3Visible {
+		lm.mu.RLock()
+		hasTerminal3 := lm.Terminal3 != nil
+		lm.mu.RUnlock()
+		if hasTerminal3 {
+			lm.setActivePanel(4)
+			log.Println("THICC: Focus moved to terminal3")
 			return
 		}
 	}
@@ -1484,9 +1868,11 @@ func (lm *LayoutManager) updatePanelRegions() {
 		}
 	}
 
-	// Update terminal region
+	// Update terminal regions
 	lm.mu.RLock()
 	term := lm.Terminal
+	term2 := lm.Terminal2
+	term3 := lm.Terminal3
 	lm.mu.RUnlock()
 
 	if term != nil {
@@ -1500,8 +1886,30 @@ func (lm *LayoutManager) updatePanelRegions() {
 		}
 	}
 
-	log.Printf("THICC: Panel regions updated (tree=%d, editor=%d, term=%d)",
-		lm.getTreeWidth(), lm.getEditorWidth(), lm.getTermWidth())
+	if term2 != nil {
+		if lm.Terminal2Visible {
+			term2.Region.X = lm.getTerm2X()
+			term2.Region.Width = lm.getTerm2Width()
+			term2.Region.Height = lm.ScreenH
+			_ = term2.Resize(term2.Region.Width, term2.Region.Height)
+		} else {
+			term2.Region.Width = 0
+		}
+	}
+
+	if term3 != nil {
+		if lm.Terminal3Visible {
+			term3.Region.X = lm.getTerm3X()
+			term3.Region.Width = lm.getTerm3Width()
+			term3.Region.Height = lm.ScreenH
+			_ = term3.Resize(term3.Region.Width, term3.Region.Height)
+		} else {
+			term3.Region.Width = 0
+		}
+	}
+
+	log.Printf("THICC: Panel regions updated (tree=%d, editor=%d, term=%d, term2=%d, term3=%d)",
+		lm.getTreeWidth(), lm.getEditorWidth(), lm.getTermWidth(), lm.getTerm2Width(), lm.getTerm3Width())
 }
 
 // ShowShortcutsModal displays the keyboard shortcuts help modal
@@ -1609,10 +2017,18 @@ func (lm *LayoutManager) IsModalActive() bool {
 func (lm *LayoutManager) ShowTerminalCursor(screen tcell.Screen) {
 	lm.mu.RLock()
 	term := lm.Terminal
+	term2 := lm.Terminal2
+	term3 := lm.Terminal3
 	lm.mu.RUnlock()
 
 	if term != nil && term.Focus {
 		term.ShowCursor(screen)
+	}
+	if term2 != nil && term2.Focus {
+		term2.ShowCursor(screen)
+	}
+	if term3 != nil && term3.Focus {
+		term3.ShowCursor(screen)
 	}
 }
 
@@ -1630,7 +2046,15 @@ func (lm *LayoutManager) triggerRedraw() {
 // Returns true if event was a paste that was handled
 func (lm *LayoutManager) handleTerminalPaste(event tcell.Event) bool {
 	lm.mu.RLock()
-	term := lm.Terminal
+	var term *terminal.Panel
+	switch lm.ActivePanel {
+	case 2:
+		term = lm.Terminal
+	case 3:
+		term = lm.Terminal2
+	case 4:
+		term = lm.Terminal3
+	}
 	lm.mu.RUnlock()
 
 	if term == nil {
