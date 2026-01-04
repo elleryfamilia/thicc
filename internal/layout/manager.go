@@ -60,12 +60,13 @@ type LayoutManager struct {
 	Terminal3Visible bool // Whether terminal3 pane is visible (default: false)
 
 	// Track if terminals have been initialized (tool selector shown)
+	TerminalInitialized  bool // Terminal 1 (main terminal)
 	Terminal2Initialized bool
 	Terminal3Initialized bool
 
 	// Tool selector modal for choosing shell/AI tool
 	ToolSelector        *ToolSelector
-	ToolSelectorTarget  int  // Which terminal (3=term2, 4=term3) is being configured
+	ToolSelectorTarget  int  // Which terminal (2=term1, 3=term2, 4=term3) is being configured
 	ShowingToolSelector bool
 
 	// Active panel (0=filebrowser, 1=editor, 2=terminal, 3=terminal2, 4=terminal3)
@@ -1648,17 +1649,35 @@ func (lm *LayoutManager) ToggleEditor() {
 
 // ToggleTerminal toggles the visibility of the terminal pane
 func (lm *LayoutManager) ToggleTerminal() {
-	lm.TerminalVisible = !lm.TerminalVisible
-	log.Printf("THICC: Terminal visibility toggled to %v", lm.TerminalVisible)
+	if !lm.TerminalVisible {
+		// Showing Terminal
+		lm.TerminalVisible = true
+		log.Printf("THICC: Terminal visibility toggled to %v", lm.TerminalVisible)
 
-	// If we just hid the focused pane, move focus to next visible pane
-	if !lm.TerminalVisible && lm.ActivePanel == 2 {
-		lm.focusNextVisiblePane()
+		// If not initialized, show tool selector
+		if !lm.TerminalInitialized {
+			lm.showToolSelectorFor(2) // 2 = terminal1 panel
+			return
+		}
+
+		// Already initialized, just show it and focus
+		lm.setActivePanel(2)
+		lm.updatePanelRegions()
+		lm.triggerRedraw()
+	} else {
+		// Hiding Terminal
+		lm.TerminalVisible = false
+		log.Printf("THICC: Terminal visibility toggled to %v", lm.TerminalVisible)
+
+		// If we just hid the focused pane, move focus to next visible pane
+		if lm.ActivePanel == 2 {
+			lm.focusNextVisiblePane()
+		}
+
+		// Update panel regions
+		lm.updatePanelRegions()
+		lm.triggerRedraw()
 	}
-
-	// Update panel regions
-	lm.updatePanelRegions()
-	lm.triggerRedraw()
 }
 
 // ToggleTerminal2 toggles the visibility of the second terminal pane
@@ -1759,6 +1778,9 @@ func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
 	var termX, termW int
 
 	switch panel {
+	case 2: // Terminal1 (main terminal)
+		termX = lm.getTermX()
+		termW = lm.getTermWidth()
 	case 3: // Terminal2
 		termX = lm.getTerm2X()
 		termW = lm.getTerm2Width()
@@ -1783,6 +1805,9 @@ func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
 
 		lm.mu.Lock()
 		switch panel {
+		case 2:
+			lm.Terminal = term
+			lm.TerminalInitialized = true
 		case 3:
 			lm.Terminal2 = term
 			lm.Terminal2Initialized = true
@@ -1807,6 +1832,9 @@ func (lm *LayoutManager) createTerminalWithInstallCommand(panel int, installCmd 
 	var termX, termW int
 
 	switch panel {
+	case 2: // Terminal1 (main terminal)
+		termX = lm.getTermX()
+		termW = lm.getTermWidth()
 	case 3: // Terminal2
 		termX = lm.getTerm2X()
 		termW = lm.getTerm2Width()
@@ -1832,6 +1860,9 @@ func (lm *LayoutManager) createTerminalWithInstallCommand(panel int, installCmd 
 
 		lm.mu.Lock()
 		switch panel {
+		case 2:
+			lm.Terminal = term
+			lm.TerminalInitialized = true
 		case 3:
 			lm.Terminal2 = term
 			lm.Terminal2Initialized = true

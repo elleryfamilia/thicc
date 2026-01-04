@@ -156,7 +156,11 @@ func DoPluginFlags() {
 
 // LoadInput determines which files should be loaded into buffers
 // based on the input stored in flag.Args()
-func LoadInput(args []string) []*buffer.Buffer {
+// Returns:
+//   - buffers: the opened file buffers
+//   - firstFilePath: path of the first file opened (empty if no files)
+//   - fileCount: number of actual files opened (not directories)
+func LoadInput(args []string) ([]*buffer.Buffer, string, int) {
 	// There are a number of ways micro should start given its input
 
 	// 1. If it is given a files in flag.Args(), it should open those
@@ -171,6 +175,8 @@ func LoadInput(args []string) []*buffer.Buffer {
 	// 4. If a directory is given, change to that directory and show file browser
 
 	buffers := make([]*buffer.Buffer, 0, len(args))
+	firstFilePath := "" // Path of the first file opened
+	fileCount := 0      // Count of actual files opened (not directories)
 
 	files := make([]string, 0, len(args))
 
@@ -251,6 +257,16 @@ func LoadInput(args []string) []*buffer.Buffer {
 			}
 			// If the file didn't exist, input will be empty, and we'll open an empty buffer
 			buffers = append(buffers, buf)
+			fileCount++
+			// Track the first file's path for file browser root
+			if firstFilePath == "" {
+				absPath, err := filepath.Abs(files[i])
+				if err == nil {
+					firstFilePath = absPath
+				} else {
+					firstFilePath = files[i]
+				}
+			}
 		}
 	} else {
 		btype := buffer.BTDefault
@@ -274,7 +290,7 @@ func LoadInput(args []string) []*buffer.Buffer {
 		}
 	}
 
-	return buffers
+	return buffers, firstFilePath, fileCount
 }
 
 func checkBackup(name string) error {
@@ -459,9 +475,11 @@ func main() {
 	}
 
 	var b []*buffer.Buffer
+	var firstFilePath string // Path of first file opened (for file browser root)
+	var fileCount int        // Number of files opened
 	if !showDashboard {
-		b = LoadInput(args)
-		log.Println("THICC: After LoadInput, buffers:", len(b))
+		b, firstFilePath, fileCount = LoadInput(args)
+		log.Println("THICC: After LoadInput, buffers:", len(b), "firstFilePath:", firstFilePath, "fileCount:", fileCount)
 
 		// THOCK: Always open at least an empty buffer
 		if len(b) == 0 {
@@ -576,44 +594,76 @@ func main() {
 	// THOCK: Initialize layout panels now that screen size is known
 	// Skip if we just came from dashboard (TransitionToEditor already did this)
 	if thiccLayout != nil && !dashboardWasShown {
-		// Load AI tool preference for non-dashboard startup
-		prefsStore := dashboard.NewPreferencesStore()
-		prefsStore.Load()
-		if selectedTool := prefsStore.GetSelectedAITool(); selectedTool != "" {
-			// Find matching tool and get command line
-			// Skip "Shell (default)" - let terminal use its built-in shell handling
-			// which includes the pretty prompt injection
-			tools := aiterminal.GetAvailableToolsOnly()
-			for _, t := range tools {
-				if t.Command == selectedTool {
-					if t.Name == "Shell (default)" {
-						log.Printf("THICC: Default shell selected, using built-in shell handling")
-					} else {
-						log.Printf("THICC: Setting AI tool command from preferences: %v", t.GetCommandLine())
-						thiccLayout.SetAIToolCommand(t.GetCommandLine())
+		if fileCount > 0 {
+			// File(s) opened directly - hide terminal, show tool selector when first toggled
+			log.Println("THICC: Files opened directly - hiding terminal, will show tool selector on toggle")
+			thiccLayout.TerminalVisible = false
+			thiccLayout.TerminalInitialized = false
+
+			// Set file browser root to the first file's directory
+			if firstFilePath != "" {
+				fileDir := filepath.Dir(firstFilePath)
+				log.Printf("THICC: Setting file browser root to: %s", fileDir)
+				thiccLayout.Root = fileDir
+			}
+
+			// Hide file browser when multiple files are opened
+			if fileCount > 1 {
+				log.Printf("THICC: Multiple files (%d) opened - hiding file browser", fileCount)
+				thiccLayout.TreeVisible = false
+			}
+
+			// Initialize layout without terminal
+			log.Println("THICC: Initializing layout panels (file mode - no terminal)")
+			if err := thiccLayout.Initialize(screen.Screen); err != nil {
+				log.Printf("THICC: Failed to initialize layout: %v", err)
+				thiccLayout = nil // Fallback to standard micro
+			} else {
+				log.Println("THICC: Layout panels initialized successfully (file mode)")
+			}
+		} else {
+			// Directory or no args (non-dashboard path) - normal initialization with terminal
+			// Load AI tool preference for non-dashboard startup
+			prefsStore := dashboard.NewPreferencesStore()
+			prefsStore.Load()
+			if selectedTool := prefsStore.GetSelectedAITool(); selectedTool != "" {
+				// Find matching tool and get command line
+				// Skip "Shell (default)" - let terminal use its built-in shell handling
+				// which includes the pretty prompt injection
+				tools := aiterminal.GetAvailableToolsOnly()
+				for _, t := range tools {
+					if t.Command == selectedTool {
+						if t.Name == "Shell (default)" {
+							log.Printf("THICC: Default shell selected, using built-in shell handling")
+						} else {
+							log.Printf("THICC: Setting AI tool command from preferences: %v", t.GetCommandLine())
+							thiccLayout.SetAIToolCommand(t.GetCommandLine())
+						}
+						break
 					}
-					break
 				}
 			}
-		}
 
-		// Preload terminal to give it time to initialize the pretty prompt
-		// The terminal is created in a goroutine, and prompt injection waits 1000ms
-		// before sending the source command. We wait 1500ms total to ensure:
-		// 1. Terminal creation completes
-		// 2. 1000ms prompt injection delay
-		// 3. source command executes and clears screen
-		w, h := screen.Screen.Size()
-		log.Printf("THICC: Preloading terminal before layout init (%dx%d)", w, h)
-		thiccLayout.PreloadTerminal(w, h)
-		time.Sleep(1500 * time.Millisecond)
+			// Preload terminal to give it time to initialize the pretty prompt
+			// The terminal is created in a goroutine, and prompt injection waits 1000ms
+			// before sending the source command. We wait 1500ms total to ensure:
+			// 1. Terminal creation completes
+			// 2. 1000ms prompt injection delay
+			// 3. source command executes and clears screen
+			w, h := screen.Screen.Size()
+			log.Printf("THICC: Preloading terminal before layout init (%dx%d)", w, h)
+			thiccLayout.PreloadTerminal(w, h)
+			time.Sleep(1500 * time.Millisecond)
 
-		log.Println("THICC: Initializing layout panels")
-		if err := thiccLayout.Initialize(screen.Screen); err != nil {
-			log.Printf("THICC: Failed to initialize layout: %v", err)
-			thiccLayout = nil // Fallback to standard micro
-		} else {
-			log.Println("THICC: Layout panels initialized successfully")
+			log.Println("THICC: Initializing layout panels")
+			if err := thiccLayout.Initialize(screen.Screen); err != nil {
+				log.Printf("THICC: Failed to initialize layout: %v", err)
+				thiccLayout = nil // Fallback to standard micro
+			} else {
+				log.Println("THICC: Layout panels initialized successfully")
+				// Mark terminal as initialized since it was created with saved preferences
+				thiccLayout.TerminalInitialized = true
+			}
 		}
 	}
 
@@ -925,6 +975,9 @@ func TransitionToEditor(buffers []*buffer.Buffer, filePath string) {
 		if err := thiccLayout.Initialize(screen.Screen); err != nil {
 			log.Printf("THICC: Failed to initialize layout: %v", err)
 			thiccLayout = nil
+		} else {
+			// Mark Terminal 1 as initialized since tool was selected from dashboard
+			thiccLayout.TerminalInitialized = true
 		}
 	}
 

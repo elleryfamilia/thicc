@@ -79,7 +79,7 @@ func startup(args []string) (tcell.SimulationScreen, error) {
 		return nil, err
 	}
 
-	b := LoadInput(args)
+	b, _, _ := LoadInput(args)
 
 	if len(b) == 0 {
 		return nil, errors.New("No buffers opened")
