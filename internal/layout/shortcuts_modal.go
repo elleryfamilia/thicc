@@ -87,6 +87,8 @@ func (m *ShortcutsModal) Render(screen tcell.Screen) {
 				{"Alt+1", "Toggle tree"},
 				{"Alt+2", "Toggle editor"},
 				{"Alt+3", "Toggle terminal"},
+				{"Alt+4", "Toggle terminal 2"},
+				{"Alt+5", "Toggle terminal 3"},
 			},
 		},
 		{

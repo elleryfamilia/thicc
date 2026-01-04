@@ -120,12 +120,9 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 					// Toggle directory expansion
 					p.Tree.Toggle(node)
 				} else {
-					// Preview file and move focus to editor
+					// Preview file (keep focus in file browser)
 					if p.OnFileOpen != nil {
 						p.OnFileOpen(node.Path)
-					}
-					if p.OnFocusEditor != nil {
-						p.OnFocusEditor()
 					}
 				}
 				return true
