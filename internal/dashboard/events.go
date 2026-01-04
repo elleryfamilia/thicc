@@ -17,8 +17,12 @@ func (d *Dashboard) HandleEvent(event tcell.Event) bool {
 	}
 
 	// If project picker is active, route events to it
+	// If picker doesn't consume the event, continue processing (e.g., for Ctrl+Q)
 	if d.IsProjectPickerActive() {
-		return d.ProjectPicker.HandleEvent(event)
+		if d.ProjectPicker.HandleEvent(event) {
+			return true
+		}
+		// Fall through to handle unprocessed events like Ctrl+Q
 	}
 
 	switch ev := event.(type) {

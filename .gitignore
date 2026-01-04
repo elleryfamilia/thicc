@@ -3,6 +3,12 @@
 micro
 micro.exe
 !cmd/micro
+thock
+thock.exe
+!cmd/thock
+thicc
+thicc.exe
+!cmd/thicc
 binaries/
 tmp.sh
 test/
