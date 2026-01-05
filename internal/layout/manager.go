@@ -574,22 +574,17 @@ func (lm *LayoutManager) RenderFrame(screen tcell.Screen) {
 	term3 := lm.Terminal3
 	lm.mu.RUnlock()
 
-	if lm.TerminalVisible {
-		if term != nil {
-			term.Focus = (lm.ActivePanel == 2)
-			term.Render(screen)
-		} else {
-			// Terminal still initializing - show loading message
-			lm.renderTerminalLoading(screen, 0)
-		}
+	if lm.TerminalVisible && term != nil {
+		term.Focus = (lm.ActivePanel == 2)
+		term.Render(screen)
 	}
 
-	if term2 != nil && lm.Terminal2Visible {
+	if lm.Terminal2Visible && term2 != nil {
 		term2.Focus = (lm.ActivePanel == 3)
 		term2.Render(screen)
 	}
 
-	if term3 != nil && lm.Terminal3Visible {
+	if lm.Terminal3Visible && term3 != nil {
 		term3.Focus = (lm.ActivePanel == 4)
 		term3.Render(screen)
 	}
@@ -662,29 +657,6 @@ func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 	}
 }
 
-// renderTerminalLoading draws a loading message in the terminal region while terminal initializes
-// termIndex: 0=Terminal1, 1=Terminal2, 2=Terminal3
-func (lm *LayoutManager) renderTerminalLoading(screen tcell.Screen, termIndex int) {
-	msg := "Starting terminal..."
-	termX := lm.getTermX()
-	termW := lm.getTermWidth()
-
-	// Adjust position for secondary terminals (stacked vertically)
-	yOffset := 0
-	if termIndex > 0 {
-		// For stacked terminals, offset y position
-		yOffset = (lm.ScreenH / 3) * termIndex
-	}
-
-	x := termX + (termW-len(msg))/2
-	y := lm.ScreenH/2 + yOffset
-
-	// Use explicit fg AND bg for light mode compatibility
-	style := tcell.StyleDefault.Foreground(tcell.ColorGray).Background(tcell.ColorBlack)
-	for i, r := range msg {
-		screen.SetContent(x+i, y, r, nil, style)
-	}
-}
 
 // HandleEvent routes events to the active panel
 func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
@@ -1879,6 +1851,9 @@ func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
 
 	log.Printf("THICC: Creating terminal for panel %d at x=%d, w=%d, cmd=%v", panel, termX, termW, cmdArgs)
 
+	// Hide tool selector
+	lm.ShowingToolSelector = false
+
 	go func() {
 		term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, cmdArgs)
 		if err != nil {
@@ -1907,7 +1882,6 @@ func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
 		// Update regions and focus
 		lm.updatePanelRegions()
 		lm.setActivePanel(panel)
-		lm.ShowingToolSelector = false
 		lm.triggerRedraw()
 	}()
 }
@@ -1932,6 +1906,9 @@ func (lm *LayoutManager) createTerminalWithInstallCommand(panel int, installCmd 
 	}
 
 	log.Printf("THICC: Creating terminal for panel %d with install command: %s", panel, installCmd)
+
+	// Hide tool selector
+	lm.ShowingToolSelector = false
 
 	go func() {
 		// Create a shell terminal (nil cmdArgs = default shell)
@@ -1972,7 +1949,6 @@ func (lm *LayoutManager) createTerminalWithInstallCommand(panel int, installCmd 
 		// Update regions and focus
 		lm.updatePanelRegions()
 		lm.setActivePanel(panel)
-		lm.ShowingToolSelector = false
 		lm.triggerRedraw()
 	}()
 }

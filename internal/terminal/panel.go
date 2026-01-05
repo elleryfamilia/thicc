@@ -389,6 +389,9 @@ func (p *Panel) readLoop() {
 		}
 
 		if n > 0 {
+			// Hold mutex during VT operations to prevent race with Resize
+			p.mu.Lock()
+
 			// Capture top row before write (for scroll detection)
 			p.captureTopRowBefore()
 
@@ -397,6 +400,8 @@ func (p *Panel) readLoop() {
 
 			// Check if scroll occurred and capture scrolled lines
 			p.captureScrolledLines()
+
+			p.mu.Unlock()
 
 			// Schedule throttled redraw
 			p.scheduleRedraw()
