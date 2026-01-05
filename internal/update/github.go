@@ -198,3 +198,42 @@ func GetChecksumAsset(release *Release, asset *Asset) *Asset {
 	}
 	return nil
 }
+
+// FetchNightlyRelease fetches the nightly release from GitHub
+func FetchNightlyRelease(ctx context.Context) (*Release, error) {
+	url := fmt.Sprintf(releasesURL+"/tags/nightly", repoOwner, repoName)
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	req.Header.Set("Accept", "application/vnd.github.v3+json")
+	req.Header.Set("User-Agent", "thicc-update-checker")
+
+	client := &http.Client{
+		Timeout: 10 * time.Second,
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode == http.StatusNotFound {
+		return nil, nil
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("GitHub API error: %s - %s", resp.Status, string(body))
+	}
+
+	var release Release
+	if err := json.NewDecoder(resp.Body).Decode(&release); err != nil {
+		return nil, err
+	}
+
+	return &release, nil
+}

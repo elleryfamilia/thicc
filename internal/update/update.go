@@ -18,20 +18,28 @@ type UpdateInfo struct {
 	ChecksumURL    string
 }
 
-// CheckForUpdate checks if an update is available
+// CheckForUpdate checks if an update is available for the given channel
 // Returns nil if no update is available or an error occurred
-func CheckForUpdate(ctx context.Context) (*UpdateInfo, error) {
-	release, err := FetchLatestRelease(ctx)
+func CheckForUpdate(ctx context.Context, channel string) (*UpdateInfo, error) {
+	var release *Release
+	var err error
+
+	if channel == "nightly" {
+		release, err = FetchNightlyRelease(ctx)
+	} else {
+		release, err = FetchLatestRelease(ctx)
+	}
+
 	if err != nil {
 		return nil, err
 	}
 
-	// No stable releases available
+	// No releases available
 	if release == nil {
 		return nil, nil
 	}
 
-	isNewer, err := IsNewerVersion(util.Version, release.TagName)
+	isNewer, err := IsNewerVersion(util.Version, release.TagName, channel)
 	if err != nil {
 		return nil, err
 	}
@@ -63,7 +71,7 @@ func CheckForUpdate(ctx context.Context) (*UpdateInfo, error) {
 }
 
 // IsNewerVersion compares two version strings and returns true if latest is newer
-func IsNewerVersion(current, latest string) (bool, error) {
+func IsNewerVersion(current, latest, channel string) (bool, error) {
 	// Clean up version strings
 	current = cleanVersion(current)
 	latest = cleanVersion(latest)
@@ -75,9 +83,13 @@ func IsNewerVersion(current, latest string) (bool, error) {
 		return false, nil
 	}
 
-	// Handle nightly/dev versions specially
-	if strings.Contains(latest, "nightly") {
-		// Don't auto-update to nightly from stable
+	// For nightly channel, compare build metadata (timestamps)
+	if channel == "nightly" {
+		return isNewerNightly(current, latest), nil
+	}
+
+	// For stable channel, don't update to nightly versions
+	if strings.Contains(latest, "nightly") || strings.Contains(latest, "dev") {
 		return false, nil
 	}
 
@@ -92,6 +104,32 @@ func IsNewerVersion(current, latest string) (bool, error) {
 	}
 
 	return latestVer.GT(currentVer), nil
+}
+
+// isNewerNightly compares nightly versions by their build timestamp
+// Nightly versions look like: v0.1.3-dev.6+202601050002
+func isNewerNightly(current, latest string) bool {
+	// Extract build metadata (after the +)
+	currentBuild := extractBuildMetadata(current)
+	latestBuild := extractBuildMetadata(latest)
+
+	// If we can't extract build metadata, compare as strings
+	if currentBuild == "" || latestBuild == "" {
+		return latest > current
+	}
+
+	// Build metadata is a timestamp like 202601050002
+	// Simple string comparison works because format is YYYYMMDDHHMM
+	return latestBuild > currentBuild
+}
+
+// extractBuildMetadata extracts the build metadata from a version string
+// e.g., "0.1.3-dev.6+202601050002" -> "202601050002"
+func extractBuildMetadata(version string) string {
+	if idx := strings.LastIndex(version, "+"); idx != -1 {
+		return version[idx+1:]
+	}
+	return ""
 }
 
 // cleanVersion removes common prefixes and cleans up version strings

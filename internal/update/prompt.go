@@ -59,9 +59,10 @@ func CheckAndPrompt(
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
+	channel := config.GetGlobalOption("updatechannel").(string)
 	messageFn("Checking for updates...")
 
-	updateInfo, err := CheckForUpdate(ctx)
+	updateInfo, err := CheckForUpdate(ctx, channel)
 	if err != nil {
 		log.Printf("Update check failed: %v", err)
 		// Update last check time even on failure to avoid repeated failures

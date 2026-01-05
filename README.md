@@ -68,6 +68,18 @@ curl -fLO https://github.com/ryanoasis/nerd-fonts/releases/latest/download/JetBr
 unzip JetBrainsMono.zip && fc-cache -fv
 ```
 
+## Nightly Builds
+
+> **Warning:** Nightly builds are automatically generated from the latest code. They may contain bugs, incomplete features, or breaking changes. Use at your own risk.
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/install.sh | CHANNEL=nightly sh
+```
+
+To receive nightly auto-updates after installing, run `set updatechannel nightly` inside thicc.
+
+To switch back to stable, re-run the standard install script above.
+
 ## License
 
 MIT

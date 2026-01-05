@@ -37,6 +37,7 @@ var optionValidators = map[string]optionValidator{
 	"scrollspeed":     validateNonNegativeValue,
 	"tabsize":         validatePositiveValue,
 	"truecolor":       validateChoice,
+	"updatechannel":   validateChoice,
 	"updatefrequency": validateNonNegativeValue,
 }
 
@@ -49,6 +50,7 @@ var OptionChoices = map[string][]string{
 	"multiopen":       {"tab", "hsplit", "vsplit"},
 	"reload":          {"prompt", "auto", "disabled"},
 	"truecolor":       {"auto", "on", "off"},
+	"updatechannel":   {"stable", "nightly"},
 }
 
 // a list of settings that can be globally and locally modified and their
@@ -132,6 +134,7 @@ var DefaultGlobalOnlySettings = map[string]any{
 	"sucmd":          "sudo",
 	"tabhighlight":     false,
 	"tabreverse":       true,
+	"updatechannel":    "stable",
 	"updatecheck":      true,
 	"updatefrequency":  float64(7),
 	"xterm":            false,

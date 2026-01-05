@@ -3,11 +3,20 @@ set -e
 
 # thicc installer
 # Usage: curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/install.sh | sh
+#
+# Options (via environment variables):
+#   CHANNEL=nightly  - Install nightly build instead of stable release
+#   CHANNEL=stable   - Install latest stable release (default)
+#
+# Examples:
+#   curl -fsSL ... | sh                      # Install stable
+#   curl -fsSL ... | CHANNEL=nightly sh      # Install nightly
 
 REPO="elleryfamilia/thicc"
 INSTALL_DIR="/usr/local/bin"
+CHANNEL="${CHANNEL:-stable}"
 
-echo "Installing thicc..."
+echo "Installing thicc (channel: $CHANNEL)..."
 
 # Detect OS
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -61,8 +70,25 @@ esac
 
 echo "Detected: $OS/$ARCH -> $PLATFORM"
 
-# Get latest release tag (or use nightly)
-RELEASE_TAG="nightly"
+# Determine release tag based on channel
+if [ "$CHANNEL" = "nightly" ]; then
+  RELEASE_TAG="nightly"
+else
+  # Get latest stable release tag
+  LATEST_URL="https://api.github.com/repos/$REPO/releases/latest"
+  if command -v curl >/dev/null 2>&1; then
+    RELEASE_TAG=$(curl -sL "$LATEST_URL" | grep -o '"tag_name": *"[^"]*"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+  elif command -v wget >/dev/null 2>&1; then
+    RELEASE_TAG=$(wget -qO- "$LATEST_URL" | grep -o '"tag_name": *"[^"]*"' | head -1 | sed 's/.*"tag_name": *"\([^"]*\)".*/\1/')
+  fi
+
+  # Fall back to nightly if no stable release found
+  if [ -z "$RELEASE_TAG" ]; then
+    echo "No stable release found, using nightly..."
+    RELEASE_TAG="nightly"
+  fi
+fi
+
 RELEASE_URL="https://github.com/$REPO/releases/download/$RELEASE_TAG"
 
 # Find the asset URL - nightly uses version in filename
