@@ -1951,25 +1951,41 @@ func (lm *LayoutManager) createTerminalWithInstallCommand(panel int, installCmd 
 // SpawnTerminalWithInstallCommand spawns the main terminal with an install command typed
 // This is used when user selects an installable tool from the dashboard
 func (lm *LayoutManager) SpawnTerminalWithInstallCommand(installCmd string) {
-	if lm.Terminal == nil {
-		log.Println("THICC: Cannot spawn install command - terminal not initialized")
-		return
-	}
-
 	log.Printf("THICC: Spawning terminal with install command: %s", installCmd)
 
 	// Wait for terminal to be ready, then type the install command
+	// Terminal is created asynchronously, so we need to poll for it
 	go func() {
-		// Give the terminal time to initialize
-		time.Sleep(500 * time.Millisecond)
+		// Wait for terminal to be created (poll with timeout)
+		maxWait := 10 * time.Second
+		pollInterval := 100 * time.Millisecond
+		waited := time.Duration(0)
 
-		// Type the install command (user needs to press Enter to execute)
-		lm.Terminal.Write([]byte(installCmd))
-		log.Printf("THICC: Typed install command: %s", installCmd)
+		for waited < maxWait {
+			lm.mu.RLock()
+			term := lm.Terminal
+			lm.mu.RUnlock()
 
-		// Focus the terminal
-		lm.setActivePanel(2)
-		lm.triggerRedraw()
+			if term != nil {
+				// Terminal is ready - wait a bit more for shell prompt to initialize
+				log.Printf("THICC: Terminal ready after %v, waiting for shell prompt", waited)
+				time.Sleep(500 * time.Millisecond)
+
+				// Type the install command (user needs to press Enter to execute)
+				term.Write([]byte(installCmd))
+				log.Printf("THICC: Typed install command: %s", installCmd)
+
+				// Focus the terminal
+				lm.setActivePanel(2)
+				lm.triggerRedraw()
+				return
+			}
+
+			time.Sleep(pollInterval)
+			waited += pollInterval
+		}
+
+		log.Printf("THICC: Timed out waiting for terminal after %v", maxWait)
 	}()
 }
 
