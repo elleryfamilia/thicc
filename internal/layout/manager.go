@@ -574,9 +574,14 @@ func (lm *LayoutManager) RenderFrame(screen tcell.Screen) {
 	term3 := lm.Terminal3
 	lm.mu.RUnlock()
 
-	if term != nil && lm.TerminalVisible {
-		term.Focus = (lm.ActivePanel == 2)
-		term.Render(screen)
+	if lm.TerminalVisible {
+		if term != nil {
+			term.Focus = (lm.ActivePanel == 2)
+			term.Render(screen)
+		} else {
+			// Terminal still initializing - show loading message
+			lm.renderTerminalLoading(screen, 0)
+		}
 	}
 
 	if term2 != nil && lm.Terminal2Visible {
@@ -654,6 +659,30 @@ func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 	// Draw shortcuts modal on top of everything
 	if lm.ShortcutsModal != nil && lm.ShortcutsModal.Active {
 		lm.ShortcutsModal.Render(screen)
+	}
+}
+
+// renderTerminalLoading draws a loading message in the terminal region while terminal initializes
+// termIndex: 0=Terminal1, 1=Terminal2, 2=Terminal3
+func (lm *LayoutManager) renderTerminalLoading(screen tcell.Screen, termIndex int) {
+	msg := "Starting terminal..."
+	termX := lm.getTermX()
+	termW := lm.getTermWidth()
+
+	// Adjust position for secondary terminals (stacked vertically)
+	yOffset := 0
+	if termIndex > 0 {
+		// For stacked terminals, offset y position
+		yOffset = (lm.ScreenH / 3) * termIndex
+	}
+
+	x := termX + (termW-len(msg))/2
+	y := lm.ScreenH/2 + yOffset
+
+	// Use explicit fg AND bg for light mode compatibility
+	style := tcell.StyleDefault.Foreground(tcell.ColorGray).Background(tcell.ColorBlack)
+	for i, r := range msg {
+		screen.SetContent(x+i, y, r, nil, style)
 	}
 }
 
