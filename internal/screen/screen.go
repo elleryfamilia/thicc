@@ -232,6 +232,14 @@ func Init() error {
 		Screen.EnableMouse()
 	}
 
+	// Register Alt+1-5 escape sequences for pane toggling
+	// Many terminals (Kitty, iTerm2, Alacritty) send Alt+key as ESC-prefixed
+	// sequences rather than setting the ModAlt flag
+	altKeySeqs := []string{"\x1b1", "\x1b2", "\x1b3", "\x1b4", "\x1b5"}
+	for _, seq := range altKeySeqs {
+		Screen.RegisterRawSeq(seq)
+	}
+
 	for _, r := range rawSeq {
 		Screen.RegisterRawSeq(r)
 	}

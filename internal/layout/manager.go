@@ -689,6 +689,62 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		return lm.ShortcutsModal.HandleEvent(event)
 	}
 
+	// Handle raw escape sequences for Alt+1-5 (universal terminal support)
+	// Many terminals (Kitty, iTerm2, Alacritty) send Alt+key as ESC-prefixed
+	// sequences rather than setting the ModAlt flag
+	if rawEv, ok := event.(*tcell.EventRaw); ok {
+		seq := rawEv.EscSeq()
+		switch seq {
+		case "\x1b1":
+			log.Println("THICC: ESC+1 raw sequence detected, toggling tree")
+			lm.ToggleTree()
+			return true
+		case "\x1b2":
+			log.Println("THICC: ESC+2 raw sequence detected, toggling editor")
+			lm.ToggleEditor()
+			return true
+		case "\x1b3":
+			log.Println("THICC: ESC+3 raw sequence detected, toggling terminal")
+			lm.ToggleTerminal()
+			return true
+		case "\x1b4":
+			log.Println("THICC: ESC+4 raw sequence detected, toggling terminal2")
+			lm.ToggleTerminal2()
+			return true
+		case "\x1b5":
+			log.Println("THICC: ESC+5 raw sequence detected, toggling terminal3")
+			lm.ToggleTerminal3()
+			return true
+		}
+	}
+
+	// Handle macOS Option+1-5 which generates special Unicode characters
+	// instead of Alt modifier events (universal macOS support)
+	if ev, ok := event.(*tcell.EventKey); ok && ev.Key() == tcell.KeyRune {
+		switch ev.Rune() {
+		case '¡': // Option+1 on macOS
+			log.Println("THICC: macOS Option+1 detected, toggling tree")
+			lm.ToggleTree()
+			return true
+		case '™': // Option+2 on macOS
+			log.Println("THICC: macOS Option+2 detected, toggling editor")
+			lm.ToggleEditor()
+			return true
+		case '£': // Option+3 on macOS
+			log.Println("THICC: macOS Option+3 detected, toggling terminal")
+			lm.ToggleTerminal()
+			return true
+		case '¢': // Option+4 on macOS
+			log.Println("THICC: macOS Option+4 detected, toggling terminal2")
+			lm.ToggleTerminal2()
+			return true
+		case '∞': // Option+5 on macOS
+			log.Println("THICC: macOS Option+5 detected, toggling terminal3")
+			lm.ToggleTerminal3()
+			return true
+		}
+	}
+
 	// CRITICAL: Terminals get ALL keyboard events when focused (except global shortcuts)
 	// This must happen BEFORE global key handlers to prevent editor from intercepting keys like Esc
 	if lm.ActivePanel >= 2 && lm.ActivePanel <= 4 {
