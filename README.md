@@ -91,8 +91,10 @@ thicc --update
 ## Uninstalling
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/uninstall.sh | sh
+thicc --uninstall
 ```
+
+If installed to `/usr/local/bin`, you may need `sudo thicc --uninstall`.
 
 ## License
 

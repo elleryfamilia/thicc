@@ -43,6 +43,7 @@ var (
 	flagPlugin    = flag.String("plugin", "", "Plugin command")
 	flagClean     = flag.Bool("clean", false, "Clean configuration directory")
 	flagUpdate    = flag.Bool("update", false, "Check for updates and install if available")
+	flagUninstall = flag.Bool("uninstall", false, "Uninstall thicc from your system")
 	optionFlags   map[string]*string
 
 	sighup chan os.Signal
@@ -59,50 +60,34 @@ var (
 )
 
 func InitFlags() {
-	// Note: keep this in sync with the man page in assets/packaging/micro.1
 	flag.Usage = func() {
-		fmt.Println("Usage: micro [OPTION]... [FILE]... [+LINE[:COL]] [+/REGEX]")
-		fmt.Println("       micro [OPTION]... [FILE[:LINE[:COL]]]...  (only if the `parsecursor` option is enabled)")
-		fmt.Println("-clean")
-		fmt.Println("    \tClean the configuration directory and exit")
-		fmt.Println("-config-dir dir")
-		fmt.Println("    \tSpecify a custom location for the configuration directory")
-		fmt.Println("FILE:LINE[:COL] (only if the `parsecursor` option is enabled)")
-		fmt.Println("FILE +LINE[:COL]")
-		fmt.Println("    \tSpecify a line and column to start the cursor at when opening a buffer")
-		fmt.Println("+/REGEX")
-		fmt.Println("    \tSpecify a regex to search for when opening a buffer")
-		fmt.Println("-options")
-		fmt.Println("    \tShow all options help and exit")
-		fmt.Println("-debug")
-		fmt.Println("    \tEnable debug mode (enables logging to ./log.txt)")
-		fmt.Println("-profile")
-		fmt.Println("    \tEnable CPU profiling (writes profile info to ./micro.prof")
-		fmt.Println("    \tso it can be analyzed later with \"go tool pprof micro.prof\")")
-		fmt.Println("-version")
-		fmt.Println("    \tShow the version number and information and exit")
-		fmt.Println("-update")
-		fmt.Println("    \tCheck for updates and install if available")
-
-		fmt.Print("\nMicro's plugins can be managed at the command line with the following commands.\n")
-		fmt.Println("-plugin install [PLUGIN]...")
-		fmt.Println("    \tInstall plugin(s)")
-		fmt.Println("-plugin remove [PLUGIN]...")
-		fmt.Println("    \tRemove plugin(s)")
-		fmt.Println("-plugin update [PLUGIN]...")
-		fmt.Println("    \tUpdate plugin(s) (if no argument is given, updates all plugins)")
-		fmt.Println("-plugin search [PLUGIN]...")
-		fmt.Println("    \tSearch for a plugin")
-		fmt.Println("-plugin list")
-		fmt.Println("    \tList installed plugins")
-		fmt.Println("-plugin available")
-		fmt.Println("    \tList available plugins")
-
-		fmt.Print("\nMicro's options can also be set via command line arguments for quick\nadjustments. For real configuration, please use the settings.json\nfile (see 'help options').\n\n")
-		fmt.Println("-<option> value")
-		fmt.Println("    \tSet `option` to `value` for this session")
-		fmt.Println("    \tFor example: `micro -syntax off file.c`")
-		fmt.Println("\nUse `micro -options` to see the full list of configuration options")
+		fmt.Println("Usage: thicc [OPTIONS] [PATH]")
+		fmt.Println("")
+		fmt.Println("  thicc              Open dashboard")
+		fmt.Println("  thicc .            Open current directory")
+		fmt.Println("  thicc <file>       Open a file")
+		fmt.Println("  thicc <dir>        Open a directory")
+		fmt.Println("")
+		fmt.Println("Options:")
+		fmt.Println("  -version           Show version and exit")
+		fmt.Println("  -update            Check for updates and install if available")
+		fmt.Println("  -uninstall         Uninstall thicc from your system")
+		fmt.Println("  -clean             Clean configuration directory and exit")
+		fmt.Println("  -config-dir <dir>  Use custom configuration directory")
+		fmt.Println("  -debug             Enable debug logging to ./log.txt")
+		fmt.Println("")
+		fmt.Println("Navigation:")
+		fmt.Println("  Ctrl+Space         Switch between panes")
+		fmt.Println("  Ctrl+Q             Quit")
+		fmt.Println("")
+		fmt.Println("Panes:")
+		fmt.Println("  Alt+1              Toggle file browser")
+		fmt.Println("  Alt+2              Toggle editor")
+		fmt.Println("  Alt+3              Toggle terminal 1")
+		fmt.Println("  Alt+4              Toggle terminal 2")
+		fmt.Println("  Alt+5              Toggle terminal 3")
+		fmt.Println("")
+		fmt.Println("For more info: https://github.com/elleryfamilia/thicc")
 	}
 
 	optionFlags = make(map[string]*string)
@@ -199,6 +184,68 @@ func DoUpdateFlag() {
 
 	fmt.Printf("\nSuccessfully updated to %s\n", info.LatestVersion)
 	fmt.Println("Please restart thicc to use the new version.")
+	os.Exit(0)
+}
+
+// DoUninstallFlag handles the --uninstall flag
+func DoUninstallFlag() {
+	if !*flagUninstall {
+		return
+	}
+
+	// Get the executable path
+	execPath, err := os.Executable()
+	if err != nil {
+		fmt.Printf("Error finding executable: %v\n", err)
+		os.Exit(1)
+	}
+	execPath, err = filepath.EvalSymlinks(execPath)
+	if err != nil {
+		fmt.Printf("Error resolving path: %v\n", err)
+		os.Exit(1)
+	}
+
+	configDir := filepath.Join(os.Getenv("HOME"), ".config", "thicc")
+
+	fmt.Println("This will uninstall thicc from your system.")
+	fmt.Printf("  Binary: %s\n", execPath)
+	fmt.Printf("  Config: %s\n", configDir)
+	fmt.Print("\nContinue? [y/N] ")
+
+	var response string
+	fmt.Scanln(&response)
+	if response != "y" && response != "Y" {
+		fmt.Println("Uninstall cancelled.")
+		os.Exit(0)
+	}
+
+	// Remove config directory
+	if _, err := os.Stat(configDir); err == nil {
+		fmt.Print("Remove configuration? [y/N] ")
+		fmt.Scanln(&response)
+		if response == "y" || response == "Y" {
+			if err := os.RemoveAll(configDir); err != nil {
+				fmt.Printf("Warning: could not remove config: %v\n", err)
+			} else {
+				fmt.Printf("Removed %s\n", configDir)
+			}
+		}
+	}
+
+	// Remove the binary
+	// We need to delete ourselves - this works on Unix because the file
+	// can be deleted while running (inode stays until process exits)
+	if err := os.Remove(execPath); err != nil {
+		if os.IsPermission(err) {
+			fmt.Printf("\nPermission denied. Try: sudo thicc -uninstall\n")
+		} else {
+			fmt.Printf("Error removing binary: %v\n", err)
+		}
+		os.Exit(1)
+	}
+
+	fmt.Printf("Removed %s\n", execPath)
+	fmt.Println("\nthicc has been uninstalled.")
 	os.Exit(0)
 }
 
@@ -439,6 +486,9 @@ func main() {
 
 	// Handle --update flag (needs config loaded for updatechannel setting)
 	DoUpdateFlag()
+
+	// Handle --uninstall flag
+	DoUninstallFlag()
 
 	// flag options
 	for k, v := range optionFlags {
