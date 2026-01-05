@@ -14,7 +14,6 @@ type AITool struct {
 	Description    string
 	Available      bool
 	InstallCommand string // Command to install this tool (empty if not installable)
-	Prerequisite   string // Command that must be available for install (e.g., "npm")
 }
 
 // GetAvailableAITools detects which AI CLI tools are installed
@@ -25,8 +24,7 @@ func GetAvailableAITools() []AITool {
 			Command:        "claude",
 			Args:           []string{},
 			Description:    "Anthropic's Claude Code CLI",
-			InstallCommand: "npm install -g @anthropic-ai/claude-code",
-			Prerequisite:   "npm",
+			InstallCommand: "curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/scripts/install-tool.sh | sh -s -- @anthropic-ai/claude-code",
 		},
 		{
 			Name:        "Claude Code (YOLO)",
@@ -39,16 +37,14 @@ func GetAvailableAITools() []AITool {
 			Command:        "gemini",
 			Args:           []string{},
 			Description:    "Google's Gemini CLI",
-			InstallCommand: "npm install -g @google/gemini-cli",
-			Prerequisite:   "npm",
+			InstallCommand: "curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/scripts/install-tool.sh | sh -s -- @google/gemini-cli",
 		},
 		{
 			Name:           "Codex CLI",
 			Command:        "codex",
 			Args:           []string{},
 			Description:    "OpenAI Codex CLI",
-			InstallCommand: "npm install -g @openai/codex",
-			Prerequisite:   "npm",
+			InstallCommand: "curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/scripts/install-tool.sh | sh -s -- @openai/codex",
 		},
 		{
 			Name:        "OpenCode",
@@ -67,8 +63,7 @@ func GetAvailableAITools() []AITool {
 			Command:        "copilot",
 			Args:           []string{},
 			Description:    "GitHub Copilot CLI",
-			InstallCommand: "npm install -g @github/copilot",
-			Prerequisite:   "npm",
+			InstallCommand: "curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/scripts/install-tool.sh | sh -s -- @github/copilot",
 		},
 		{
 			Name:        "Ollama",
@@ -130,17 +125,12 @@ func GetAvailableToolsOnly() []AITool {
 }
 
 // GetInstallableTools returns tools that are not installed but can be installed
-// Only includes tools whose prerequisites (e.g., npm) are available
 func GetInstallableTools() []AITool {
 	all := GetAvailableAITools()
 	installable := make([]AITool, 0)
 
 	for _, tool := range all {
 		if !tool.Available && tool.InstallCommand != "" {
-			// Check if prerequisite is available
-			if tool.Prerequisite != "" && !isCommandAvailable(tool.Prerequisite) {
-				continue // Skip - prerequisite not met
-			}
 			installable = append(installable, tool)
 		}
 	}

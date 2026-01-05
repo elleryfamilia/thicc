@@ -61,41 +61,6 @@ esac
 
 echo "Detected: $OS/$ARCH -> $PLATFORM"
 
-# Install npm if not present (needed for AI tool installation)
-install_npm() {
-  if command -v npm >/dev/null 2>&1; then
-    echo "npm already installed"
-    return 0
-  fi
-
-  echo "Installing Node.js/npm (required for AI CLI tools)..."
-  case "$OS" in
-    darwin)
-      if command -v brew >/dev/null 2>&1; then
-        brew install node
-      else
-        echo "Warning: Homebrew not found. Install Node.js from https://nodejs.org for AI tool support."
-      fi
-      ;;
-    linux)
-      if command -v apt-get >/dev/null 2>&1; then
-        sudo apt-get update && sudo apt-get install -y nodejs npm
-      elif command -v dnf >/dev/null 2>&1; then
-        sudo dnf install -y nodejs npm
-      elif command -v pacman >/dev/null 2>&1; then
-        sudo pacman -S --noconfirm nodejs npm
-      else
-        echo "Warning: Could not detect package manager. Install Node.js from https://nodejs.org for AI tool support."
-      fi
-      ;;
-    *)
-      echo "Warning: Install Node.js from https://nodejs.org for AI tool support."
-      ;;
-  esac
-}
-
-install_npm
-
 # Get latest release tag (or use nightly)
 RELEASE_TAG="nightly"
 RELEASE_URL="https://github.com/$REPO/releases/download/$RELEASE_TAG"
