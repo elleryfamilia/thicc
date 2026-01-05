@@ -901,8 +901,9 @@ func InitDashboard() {
 	thiccDashboard.OnInstallTool = func(cmd string) {
 		log.Printf("THOCK Dashboard: Install tool selected: %s", cmd)
 		pendingInstallCmd = cmd
-		TransitionToEditor(nil, "") // Initialize editor with empty buffer
-		showDashboard = false
+		// Don't call TransitionToEditor here - the subsequent action
+		// (OnNewFile, OnOpenProject, etc.) will handle the transition
+		// and SpawnTerminalWithInstallCommand will use pendingInstallCmd
 	}
 
 	thiccDashboard.OnExit = func() {
