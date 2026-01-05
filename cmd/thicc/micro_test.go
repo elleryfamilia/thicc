@@ -54,7 +54,7 @@ func startup(args []string) (tcell.SimulationScreen, error) {
 	defer func() {
 		if err := recover(); err != nil {
 			screen.Screen.Fini()
-			fmt.Println("Micro encountered an error:", err)
+			fmt.Println("thicc encountered an error:", err)
 			// immediately backup all buffers with unsaved changes
 			for _, b := range buffer.OpenBuffers {
 				if b.Modified() {

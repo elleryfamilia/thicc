@@ -39,7 +39,7 @@ var (
 	flagConfigDir = flag.String("config-dir", "", "Specify a custom location for the configuration directory")
 	flagOptions   = flag.Bool("options", false, "Show all option help")
 	flagDebug     = flag.Bool("debug", false, "Enable debug mode (prints debug info to ./log.txt)")
-	flagProfile   = flag.Bool("profile", false, "Enable CPU profiling (writes profile info to ./micro.prof)")
+	flagProfile   = flag.Bool("profile", false, "Enable CPU profiling (writes profile info to ./thicc.prof)")
 	flagPlugin    = flag.String("plugin", "", "Plugin command")
 	flagClean     = flag.Bool("clean", false, "Clean configuration directory")
 	flagUpdate    = flag.Bool("update", false, "Check for updates and install if available")
@@ -444,7 +444,7 @@ func main() {
 	InitFlags()
 
 	if *flagProfile {
-		f, err := os.Create("micro.prof")
+		f, err := os.Create("thicc.prof")
 		if err != nil {
 			log.Fatal("error creating CPU profile: ", err)
 		}
@@ -514,7 +514,7 @@ func main() {
 	log.Println("THICC: After screen.Init")
 	if err != nil {
 		fmt.Println(err)
-		fmt.Println("Fatal: Micro could not initialize a Screen.")
+		fmt.Println("Fatal: thicc could not initialize a screen.")
 		exit(1)
 	}
 	m := clipboard.SetMethod(config.GetGlobalOption("clipboard").(string))

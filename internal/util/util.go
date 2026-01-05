@@ -61,8 +61,8 @@ const OverwriteFailMsg = `An error occurred while writing to the file:
 %s
 
 The file may be corrupted now. The good news is that it has been
-successfully backed up. Next time you open this file with Micro,
-Micro will ask if you want to recover it from the backup.
+successfully backed up. Next time you open this file with thicc,
+thicc will ask if you want to recover it from the backup.
 
 The backup path is:
 
