@@ -1967,9 +1967,10 @@ func (lm *LayoutManager) SpawnTerminalWithInstallCommand(installCmd string) {
 			lm.mu.RUnlock()
 
 			if term != nil {
-				// Terminal is ready - wait a bit more for shell prompt to initialize
-				log.Printf("THICC: Terminal ready after %v, waiting for shell prompt", waited)
-				time.Sleep(500 * time.Millisecond)
+				// Terminal is ready - wait for shell prompt injection to complete
+				// injectSexyPrompt waits 1000ms before writing, so we wait 1500ms total
+				log.Printf("THICC: Terminal ready after %v, waiting for prompt injection to complete", waited)
+				time.Sleep(1500 * time.Millisecond)
 
 				// Type the install command (user needs to press Enter to execute)
 				term.Write([]byte(installCmd))
