@@ -47,7 +47,7 @@ if ! command -v npm >/dev/null 2>&1; then
 fi
 
 # Install the tool globally
-npm install -g "$PACKAGE"
+sudo npm install -g "$PACKAGE"
 
 echo ""
 echo "$PACKAGE installed successfully!"
