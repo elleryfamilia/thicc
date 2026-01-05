@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/ellery/thicc/internal/screen"
 	"github.com/hinshun/vt10x"
 )
 
@@ -206,6 +207,9 @@ type Panel struct {
 	Scrollback     *ScrollbackBuffer // Circular buffer for terminal history
 	scrollOffset   int               // 0 = live view, >0 = scrolled up N lines
 	previousTopRow []vt10x.Glyph     // For detecting scroll events
+
+	// Startup state - for showing loading indicator
+	hasReceivedOutput bool // True once terminal has received any output
 }
 
 // isShellCommand returns true if the command is a shell (bash, zsh, sh, fish, etc.)
@@ -307,12 +311,16 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	// Start reading from PTY in background
 	go p.readLoop()
 
+	// Start loading animation ticker (triggers redraws for spinner)
+	go p.loadingAnimationLoop()
+
 	// Inject sexy prompt after shell fully initializes
-	if injectPrompt {
+	// Check THICC_SIMPLE_PROMPT env var to disable fancy prompt for testing
+	if injectPrompt && os.Getenv("THICC_SIMPLE_PROMPT") == "" {
 		log.Printf("THICC: Will inject sexy prompt for shell")
 		go p.injectSexyPrompt()
 	} else {
-		log.Printf("THICC: Not injecting prompt (cmdArgs provided)")
+		log.Printf("THICC: Not injecting prompt (cmdArgs provided or THICC_SIMPLE_PROMPT set)")
 	}
 
 	return p, nil
@@ -358,6 +366,26 @@ func (p *Panel) injectSexyPrompt() {
 	}
 }
 
+// loadingAnimationLoop triggers screen redraws while loading indicator is visible
+// This allows the spinner animation to update
+func (p *Panel) loadingAnimationLoop() {
+	ticker := time.NewTicker(80 * time.Millisecond)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		p.mu.Lock()
+		done := p.hasReceivedOutput || !p.Running
+		p.mu.Unlock()
+
+		if done {
+			return
+		}
+
+		// Trigger a screen redraw to update the spinner
+		screen.Redraw()
+	}
+}
+
 // getDefaultShell returns the user's default shell
 func getDefaultShell() string {
 	shell := os.Getenv("SHELL")
@@ -391,6 +419,11 @@ func (p *Panel) readLoop() {
 		if n > 0 {
 			// Hold mutex during VT operations to prevent race with Resize
 			p.mu.Lock()
+
+			// Mark that we've received output (clears loading indicator)
+			if !p.hasReceivedOutput {
+				p.hasReceivedOutput = true
+			}
 
 			// Capture top row before write (for scroll detection)
 			p.captureTopRowBefore()
@@ -501,9 +534,13 @@ func (p *Panel) RespawnShell() error {
 	// Clear scrollback on respawn
 	p.Scrollback.Clear()
 	p.scrollOffset = 0
+	p.hasReceivedOutput = false // Reset for new loading indicator
 
 	// Start new read loop
 	go p.readLoop()
+
+	// Start loading animation ticker
+	go p.loadingAnimationLoop()
 
 	// Inject sexy prompt after shell initializes
 	go p.injectSexyPrompt()

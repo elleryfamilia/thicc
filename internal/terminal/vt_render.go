@@ -3,6 +3,7 @@ package terminal
 import (
 	"fmt"
 	"reflect"
+	"time"
 
 	"github.com/ellery/thicc/internal/config"
 	"github.com/hinshun/vt10x"
@@ -47,8 +48,11 @@ func (p *Panel) Render(screen tcell.Screen) {
 	mode := p.VT.Mode()
 	useAltScreen := mode&vt10x.ModeAltScreen != 0
 
-	// If scrolled up and not in alt screen, render scrollback view
-	if p.scrollOffset > 0 && !useAltScreen {
+	// Show loading indicator if terminal is running but hasn't received output yet
+	if p.Running && !p.hasReceivedOutput {
+		p.renderLoadingIndicator(screen, contentX, contentY, contentW, contentH)
+	} else if p.scrollOffset > 0 && !useAltScreen {
+		// If scrolled up and not in alt screen, render scrollback view
 		p.renderScrolledView(screen, contentX, contentY, contentW, contentH, cols, rows)
 	} else {
 		// Render live view (normal rendering)
@@ -71,6 +75,45 @@ func (p *Panel) Render(screen tcell.Screen) {
 
 	// Draw border (always draw, but style changes based on focus)
 	p.drawBorder(screen)
+}
+
+// Spinner frames for loading animation (braille dots)
+var spinnerFrames = []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
+
+// renderLoadingIndicator shows a spinner and "Starting..." message while terminal initializes
+func (p *Panel) renderLoadingIndicator(screen tcell.Screen, contentX, contentY, contentW, contentH int) {
+	// Clear content area with background color
+	for y := 0; y < contentH; y++ {
+		for x := 0; x < contentW; x++ {
+			screen.SetContent(contentX+x, contentY+y, ' ', nil, config.DefStyle)
+		}
+	}
+
+	// Calculate spinner frame based on time (updates every 80ms)
+	frame := int(time.Now().UnixMilli()/80) % len(spinnerFrames)
+	spinner := spinnerFrames[frame]
+
+	// Show spinner + loading message centered in content area
+	msg := " Starting..."
+	fullMsg := string(spinner) + msg
+	msgX := contentX + (contentW-len(fullMsg))/2
+	msgY := contentY + contentH/2
+
+	// Use a subtle style (dim gray)
+	loadingStyle := config.DefStyle.Foreground(tcell.ColorGray)
+
+	// Draw spinner character
+	if msgX >= contentX && msgX < contentX+contentW {
+		screen.SetContent(msgX, msgY, spinner, nil, loadingStyle)
+	}
+
+	// Draw message after spinner
+	for i, r := range msg {
+		x := msgX + 1 + i
+		if x >= contentX && x < contentX+contentW {
+			screen.SetContent(x, msgY, r, nil, loadingStyle)
+		}
+	}
 }
 
 // renderLiveView renders the current terminal content (not scrolled)
