@@ -80,6 +80,20 @@ To receive nightly auto-updates after installing, run `set updatechannel nightly
 
 To switch back to stable, re-run the standard install script above.
 
+## Updating
+
+thicc checks for updates automatically. To manually check and install updates:
+
+```sh
+thicc --update
+```
+
+## Uninstalling
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/uninstall.sh | sh
+```
+
 ## License
 
 MIT

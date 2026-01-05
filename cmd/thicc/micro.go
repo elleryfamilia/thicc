@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"io"
@@ -28,6 +29,7 @@ import (
 	"github.com/ellery/thicc/internal/layout"
 	"github.com/ellery/thicc/internal/screen"
 	"github.com/ellery/thicc/internal/shell"
+	"github.com/ellery/thicc/internal/update"
 	"github.com/ellery/thicc/internal/util"
 )
 
@@ -40,6 +42,7 @@ var (
 	flagProfile   = flag.Bool("profile", false, "Enable CPU profiling (writes profile info to ./micro.prof)")
 	flagPlugin    = flag.String("plugin", "", "Plugin command")
 	flagClean     = flag.Bool("clean", false, "Clean configuration directory")
+	flagUpdate    = flag.Bool("update", false, "Check for updates and install if available")
 	optionFlags   map[string]*string
 
 	sighup chan os.Signal
@@ -78,6 +81,8 @@ func InitFlags() {
 		fmt.Println("    \tso it can be analyzed later with \"go tool pprof micro.prof\")")
 		fmt.Println("-version")
 		fmt.Println("    \tShow the version number and information and exit")
+		fmt.Println("-update")
+		fmt.Println("    \tCheck for updates and install if available")
 
 		fmt.Print("\nMicro's plugins can be managed at the command line with the following commands.\n")
 		fmt.Println("-plugin install [PLUGIN]...")
@@ -152,6 +157,49 @@ func DoPluginFlags() {
 
 		exit(0)
 	}
+}
+
+// DoUpdateFlag handles the --update flag
+func DoUpdateFlag() {
+	if !*flagUpdate {
+		return
+	}
+
+	channel := config.GetGlobalOption("updatechannel").(string)
+	fmt.Printf("Checking for updates (channel: %s)...\n", channel)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	info, err := update.CheckForUpdate(ctx, channel)
+	if err != nil {
+		fmt.Printf("Error checking for updates: %v\n", err)
+		os.Exit(1)
+	}
+
+	if info == nil {
+		fmt.Printf("You are already running the latest version (%s)\n", util.Version)
+		os.Exit(0)
+	}
+
+	fmt.Printf("Update available: %s → %s\n", info.CurrentVersion, info.LatestVersion)
+	fmt.Println("Downloading...")
+
+	progressFn := func(downloaded, total int64) {
+		if total > 0 {
+			pct := int(float64(downloaded) / float64(total) * 100)
+			fmt.Printf("\rDownloading... %d%%", pct)
+		}
+	}
+
+	if err := update.DownloadAndInstall(info, progressFn); err != nil {
+		fmt.Printf("\nUpdate failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("\nSuccessfully updated to %s\n", info.LatestVersion)
+	fmt.Println("Please restart thicc to use the new version.")
+	os.Exit(0)
 }
 
 // LoadInput determines which files should be loaded into buffers
@@ -388,6 +436,9 @@ func main() {
 	if err != nil {
 		screen.TermMessage(err)
 	}
+
+	// Handle --update flag (needs config loaded for updatechannel setting)
+	DoUpdateFlag()
 
 	// flag options
 	for k, v := range optionFlags {
