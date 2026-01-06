@@ -6,10 +6,14 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net/url"
 	"os"
+	"os/exec"
 	"os/signal"
 	"path/filepath"
 	"regexp"
+	"runtime"
+	"runtime/debug"
 	"runtime/pprof"
 	"sort"
 	"strconv"
@@ -44,6 +48,7 @@ var (
 	flagClean     = flag.Bool("clean", false, "Clean configuration directory")
 	flagUpdate    = flag.Bool("update", false, "Check for updates and install if available")
 	flagUninstall = flag.Bool("uninstall", false, "Uninstall thicc from your system")
+	flagReportBug = flag.Bool("report-bug", false, "Report a bug or issue")
 	optionFlags   map[string]*string
 
 	sighup chan os.Signal
@@ -72,6 +77,7 @@ func InitFlags() {
 		fmt.Println("  -version           Show version and exit")
 		fmt.Println("  -update            Check for updates and install if available")
 		fmt.Println("  -uninstall         Uninstall thicc from your system")
+		fmt.Println("  -report-bug        Report a bug or issue")
 		fmt.Println("  -clean             Clean configuration directory and exit")
 		fmt.Println("  -config-dir <dir>  Use custom configuration directory")
 		fmt.Println("  -debug             Enable debug logging to ./log.txt")
@@ -246,6 +252,146 @@ func DoUninstallFlag() {
 
 	fmt.Printf("Removed %s\n", execPath)
 	fmt.Println("\nthicc has been uninstalled.")
+	os.Exit(0)
+}
+
+// SystemInfo contains system information for bug reports
+type SystemInfo struct {
+	Version     string
+	CommitHash  string
+	CompileDate string
+	GoVersion   string
+	OS          string
+	Arch        string
+	Terminal    string
+	TermEnv     string
+}
+
+func collectSystemInfo() SystemInfo {
+	return SystemInfo{
+		Version:     util.Version,
+		CommitHash:  util.CommitHash,
+		CompileDate: util.CompileDate,
+		GoVersion:   runtime.Version(),
+		OS:          runtime.GOOS,
+		Arch:        runtime.GOARCH,
+		Terminal:    os.Getenv("TERM_PROGRAM"),
+		TermEnv:     os.Getenv("TERM"),
+	}
+}
+
+func (s SystemInfo) String() string {
+	terminal := s.Terminal
+	if terminal == "" {
+		terminal = "unknown"
+	}
+	return fmt.Sprintf(`System Info:
+  Version: %s
+  Commit: %s
+  Compiled: %s
+  OS/Arch: %s/%s
+  Terminal: %s (TERM=%s)
+  Go: %s`,
+		s.Version, s.CommitHash, s.CompileDate,
+		s.OS, s.Arch,
+		terminal, s.TermEnv,
+		s.GoVersion)
+}
+
+func truncateString(s string, maxLen int) string {
+	if len(s) <= maxLen {
+		return s
+	}
+	return s[:maxLen-3] + "..."
+}
+
+func buildGitHubIssueURL(errorMsg string, info SystemInfo, isCrash bool) string {
+	baseURL := "https://github.com/elleryfamilia/thicc/issues/new"
+
+	var template, title string
+	if isCrash {
+		template = "crash_report.md"
+		// Clean up error message for title
+		cleanErr := truncateString(errorMsg, 50)
+		title = "Crash Report: " + cleanErr
+	} else {
+		template = "bug_report.md"
+		title = "Bug Report"
+	}
+
+	body := fmt.Sprintf(`## System Information
+%s
+
+## Description
+<!-- Describe the bug or what you were doing when the crash occurred -->
+
+`, info.String())
+
+	if isCrash && errorMsg != "" {
+		body += fmt.Sprintf("## Error\n```\n%s\n```\n", errorMsg)
+	}
+
+	return fmt.Sprintf("%s?template=%s&title=%s&body=%s",
+		baseURL,
+		url.QueryEscape(template),
+		url.QueryEscape(title),
+		url.QueryEscape(body))
+}
+
+func openBrowser(urlStr string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", urlStr)
+	case "linux":
+		cmd = exec.Command("xdg-open", urlStr)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", urlStr)
+	default:
+		return fmt.Errorf("unsupported platform: %s", runtime.GOOS)
+	}
+	return cmd.Start()
+}
+
+func getCrashLogPath() string {
+	return filepath.Join(config.ConfigDir, "crash.log")
+}
+
+func saveCrashLog(errorMsg, stackTrace string, info SystemInfo) {
+	content := fmt.Sprintf(`thicc crash report
+Generated: %s
+
+%s
+
+Error: %s
+
+Stack trace:
+%s
+`, time.Now().Format(time.RFC3339), info.String(), errorMsg, stackTrace)
+
+	_ = os.WriteFile(getCrashLogPath(), []byte(content), 0644)
+}
+
+// DoReportBugFlag handles the --report-bug flag
+func DoReportBugFlag() {
+	if !*flagReportBug {
+		return
+	}
+
+	fmt.Println("Collecting system information...")
+	fmt.Println()
+	info := collectSystemInfo()
+	fmt.Println(info.String())
+	fmt.Println()
+
+	issueURL := buildGitHubIssueURL("", info, false)
+	fmt.Println("Opening browser to create issue...")
+
+	if err := openBrowser(issueURL); err != nil {
+		fmt.Println("(If browser doesn't open, visit the URL below)")
+	}
+	fmt.Println()
+	fmt.Println(issueURL)
 	os.Exit(0)
 }
 
@@ -490,6 +636,9 @@ func main() {
 	// Handle --uninstall flag
 	DoUninstallFlag()
 
+	// Handle --report-bug flag
+	DoReportBugFlag()
+
 	// flag options
 	for k, v := range optionFlags {
 		if *v != "" {
@@ -525,11 +674,43 @@ func main() {
 			if screen.Screen != nil {
 				screen.Screen.Fini()
 			}
+
+			info := collectSystemInfo()
+			var errorMsg string
+			var stackTrace string
+
 			if e, ok := err.(*lua.ApiError); ok {
-				fmt.Println("Lua API error:", e)
+				errorMsg = fmt.Sprintf("Lua API error: %v", e)
+				stackTrace = e.StackTrace
 			} else {
-				fmt.Println("thicc encountered an error:", errors.Wrap(err, 2).ErrorStack(), "\nIf you can reproduce this error, please report it at https://github.com/elleryfamilia/thicc/issues")
+				errorMsg = fmt.Sprintf("%v", err)
+				stackTrace = errors.Wrap(err, 2).ErrorStack()
 			}
+
+			// Print crash report
+			fmt.Println()
+			fmt.Println("thicc encountered an unexpected error!")
+			fmt.Println()
+			fmt.Printf("Error: %s\n", errorMsg)
+			fmt.Println()
+			fmt.Println("Stack trace:")
+			fmt.Println(stackTrace)
+			fmt.Println()
+			fmt.Println(info.String())
+			fmt.Println()
+
+			// Save crash log (include debug.Stack for full trace)
+			fullStack := stackTrace + "\n\nFull runtime stack:\n" + string(debug.Stack())
+			saveCrashLog(errorMsg, fullStack, info)
+
+			// Show issue URL
+			issueURL := buildGitHubIssueURL(errorMsg, info, true)
+			fmt.Println("Please report this issue:")
+			fmt.Printf("  %s\n", issueURL)
+			fmt.Println()
+			fmt.Println("Or run: thicc --report-bug")
+			fmt.Printf("\nFull crash log saved to: %s\n", getCrashLogPath())
+
 			// immediately backup all buffers with unsaved changes
 			for _, b := range buffer.OpenBuffers {
 				if b.Modified() {
