@@ -20,6 +20,22 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 	case *tcell.EventKey:
 		log.Printf("THOCK Terminal: Key event, Key=%v, Rune=%c", ev.Key(), ev.Rune())
 
+		// Handle quick command mode first
+		if p.QuickCommandMode {
+			p.handleQuickCommand(ev)
+			return true
+		}
+
+		// Ctrl+\ enters quick command mode
+		if ev.Key() == tcell.KeyCtrlBackslash {
+			p.QuickCommandMode = true
+			if p.OnShowMessage != nil {
+				p.OnShowMessage("  q: Quit  |  w: Next Pane  |  Esc: Cancel")
+			}
+			log.Println("THOCK Terminal: Entered quick command mode")
+			return true
+		}
+
 		// Handle Shift+PageUp/Down for scrolling (before other key handling)
 		if ev.Key() == tcell.KeyPgUp && ev.Modifiers()&tcell.ModShift != 0 {
 			_, rows := p.VT.Size()
@@ -310,4 +326,36 @@ func keyToBytes(ev *tcell.EventKey) []byte {
 	}
 
 	return nil
+}
+
+// handleQuickCommand processes key events in quick command mode
+func (p *Panel) handleQuickCommand(ev *tcell.EventKey) {
+	// Clear message first
+	if p.OnShowMessage != nil {
+		p.OnShowMessage("")
+	}
+	p.QuickCommandMode = false
+
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		log.Println("THOCK Terminal: Quick command cancelled")
+		return
+	case tcell.KeyRune:
+		switch ev.Rune() {
+		case 'q', 'Q':
+			log.Println("THOCK Terminal: Quick command - Quit")
+			if p.OnQuit != nil {
+				p.OnQuit()
+			}
+			return
+		case 'w', 'W':
+			log.Println("THOCK Terminal: Quick command - Next Pane")
+			if p.OnNextPane != nil {
+				p.OnNextPane()
+			}
+			return
+		}
+	}
+	// Any other key just cancels
+	log.Printf("THOCK Terminal: Quick command - unknown key, cancelled")
 }

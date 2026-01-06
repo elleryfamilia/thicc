@@ -100,7 +100,7 @@ var defaultCommonSettings = map[string]any{
 	"splitright":      true,
 	"statusformatl":   "$(filename) $(modified)$(overwrite)($(line),$(col)) $(status.paste)| ft:$(opt:filetype) | $(opt:fileformat) | $(opt:encoding)",
 	"statusformatr":   "$(bind:ToggleKeyMenu): bindings, $(bind:ToggleHelp): help",
-	"statusline":      true,
+	"statusline":      false,
 	"syntax":          true,
 	"tabmovement":     false,
 	"tabsize":         float64(4),

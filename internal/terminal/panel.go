@@ -210,6 +210,15 @@ type Panel struct {
 
 	// Startup state - for showing loading indicator
 	hasReceivedOutput bool // True once terminal has received any output
+
+	// Quick command mode - shows hint bar, single key triggers action
+	QuickCommandMode bool
+	// OnShowMessage callback to display messages (set by layout manager)
+	OnShowMessage func(msg string)
+	// OnQuit callback when user triggers quit from quick command mode
+	OnQuit func()
+	// OnNextPane callback when user triggers next pane from quick command mode
+	OnNextPane func()
 }
 
 // isShellCommand returns true if the command is a shell (bash, zsh, sh, fish, etc.)
@@ -675,9 +684,47 @@ func (p *Panel) GetSelection() string {
 
 	// Get content dimensions
 	cols, rows := p.VT.Size()
+	scrollbackCount := p.Scrollback.Count()
+
+	// Helper to get a cell at screen coordinates, accounting for scroll offset
+	getCell := func(x, screenY int) rune {
+		// Calculate actual line index (same logic as renderScrolledView)
+		lineIndex := scrollbackCount - p.scrollOffset + screenY
+
+		if lineIndex < 0 {
+			// Above scrollback - empty
+			return ' '
+		} else if lineIndex < scrollbackCount {
+			// In scrollback buffer
+			line := p.Scrollback.Get(lineIndex)
+			if line != nil && x < len(line.Cells) {
+				r := line.Cells[x].Char
+				if r == 0 {
+					return ' '
+				}
+				return r
+			}
+			return ' '
+		} else {
+			// In live terminal
+			liveY := lineIndex - scrollbackCount
+			if liveY < rows && x < cols {
+				glyph := p.VT.Cell(x, liveY)
+				r := glyph.Char
+				if r == 0 {
+					return ' '
+				}
+				return r
+			}
+			return ' '
+		}
+	}
+
+	// Screen height for bounds checking
+	contentH := rows
 
 	var result string
-	for y := start.Y; y <= end.Y && y < rows; y++ {
+	for y := start.Y; y <= end.Y && y < contentH; y++ {
 		lineStart := 0
 		lineEnd := cols
 
@@ -689,12 +736,7 @@ func (p *Panel) GetSelection() string {
 		}
 
 		for x := lineStart; x < lineEnd && x < cols; x++ {
-			glyph := p.VT.Cell(x, y)
-			r := glyph.Char
-			if r == 0 {
-				r = ' '
-			}
-			result += string(r)
+			result += string(getCell(x, y))
 		}
 
 		// Add newline between lines (but not at the end)

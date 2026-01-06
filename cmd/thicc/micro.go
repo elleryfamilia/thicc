@@ -807,7 +807,13 @@ func DoEvent() {
 		action.MainTab().Display()
 	}
 
-	action.InfoBar.Display()
+	// InfoBar display disabled for cleaner look
+	// action.InfoBar.Display()
+
+	// Render quick command hint bar when in quick command mode
+	if thiccLayout != nil && thiccLayout.QuickCommandMode {
+		thiccLayout.RenderQuickCommandHints(screen.Screen)
+	}
 
 	// THOCK: Control cursor visibility based on which panel has focus
 	// Editor always shows its cursor during Display(), so we need to override after rendering

@@ -87,6 +87,9 @@ type LayoutManager struct {
 
 	// Mutex to protect Terminal access during async creation
 	mu sync.RWMutex
+
+	// Quick command mode state
+	QuickCommandMode bool
 }
 
 // NewLayoutManager creates a new layout manager
@@ -149,8 +152,8 @@ func (lm *LayoutManager) PreloadTerminal(screenW, screenH int) {
 			return
 		}
 
-		// Set callback to trigger screen refresh when terminal has new output
-		term.OnRedraw = lm.triggerRedraw
+		// Set up terminal callbacks
+		lm.setupTerminalCallbacks(term)
 
 		// Safely set terminal (prevent race with Initialize)
 		lm.mu.Lock()
@@ -177,6 +180,143 @@ func slicesEqual(a, b []string) bool {
 		}
 	}
 	return true
+}
+
+// setupTerminalCallbacks configures callbacks for a terminal panel
+func (lm *LayoutManager) setupTerminalCallbacks(term *terminal.Panel) {
+	term.OnRedraw = lm.triggerRedraw
+	term.OnShowMessage = func(msg string) {
+		if msg == "" {
+			action.InfoBar.Reset()
+		} else {
+			action.InfoBar.Message(msg)
+		}
+		lm.triggerRedraw()
+	}
+	term.OnQuit = func() {
+		lm.handleQuit()
+	}
+	term.OnNextPane = func() {
+		lm.cycleFocus()
+		lm.triggerRedraw()
+	}
+}
+
+// enterQuickCommandMode activates quick command mode
+func (lm *LayoutManager) enterQuickCommandMode() {
+	lm.QuickCommandMode = true
+	lm.triggerRedraw()
+}
+
+// handleQuickCommand processes a key in quick command mode
+func (lm *LayoutManager) handleQuickCommand(ev *tcell.EventKey) bool {
+	lm.QuickCommandMode = false
+
+	switch ev.Key() {
+	case tcell.KeyEscape:
+		log.Println("THICC: Quick command cancelled")
+		lm.triggerRedraw()
+		return true
+	case tcell.KeyRune:
+		switch ev.Rune() {
+		case 'q', 'Q':
+			log.Println("THICC: Quick command - Quit")
+			lm.handleQuit()
+			return true
+		case 'w', 'W':
+			// Close tab - only works in editor
+			if lm.ActivePanel == 1 {
+				log.Println("THICC: Quick command - Close Tab")
+				lm.CloseTabAtIndex(lm.TabBar.ActiveIndex)
+				lm.triggerRedraw()
+				return true
+			}
+		case ' ':
+			log.Println("THICC: Quick command - Next Pane")
+			lm.cycleFocus()
+			lm.triggerRedraw()
+			return true
+		case 's', 'S':
+			// Save - only works in editor
+			if lm.ActivePanel == 1 {
+				log.Println("THICC: Quick command - Save")
+				lm.SaveCurrentBuffer()
+				lm.triggerRedraw()
+				return true
+			}
+		case 'n', 'N':
+			// New file - only works in tree
+			if lm.ActivePanel == 0 && lm.FileBrowser != nil {
+				log.Println("THICC: Quick command - New File")
+				lm.FileBrowser.NewFileSelected()
+				lm.triggerRedraw()
+				return true
+			}
+		case 'f', 'F':
+			// New folder - only works in tree
+			if lm.ActivePanel == 0 && lm.FileBrowser != nil {
+				log.Println("THICC: Quick command - New Folder")
+				lm.FileBrowser.NewFolderSelected()
+				lm.triggerRedraw()
+				return true
+			}
+		case 'd', 'D':
+			// Delete - only works in tree
+			if lm.ActivePanel == 0 && lm.FileBrowser != nil {
+				log.Println("THICC: Quick command - Delete")
+				lm.FileBrowser.DeleteSelected()
+				lm.triggerRedraw()
+				return true
+			}
+		case 'r', 'R':
+			// Rename - only works in tree
+			if lm.ActivePanel == 0 && lm.FileBrowser != nil {
+				log.Println("THICC: Quick command - Rename")
+				lm.FileBrowser.RenameSelected()
+				lm.triggerRedraw()
+				return true
+			}
+		}
+	}
+	// Unknown key - just cancel
+	log.Printf("THICC: Quick command - unknown key, cancelled")
+	lm.triggerRedraw()
+	return true
+}
+
+// RenderQuickCommandHints draws the nano-style hint bar at the bottom of the screen
+// Shows context-sensitive shortcuts based on which panel has focus
+func (lm *LayoutManager) RenderQuickCommandHints(s tcell.Screen) {
+	w, h := s.Size()
+	y := h - 1 // Bottom row
+
+	// Style: reverse video for visibility
+	style := tcell.StyleDefault.Reverse(true)
+
+	// Clear the bottom row
+	for x := 0; x < w; x++ {
+		s.SetContent(x, y, ' ', nil, style)
+	}
+
+	// Context-sensitive hint text based on focused panel
+	var hints string
+	switch lm.ActivePanel {
+	case 0: // Tree
+		hints = "  N File   F Folder   D Delete   R Rename   Q Quit   [Space] Next   ESC Cancel"
+	case 1: // Editor
+		hints = "  S Save   W Close   Q Quit   [Space] Next   ESC Cancel"
+	default: // Terminal (2, 3, 4)
+		hints = "  Q Quit   [Space] Next   ESC Cancel"
+	}
+
+	x := 0
+	for _, r := range hints {
+		if x >= w {
+			break
+		}
+		s.SetContent(x, y, r, nil, style)
+		x++
+	}
 }
 
 // PlaceholderWidth is the width of placeholder boxes when both editor and terminal are hidden
@@ -519,8 +659,8 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 				return
 			}
 
-			// Set callback to trigger screen refresh when terminal has new output
-			term.OnRedraw = lm.triggerRedraw
+			// Set up terminal callbacks
+			lm.setupTerminalCallbacks(term)
 
 			// Safely set terminal (prevent race with PreloadTerminal)
 			lm.mu.Lock()
@@ -690,6 +830,13 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		return lm.ShortcutsModal.HandleEvent(event)
 	}
 
+	// Handle quick command mode
+	if lm.QuickCommandMode {
+		if ev, ok := event.(*tcell.EventKey); ok {
+			return lm.handleQuickCommand(ev)
+		}
+	}
+
 	// Handle raw escape sequences for Alt+1-5 (universal terminal support)
 	// Many terminals (Kitty, iTerm2, Alacritty) send Alt+key as ESC-prefixed
 	// sequences rather than setting the ModAlt flag
@@ -750,12 +897,13 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 	// This must happen BEFORE global key handlers to prevent editor from intercepting keys like Esc
 	if lm.ActivePanel >= 2 && lm.ActivePanel <= 4 {
 		if ev, ok := event.(*tcell.EventKey); ok {
-			// Allow global shortcuts to pass through: Ctrl+Q, Ctrl+T, Ctrl+W, Ctrl+Space, Ctrl+[, Ctrl+], Alt+Arrow
+			// Allow global shortcuts to pass through: Ctrl+Q, Ctrl+T, Ctrl+W, Ctrl+Space, Ctrl+\, Ctrl+[, Ctrl+], Alt+Arrow
 			// Also allow pane toggle shortcuts: Alt+1 through Alt+5, Ctrl+/
 			isGlobalShortcut := ev.Key() == tcell.KeyCtrlQ ||
 				ev.Key() == tcell.KeyCtrlT ||
 				ev.Key() == tcell.KeyCtrlW ||
 				ev.Key() == tcell.KeyCtrlSpace ||
+				ev.Key() == tcell.KeyCtrlBackslash ||
 				(ev.Key() == tcell.KeyRight && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Key() == tcell.KeyLeft && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == ']' && ev.Modifiers()&tcell.ModCtrl != 0) ||
@@ -841,6 +989,13 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		if ev.Key() == tcell.KeyCtrlQ {
 			log.Println("THICC: Ctrl+Q detected, checking for unsaved changes")
 			return lm.handleQuit()
+		}
+
+		// Control-\ enters quick command mode (works globally)
+		if ev.Key() == tcell.KeyCtrlBackslash {
+			log.Println("THICC: Control-\\ detected, entering quick command mode")
+			lm.enterQuickCommandMode()
+			return true
 		}
 
 		// Ctrl+S for save (with modal for new files) when editor is focused
@@ -1861,7 +2016,7 @@ func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
 			return
 		}
 
-		term.OnRedraw = lm.triggerRedraw
+		lm.setupTerminalCallbacks(term)
 
 		lm.mu.Lock()
 		switch panel {
@@ -1918,7 +2073,7 @@ func (lm *LayoutManager) createTerminalWithInstallCommand(panel int, installCmd 
 			return
 		}
 
-		term.OnRedraw = lm.triggerRedraw
+		lm.setupTerminalCallbacks(term)
 
 		lm.mu.Lock()
 		switch panel {
