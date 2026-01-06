@@ -810,9 +810,11 @@ func DoEvent() {
 	// InfoBar display disabled for cleaner look
 	// action.InfoBar.Display()
 
-	// Render hint bar based on state
+	// Render hint bar based on state (passthrough > quick command > multiplexer)
 	if thiccLayout != nil {
-		if thiccLayout.QuickCommandMode {
+		if thiccLayout.IsTerminalInPassthroughMode() {
+			thiccLayout.RenderPassthroughHint(screen.Screen)
+		} else if thiccLayout.QuickCommandMode {
 			thiccLayout.RenderQuickCommandHints(screen.Screen)
 		} else if thiccLayout.InMultiplexer {
 			thiccLayout.RenderMultiplexerHint(screen.Screen)

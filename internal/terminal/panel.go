@@ -213,6 +213,10 @@ type Panel struct {
 
 	// Quick command mode - shows hint bar, single key triggers action
 	QuickCommandMode bool
+	// Passthrough mode - all keys sent directly to PTY, bypassing thicc shortcuts
+	PassthroughMode bool
+	// LastCtrlBackslash tracks timing for double-tap exit from passthrough mode
+	LastCtrlBackslash time.Time
 	// OnShowMessage callback to display messages (set by layout manager)
 	OnShowMessage func(msg string)
 	// OnQuit callback when user triggers quit from quick command mode

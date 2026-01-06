@@ -211,6 +211,22 @@ func (lm *LayoutManager) setupTerminalCallbacks(term *terminal.Panel) {
 	}
 }
 
+// getActiveTerminal returns the terminal panel for the currently active panel (or nil)
+func (lm *LayoutManager) getActiveTerminal() *terminal.Panel {
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+
+	switch lm.ActivePanel {
+	case 2:
+		return lm.Terminal
+	case 3:
+		return lm.Terminal2
+	case 4:
+		return lm.Terminal3
+	}
+	return nil
+}
+
 // enterQuickCommandMode activates quick command mode
 func (lm *LayoutManager) enterQuickCommandMode() {
 	lm.QuickCommandMode = true
@@ -285,6 +301,17 @@ func (lm *LayoutManager) handleQuickCommand(ev *tcell.EventKey) bool {
 				lm.triggerRedraw()
 				return true
 			}
+		case 'p', 'P':
+			// Passthrough mode - only works in terminal
+			if lm.ActivePanel >= 2 && lm.ActivePanel <= 4 {
+				term := lm.getActiveTerminal()
+				if term != nil {
+					log.Printf("THICC: Entered passthrough mode for terminal %d", lm.ActivePanel)
+					term.PassthroughMode = true
+					lm.triggerRedraw()
+					return true
+				}
+			}
 		}
 	}
 	// Unknown key - just cancel
@@ -315,7 +342,7 @@ func (lm *LayoutManager) RenderQuickCommandHints(s tcell.Screen) {
 	case 1: // Editor
 		hints = "  S Save   W Close   Q Quit   [Space] Next   ESC Cancel"
 	default: // Terminal (2, 3, 4)
-		hints = "  Q Quit   [Space] Next   ESC Cancel"
+		hints = "  P Passthrough   Q Quit   [Space] Next   ESC Cancel"
 	}
 
 	x := 0
@@ -351,6 +378,42 @@ func (lm *LayoutManager) RenderMultiplexerHint(s tcell.Screen) {
 		s.SetContent(x, y, r, nil, style)
 		x++
 	}
+}
+
+// RenderPassthroughHint draws a prominent hint bar when in passthrough mode
+func (lm *LayoutManager) RenderPassthroughHint(s tcell.Screen) {
+	w, h := s.Size()
+	y := h - 1 // Bottom row
+
+	// Style: orange background for visibility
+	style := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorOrange)
+
+	// Clear the bottom row
+	for x := 0; x < w; x++ {
+		s.SetContent(x, y, ' ', nil, style)
+	}
+
+	hint := "  PASSTHROUGH MODE - Press Ctrl+\\ Ctrl+\\ to exit"
+
+	x := 0
+	for _, r := range hint {
+		if x >= w {
+			break
+		}
+		s.SetContent(x, y, r, nil, style)
+		x++
+	}
+}
+
+// IsTerminalInPassthroughMode returns true if the active terminal is in passthrough mode
+func (lm *LayoutManager) IsTerminalInPassthroughMode() bool {
+	if lm.ActivePanel >= 2 && lm.ActivePanel <= 4 {
+		term := lm.getActiveTerminal()
+		if term != nil {
+			return term.PassthroughMode
+		}
+	}
+	return false
 }
 
 // PlaceholderWidth is the width of placeholder boxes when both editor and terminal are hidden
@@ -930,6 +993,47 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 	// CRITICAL: Terminals get ALL keyboard events when focused (except global shortcuts)
 	// This must happen BEFORE global key handlers to prevent editor from intercepting keys like Esc
 	if lm.ActivePanel >= 2 && lm.ActivePanel <= 4 {
+		// Get the active terminal
+		lm.mu.RLock()
+		var term *terminal.Panel
+		switch lm.ActivePanel {
+		case 2:
+			term = lm.Terminal
+		case 3:
+			term = lm.Terminal2
+		case 4:
+			term = lm.Terminal3
+		}
+		lm.mu.RUnlock()
+
+		// PASSTHROUGH MODE: Send ALL keys to terminal except double-tap Ctrl+\ for exit
+		if term != nil && term.PassthroughMode {
+			if ev, ok := event.(*tcell.EventKey); ok {
+				if ev.Key() == tcell.KeyCtrlBackslash {
+					now := time.Now()
+					// Double-tap within 500ms exits passthrough mode
+					if now.Sub(term.LastCtrlBackslash) < 500*time.Millisecond {
+						term.PassthroughMode = false
+						term.LastCtrlBackslash = time.Time{} // Reset
+						log.Printf("THICC: Exited passthrough mode for terminal %d", lm.ActivePanel)
+						lm.triggerRedraw()
+						return true
+					}
+					term.LastCtrlBackslash = now
+					// First Ctrl+\ - send to terminal (could be SIGQUIT)
+					term.HandleEvent(event)
+					return true
+				}
+				// All other keys go directly to terminal
+				term.HandleEvent(event)
+				return true
+			}
+			// Handle paste in passthrough mode too
+			if lm.handleTerminalPaste(event) {
+				return true
+			}
+		}
+
 		if ev, ok := event.(*tcell.EventKey); ok {
 			// Allow global shortcuts to pass through: Ctrl+Q, Ctrl+T, Ctrl+W, Ctrl+Space, Ctrl+\, Ctrl+[, Ctrl+], Alt+Arrow
 			// Also allow pane toggle shortcuts: Alt+1 through Alt+5, Ctrl+/
@@ -950,23 +1054,9 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 				(ev.Rune() == '/' && ev.Modifiers()&tcell.ModCtrl != 0) ||
 				ev.Key() == tcell.KeyCtrlUnderscore // Ctrl+/ often sends this
 
-			if !isGlobalShortcut {
-				lm.mu.RLock()
-				var term *terminal.Panel
-				switch lm.ActivePanel {
-				case 2:
-					term = lm.Terminal
-				case 3:
-					term = lm.Terminal2
-				case 4:
-					term = lm.Terminal3
-				}
-				lm.mu.RUnlock()
-
-				if term != nil {
-					term.HandleEvent(event)
-					return true // Always consume keyboard events for terminal
-				}
+			if !isGlobalShortcut && term != nil {
+				term.HandleEvent(event)
+				return true // Always consume keyboard events for terminal
 			}
 		}
 
