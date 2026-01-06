@@ -13,6 +13,7 @@ require (
 	github.com/micro-editor/tcell/v2 v2.0.11
 	github.com/micro-editor/terminal v0.0.0-20250324214352-e587e959c6b5
 	github.com/mitchellh/go-homedir v1.1.0
+	github.com/sahilm/fuzzy v0.1.1
 	github.com/sergi/go-diff v1.1.0
 	github.com/stretchr/testify v1.4.0
 	github.com/yuin/gopher-lua v1.1.1

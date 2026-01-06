@@ -40,7 +40,7 @@ var bufdefaults = map[string]string{
 	"Ctrl-f":         "Find",
 	"Alt-F":          "FindLiteral",
 	"Ctrl-n":         "FindNext",
-	"Ctrl-p":         "FindPrevious",
+	"CtrlShiftP":     "FindPrevious",
 	"Alt-[":          "DiffPrevious|CursorStart",
 	"Alt-]":          "DiffNext|CursorEnd",
 	"Ctrl-z":         "Undo",
@@ -165,7 +165,7 @@ var infodefaults = map[string]string{
 	"Ctrl-d":         "DeleteWordLeft",
 	"Ctrl-m":         "ExecuteCommand",
 	"Ctrl-n":         "HistoryDown",
-	"Ctrl-p":         "HistoryUp",
+	"CtrlShiftP":     "HistoryUp",
 	"Ctrl-u":         "SelectToStart",
 
 	// Emacs-style keybindings

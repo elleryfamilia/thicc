@@ -14,6 +14,7 @@ import (
 	"github.com/ellery/thicc/internal/config"
 	"github.com/ellery/thicc/internal/dashboard"
 	"github.com/ellery/thicc/internal/filebrowser"
+	"github.com/ellery/thicc/internal/filemanager"
 	"github.com/ellery/thicc/internal/terminal"
 	"github.com/micro-editor/tcell/v2"
 )
@@ -41,6 +42,10 @@ type LayoutManager struct {
 	ConfirmModal   *ConfirmModal
 	ShortcutsModal *ShortcutsModal
 	ProjectPicker  *dashboard.ProjectPicker
+	QuickFindPicker *QuickFindPicker
+
+	// File index for quick find
+	FileIndex *filemanager.FileIndex
 
 	// Tab bar for showing open files
 	TabBar *TabBar
@@ -788,6 +793,30 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 	lm.ProjectPicker.Hide() // Start hidden
 	log.Println("THICC: Project picker initialized")
 
+	// Initialize file index for quick find (build in background)
+	lm.FileIndex = filemanager.NewFileIndex(lm.Root)
+	go lm.FileIndex.Build()
+	log.Println("THICC: File index build started in background")
+
+	// Initialize quick find picker
+	lm.QuickFindPicker = NewQuickFindPicker(screen, lm.FileIndex,
+		func(path string) {
+			lm.QuickFindPicker.Hide()
+			lm.previewFileInEditor(path)
+			// Also select the file in the file browser
+			if lm.FileBrowser != nil {
+				lm.FileBrowser.SelectFile(path)
+			}
+			lm.FocusEditor() // Switch focus to editor after opening
+			lm.triggerRedraw()
+		},
+		func() {
+			lm.QuickFindPicker.Hide()
+			lm.triggerRedraw()
+		},
+	)
+	log.Println("THICC: Quick find picker initialized")
+
 	log.Println("THICC: Layout initialization complete")
 	return nil
 }
@@ -881,6 +910,11 @@ func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 		lm.ProjectPicker.Render(screen)
 	}
 
+	// Draw quick find picker on top of everything
+	if lm.QuickFindPicker != nil && lm.QuickFindPicker.Active {
+		lm.QuickFindPicker.Render(screen)
+	}
+
 	// Draw tool selector modal centered over the entire terminal region
 	if lm.ShowingToolSelector && lm.ToolSelector != nil && lm.ToolSelector.IsActive() {
 		termX := lm.getTermX()
@@ -915,6 +949,11 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 	// Handle project picker
 	if lm.ProjectPicker != nil && lm.ProjectPicker.Active {
 		return lm.ProjectPicker.HandleEvent(event)
+	}
+
+	// Handle quick find picker
+	if lm.QuickFindPicker != nil && lm.QuickFindPicker.Active {
+		return lm.QuickFindPicker.HandleEvent(event)
 	}
 
 	// Handle tool selector modal
@@ -1126,6 +1165,13 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		if ev.Key() == tcell.KeyCtrlS && lm.ActivePanel == 1 {
 			log.Println("THICC: Ctrl+S detected, saving current buffer")
 			return lm.SaveCurrentBuffer()
+		}
+
+		// Ctrl+P for quick find (works globally)
+		if ev.Key() == tcell.KeyCtrlP {
+			log.Println("THICC: Ctrl+P detected, showing quick find")
+			lm.ShowQuickFind()
+			return true
 		}
 
 		// Global file operations (work from any panel when FileBrowser exists)
@@ -2824,6 +2870,14 @@ func (lm *LayoutManager) ShowProjectPicker() {
 		lm.ProjectPicker.InputPath = currentDir
 		lm.ProjectPicker.CursorPos = len(currentDir)
 		lm.ProjectPicker.Show()
+		lm.triggerRedraw()
+	}
+}
+
+// ShowQuickFind shows the quick find file picker
+func (lm *LayoutManager) ShowQuickFind() {
+	if lm.QuickFindPicker != nil {
+		lm.QuickFindPicker.Show()
 		lm.triggerRedraw()
 	}
 }
