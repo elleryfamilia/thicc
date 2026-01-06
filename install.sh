@@ -7,16 +7,25 @@ set -e
 # Options (via environment variables):
 #   CHANNEL=nightly  - Install nightly build instead of stable release
 #   CHANNEL=stable   - Install latest stable release (default)
+#   GLOBAL=1         - Install to /usr/local/bin (requires sudo)
 #
 # Examples:
-#   curl -fsSL ... | sh                      # Install stable
+#   curl -fsSL ... | sh                      # Install to ~/.local/bin (no sudo)
+#   curl -fsSL ... | GLOBAL=1 sh             # Install to /usr/local/bin (sudo)
 #   curl -fsSL ... | CHANNEL=nightly sh      # Install nightly
 
 REPO="elleryfamilia/thicc"
-INSTALL_DIR="/usr/local/bin"
 CHANNEL="${CHANNEL:-stable}"
 
-echo "Installing thicc (channel: $CHANNEL)..."
+# Default to ~/.local/bin (user-writable, no sudo needed)
+# Use GLOBAL=1 for /usr/local/bin
+if [ "${GLOBAL:-0}" = "1" ]; then
+  INSTALL_DIR="/usr/local/bin"
+else
+  INSTALL_DIR="$HOME/.local/bin"
+fi
+
+echo "Installing thicc (channel: $CHANNEL) to $INSTALL_DIR..."
 
 # Detect OS
 OS=$(uname -s | tr '[:upper:]' '[:lower:]')
@@ -140,6 +149,12 @@ fi
 # Make executable
 chmod +x "$BINARY"
 
+# Create install directory if it doesn't exist
+if [ ! -d "$INSTALL_DIR" ]; then
+  echo "Creating $INSTALL_DIR..."
+  mkdir -p "$INSTALL_DIR"
+fi
+
 # Install
 if [ -w "$INSTALL_DIR" ]; then
   mv "$BINARY" "$INSTALL_DIR/"
@@ -149,5 +164,27 @@ else
 fi
 
 echo ""
-echo "thicc installed successfully!"
-echo "Run 'thicc' to get started."
+echo "thicc installed successfully to $INSTALL_DIR/thicc"
+
+# Check if INSTALL_DIR is in PATH
+case ":$PATH:" in
+  *":$INSTALL_DIR:"*)
+    echo "Run 'thicc' to get started."
+    ;;
+  *)
+    echo ""
+    echo "NOTE: $INSTALL_DIR is not in your PATH."
+    echo "Add it by running one of:"
+    echo ""
+    echo "  # For bash (add to ~/.bashrc):"
+    echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo ""
+    echo "  # For zsh (add to ~/.zshrc):"
+    echo "  export PATH=\"\$HOME/.local/bin:\$PATH\""
+    echo ""
+    echo "  # For fish (add to ~/.config/fish/config.fish):"
+    echo "  set -gx PATH \$HOME/.local/bin \$PATH"
+    echo ""
+    echo "Then restart your shell or run: source ~/.bashrc (or ~/.zshrc)"
+    ;;
+esac

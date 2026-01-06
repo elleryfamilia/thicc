@@ -28,13 +28,19 @@ We're built for the AI-assisted workflow—terminal pane ready for Claude, Copil
 curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/install.sh | sh
 ```
 
+This installs to `~/.local/bin` (no sudo required). For system-wide install:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/install.sh | GLOBAL=1 sh
+```
+
 Or build from source:
 
 ```sh
 git clone https://github.com/elleryfamilia/thicc
 cd thicc
 make build
-sudo mv thicc /usr/local/bin
+mv thicc ~/.local/bin/  # or: sudo mv thicc /usr/local/bin
 ```
 
 ## Run it
@@ -94,7 +100,7 @@ thicc --update
 thicc --uninstall
 ```
 
-If installed to `/usr/local/bin`, you may need `sudo thicc --uninstall`.
+If installed to `/usr/local/bin` (with `GLOBAL=1`), you may need `sudo thicc --uninstall`.
 
 ## License
 
