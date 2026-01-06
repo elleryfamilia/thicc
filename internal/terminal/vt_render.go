@@ -329,6 +329,20 @@ func (p *Panel) ShowCursor(screen tcell.Screen) {
 	}
 }
 
+// rgbTo256Color converts RGB values to the closest 256-palette color
+func rgbTo256Color(r, g, b int) tcell.Color {
+	// Use the 216-color cube (colors 16-231) for approximation
+	// Each channel maps to 0-5 range
+	ri := (r * 5) / 255
+	gi := (g * 5) / 255
+	bi := (b * 5) / 255
+
+	// Calculate 216-color index: 16 + 36*r + 6*g + b
+	colorIndex := 16 + 36*ri + 6*gi + bi
+
+	return tcell.PaletteColor(colorIndex)
+}
+
 // glyphToTcellStyle converts VT10x Glyph to tcell style
 func glyphToTcellStyle(glyph vt10x.Glyph) tcell.Style {
 	// Start with config.DefStyle to get the Thock background
@@ -340,11 +354,15 @@ func glyphToTcellStyle(glyph vt10x.Glyph) tcell.Style {
 		// - 0-255: palette colors
 		// - >255: 24-bit RGB as (r<<16 | g<<8 | b)
 		if glyph.FG > 255 {
-			// Extract RGB components
-			r := int32((glyph.FG >> 16) & 0xFF)
-			g := int32((glyph.FG >> 8) & 0xFF)
-			b := int32(glyph.FG & 0xFF)
-			style = style.Foreground(tcell.NewRGBColor(r, g, b))
+			// Extract RGB components and convert to 256-palette for tmux compatibility
+			r := int((glyph.FG >> 16) & 0xFF)
+			g := int((glyph.FG >> 8) & 0xFF)
+			b := int(glyph.FG & 0xFF)
+			if config.InTmux {
+				style = style.Foreground(rgbTo256Color(r, g, b))
+			} else {
+				style = style.Foreground(tcell.NewRGBColor(int32(r), int32(g), int32(b)))
+			}
 		} else {
 			// Palette color (0-255)
 			style = style.Foreground(tcell.PaletteColor(int(glyph.FG)))
@@ -355,11 +373,15 @@ func glyphToTcellStyle(glyph vt10x.Glyph) tcell.Style {
 	if glyph.BG != vt10x.DefaultBG {
 		// Same logic as foreground
 		if glyph.BG > 255 {
-			// Extract RGB components
-			r := int32((glyph.BG >> 16) & 0xFF)
-			g := int32((glyph.BG >> 8) & 0xFF)
-			b := int32(glyph.BG & 0xFF)
-			style = style.Background(tcell.NewRGBColor(r, g, b))
+			// Extract RGB components and convert to 256-palette for tmux compatibility
+			r := int((glyph.BG >> 16) & 0xFF)
+			g := int((glyph.BG >> 8) & 0xFF)
+			b := int(glyph.BG & 0xFF)
+			if config.InTmux {
+				style = style.Background(rgbTo256Color(r, g, b))
+			} else {
+				style = style.Background(tcell.NewRGBColor(int32(r), int32(g), int32(b)))
+			}
 		} else {
 			// Palette color (0-255)
 			style = style.Background(tcell.PaletteColor(int(glyph.BG)))

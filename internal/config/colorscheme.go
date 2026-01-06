@@ -2,13 +2,18 @@ package config
 
 import (
 	"errors"
+	"fmt"
 	"log"
+	"os"
 	"regexp"
 	"strconv"
 	"strings"
 
 	"github.com/micro-editor/tcell/v2"
 )
+
+// InTmux is true if running inside tmux (needs 256-color safe palette)
+var InTmux = os.Getenv("TMUX") != ""
 
 // DefStyle is Micro's default style
 var DefStyle tcell.Style = tcell.StyleDefault
@@ -49,14 +54,23 @@ func ColorschemeExists(colorschemeName string) bool {
 }
 
 // ThiccBackground is the default background color for all panels
-var ThiccBackground = tcell.GetColor("#0b0614")
+// Uses 256-color palette in tmux for compatibility, true color otherwise
+var ThiccBackground = initThiccBackground()
+
+func initThiccBackground() tcell.Color {
+	if InTmux {
+		// Use 256-color palette for tmux compatibility
+		return tcell.Color232 // Very dark gray (#080808)
+	}
+	return tcell.GetColor("#0b0614") // True color dark purple
+}
 
 // InitColorscheme picks and initializes the colorscheme when micro starts
 func InitColorscheme() error {
 	Colorscheme = make(map[string]tcell.Style)
 	DefStyle = tcell.StyleDefault.Background(ThiccBackground)
 
-	log.Printf("THICC: InitColorscheme starting, colorscheme setting = %v", GlobalSettings["colorscheme"])
+	log.Printf("THICC: InitColorscheme starting, colorscheme setting = %v, InTmux = %v, ThiccBackground = %v", GlobalSettings["colorscheme"], InTmux, ThiccBackground)
 
 	c, err := LoadDefaultColorscheme()
 	if err == nil {
@@ -79,6 +93,14 @@ func InitColorscheme() error {
 	// Ensure DefStyle uses the Thock background color
 	fg, _, _ := DefStyle.Decompose()
 	DefStyle = DefStyle.Foreground(fg).Background(ThiccBackground)
+
+	// Add default selection style if not defined in colorscheme
+	// This prevents invisible text when using DefStyle.Reverse(true) fallback
+	if _, ok := Colorscheme["selection"]; !ok {
+		Colorscheme["selection"] = tcell.StyleDefault.
+			Foreground(tcell.ColorWhite).
+			Background(tcell.Color24) // Dark blue selection background
+	}
 
 	return err
 }
@@ -258,10 +280,32 @@ func StringToColor(str string) (tcell.Color, bool) {
 		}
 		// Check if this is a truecolor hex value
 		if len(str) == 7 && str[0] == '#' {
+			if InTmux {
+				// Convert true color to closest 256-palette color for tmux compatibility
+				return hexTo256Color(str), true
+			}
 			return tcell.GetColor(str), true
 		}
 		return tcell.ColorDefault, false
 	}
+}
+
+// hexTo256Color converts a hex color string to the closest 256-palette color
+func hexTo256Color(hex string) tcell.Color {
+	// Parse hex color
+	var r, g, b int
+	fmt.Sscanf(hex, "#%02x%02x%02x", &r, &g, &b)
+
+	// Use the 216-color cube (colors 16-231) for approximation
+	// Each channel maps to 0-5 range
+	ri := (r * 5) / 255
+	gi := (g * 5) / 255
+	bi := (b * 5) / 255
+
+	// Calculate 216-color index: 16 + 36*r + 6*g + b
+	colorIndex := 16 + 36*ri + 6*gi + bi
+
+	return tcell.PaletteColor(colorIndex)
 }
 
 // GetColor256 returns the tcell color for a number between 0 and 255

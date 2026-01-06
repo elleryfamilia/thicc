@@ -56,10 +56,11 @@ func (p *Panel) drawHeader(screen tcell.Screen) {
 	style := GetDirectoryStyle() // Default: bright blue
 	if p.Selected == -1 && p.Focus {
 		// Fill entire line with selection background first
+		focusedStyle := GetFocusedStyle()
 		for i := 0; i < p.Region.Width; i++ {
-			screen.SetContent(p.Region.X+i, p.Region.Y+1, ' ', nil, FocusedStyle)
+			screen.SetContent(p.Region.X+i, p.Region.Y+1, ' ', nil, focusedStyle)
 		}
-		style = FocusedStyle // When selected: black bg, white text (same as nodes)
+		style = focusedStyle // When selected: black bg, white text (same as nodes)
 	}
 
 	// Draw the directory name with appropriate style
@@ -104,10 +105,13 @@ func (p *Panel) drawNodes(screen tcell.Screen) {
 	}
 }
 
-// SelectedUnfocusedStyle is the style for selected items when panel is not focused
-var SelectedUnfocusedStyle = tcell.StyleDefault.
-	Foreground(tcell.ColorWhite).
-	Background(tcell.Color236) // Dark gray background
+// GetSelectedUnfocusedStyle returns the style for selected items when panel is not focused
+// Uses config.DefStyle to ensure correct background with dark theme
+func GetSelectedUnfocusedStyle() tcell.Style {
+	return config.DefStyle.
+		Foreground(tcell.ColorWhite).
+		Background(tcell.Color236) // Dark gray background
+}
 
 // renderNode renders a single tree node
 func (p *Panel) renderNode(screen tcell.Screen, y int, node *filemanager.TreeNode, isSelected bool, panelFocused bool) {
@@ -115,9 +119,9 @@ func (p *Panel) renderNode(screen tcell.Screen, y int, node *filemanager.TreeNod
 	var selStyle tcell.Style
 	if isSelected {
 		if panelFocused {
-			selStyle = FocusedStyle
+			selStyle = GetFocusedStyle()
 		} else {
-			selStyle = SelectedUnfocusedStyle
+			selStyle = GetSelectedUnfocusedStyle()
 		}
 		// Fill entire line with selection background first
 		for i := 0; i < p.Region.Width; i++ {

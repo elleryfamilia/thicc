@@ -90,10 +90,18 @@ type LayoutManager struct {
 
 	// Quick command mode state
 	QuickCommandMode bool
+
+	// Multiplexer detection - true if running in tmux/zellij/screen
+	InMultiplexer bool
 }
 
 // NewLayoutManager creates a new layout manager
 func NewLayoutManager(root string) *LayoutManager {
+	// Detect if running inside a terminal multiplexer
+	inMux := os.Getenv("TMUX") != "" ||
+		os.Getenv("ZELLIJ") != "" ||
+		os.Getenv("STY") != ""
+
 	return &LayoutManager{
 		TreeWidth:       30,                // Fixed tree width
 		LeftPanelsPct:   55,                // Tree + Editor = 55% of screen
@@ -109,6 +117,7 @@ func NewLayoutManager(root string) *LayoutManager {
 		ShortcutsModal:  NewShortcutsModal(),
 		ProjectPicker:   nil, // Initialized when screen is available
 		TabBar:          NewTabBar(),
+		InMultiplexer:   inMux,
 	}
 }
 
@@ -311,6 +320,31 @@ func (lm *LayoutManager) RenderQuickCommandHints(s tcell.Screen) {
 
 	x := 0
 	for _, r := range hints {
+		if x >= w {
+			break
+		}
+		s.SetContent(x, y, r, nil, style)
+		x++
+	}
+}
+
+// RenderMultiplexerHint draws a subtle hint bar when running in a multiplexer
+func (lm *LayoutManager) RenderMultiplexerHint(s tcell.Screen) {
+	w, h := s.Size()
+	y := h - 1 // Bottom row
+
+	// Style: dim for subtle appearance
+	style := tcell.StyleDefault.Dim(true)
+
+	// Clear the bottom row
+	for x := 0; x < w; x++ {
+		s.SetContent(x, y, ' ', nil, style)
+	}
+
+	hint := "Press Control-\\ for commands"
+
+	x := 2 // Left-aligned with small indent
+	for _, r := range hint {
 		if x >= w {
 			break
 		}

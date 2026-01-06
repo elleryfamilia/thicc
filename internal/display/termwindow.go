@@ -75,13 +75,19 @@ func (w *TermWindow) Display() {
 			c, f, b := w.State.Cell(x, y)
 
 			fg, bg := int(f), int(b)
+			var fgColor, bgColor tcell.Color
 			if f == terminal.DefaultFG {
-				fg = int(tcell.ColorDefault)
+				fgColor = tcell.ColorDefault
+			} else {
+				fgColor = config.GetColor256(fg)
 			}
 			if b == terminal.DefaultBG {
-				bg = int(tcell.ColorDefault)
+				// Use ThiccBackground instead of ColorDefault for consistent dark theme
+				bgColor = config.ThiccBackground
+			} else {
+				bgColor = config.GetColor256(bg)
 			}
-			st := tcell.StyleDefault.Foreground(config.GetColor256(fg)).Background(config.GetColor256(bg))
+			st := tcell.StyleDefault.Foreground(fgColor).Background(bgColor)
 
 			if l.LessThan(w.Selection[1]) && l.GreaterEqual(w.Selection[0]) || l.LessThan(w.Selection[0]) && l.GreaterEqual(w.Selection[1]) {
 				st = st.Reverse(true)

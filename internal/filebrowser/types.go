@@ -27,10 +27,13 @@ func GetDefaultStyle() tcell.Style {
 // DefaultStyle is kept for backwards compatibility (used at render time)
 var DefaultStyle = tcell.StyleDefault.Foreground(tcell.ColorWhite)
 
-// FocusedStyle is the style for focused items
-var FocusedStyle = tcell.StyleDefault.
-	Foreground(tcell.ColorBlack).
-	Background(tcell.ColorWhite)
+// GetFocusedStyle returns the style for focused/selected items
+// Uses config.DefStyle to ensure correct background with dark theme
+func GetFocusedStyle() tcell.Style {
+	return config.DefStyle.
+		Foreground(tcell.ColorBlack).
+		Background(tcell.ColorWhite)
+}
 
 // GetDirectoryStyle returns the style for directories, using the editor's background
 func GetDirectoryStyle() tcell.Style {

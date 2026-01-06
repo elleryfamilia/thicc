@@ -810,9 +810,13 @@ func DoEvent() {
 	// InfoBar display disabled for cleaner look
 	// action.InfoBar.Display()
 
-	// Render quick command hint bar when in quick command mode
-	if thiccLayout != nil && thiccLayout.QuickCommandMode {
-		thiccLayout.RenderQuickCommandHints(screen.Screen)
+	// Render hint bar based on state
+	if thiccLayout != nil {
+		if thiccLayout.QuickCommandMode {
+			thiccLayout.RenderQuickCommandHints(screen.Screen)
+		} else if thiccLayout.InMultiplexer {
+			thiccLayout.RenderMultiplexerHint(screen.Screen)
+		}
 	}
 
 	// THOCK: Control cursor visibility based on which panel has focus

@@ -81,7 +81,9 @@ var lastCursor screenCell
 func ShowFakeCursor(x, y int) {
 	r, combc, style, _ := Screen.GetContent(x, y)
 	Screen.SetContent(lastCursor.x, lastCursor.y, lastCursor.r, lastCursor.combc, lastCursor.style)
-	Screen.SetContent(x, y, r, combc, config.DefStyle.Reverse(true))
+	// Use explicit cursor style instead of Reverse() which can make text invisible
+	cursorStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite)
+	Screen.SetContent(x, y, r, combc, cursorStyle)
 
 	lastCursor.x, lastCursor.y = x, y
 	lastCursor.r = r
@@ -98,7 +100,9 @@ func UseFake() bool {
 // Fake cursors are also necessary to display multiple cursors
 func ShowFakeCursorMulti(x, y int) {
 	r, _, _, _ := Screen.GetContent(x, y)
-	Screen.SetContent(x, y, r, nil, config.DefStyle.Reverse(true))
+	// Use explicit cursor style instead of Reverse() which can make text invisible
+	cursorStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite)
+	Screen.SetContent(x, y, r, nil, cursorStyle)
 }
 
 // ShowCursor puts the cursor at the given location using a fake cursor
