@@ -51,8 +51,9 @@ type LayoutManager struct {
 	TabBar *TabBar
 
 	// Layout configuration
-	TreeWidth       int // Left panel width (fixed at 30)
-	TermWidthPct    int // Right panel width as percentage (40 = 40%)
+	TreeWidth         int // Left panel width (fixed at 30)
+	TreeWidthExpanded int // Expanded tree width when focused with single pane
+	TermWidthPct      int // Right panel width as percentage (40 = 40%)
 	LeftPanelsPct   int // Tree + Editor width as percentage (60 = 60%)
 	ScreenW         int // Total screen width
 	ScreenH         int // Total screen height
@@ -108,8 +109,9 @@ func NewLayoutManager(root string) *LayoutManager {
 		os.Getenv("STY") != ""
 
 	return &LayoutManager{
-		TreeWidth:       30,                // Fixed tree width
-		LeftPanelsPct:   55,                // Tree + Editor = 55% of screen
+		TreeWidth:         30,              // Fixed tree width
+		TreeWidthExpanded: 40,              // Wider when focused or single pane
+		LeftPanelsPct:     55,              // Tree + Editor = 55% of screen
 		TermWidthPct:    45,                // Terminal = 45% of screen
 		Root:            root,
 		ActivePanel:     1,                 // Start with editor focused
@@ -429,6 +431,9 @@ func (lm *LayoutManager) getTreeWidth() int {
 	if !lm.TreeVisible {
 		return 0
 	}
+	if lm.shouldExpandTree() {
+		return lm.TreeWidthExpanded
+	}
 	return lm.TreeWidth
 }
 
@@ -452,6 +457,30 @@ func (lm *LayoutManager) anyTerminalVisible() bool {
 	return lm.TerminalVisible || lm.Terminal2Visible || lm.Terminal3Visible
 }
 
+// shouldExpandTree returns true if tree should use expanded width
+// Expanded when: file browser is focused OR only one other pane is visible
+func (lm *LayoutManager) shouldExpandTree() bool {
+	// Always expand when file browser has focus
+	if lm.ActivePanel == 0 {
+		return true
+	}
+
+	// Stay expanded if only one other pane is visible
+	termCount := lm.getVisibleTerminalCount()
+
+	// File browser + editor only (no terminals)
+	if lm.EditorVisible && termCount == 0 {
+		return true
+	}
+
+	// File browser + single terminal only (no editor)
+	if !lm.EditorVisible && termCount == 1 {
+		return true
+	}
+
+	return false
+}
+
 // getTotalTerminalSpace returns total space available for all terminal panes
 func (lm *LayoutManager) getTotalTerminalSpace() int {
 	if !lm.anyTerminalVisible() {
@@ -460,7 +489,15 @@ func (lm *LayoutManager) getTotalTerminalSpace() int {
 
 	// If editor is also visible, terminals get their percentage of TOTAL screen width
 	if lm.EditorVisible {
-		return lm.ScreenW * lm.TermWidthPct / 100
+		space := lm.ScreenW * lm.TermWidthPct / 100
+		// When tree is expanded, reduce terminal space (not editor space)
+		if lm.shouldExpandTree() {
+			space -= (lm.TreeWidthExpanded - lm.TreeWidth)
+		}
+		if space < 0 {
+			space = 0
+		}
+		return space
 	}
 
 	// Terminals take all space after tree
@@ -1450,6 +1487,9 @@ func (lm *LayoutManager) setActivePanel(panel int) {
 			lm.TabBar.PinTab(lm.TabBar.ActiveIndex)
 		}
 	}
+
+	// Update layout when focus changes (tree width may change based on focus)
+	lm.updateLayout()
 }
 
 // cycleFocus cycles to the next panel
@@ -1889,6 +1929,41 @@ func (lm *LayoutManager) drawEditorBorder(screen tcell.Screen, focused bool) {
 		screen.SetContent(editorX+editorW-1, 0, '┐', nil, style)
 		screen.SetContent(editorX, h-1, '└', nil, style)
 		screen.SetContent(editorX+editorW-1, h-1, '┘', nil, style)
+	}
+}
+
+// updateLayout recalculates panel regions without changing screen size
+// Called when focus changes (which may affect tree width)
+func (lm *LayoutManager) updateLayout() {
+	if lm.ScreenW == 0 || lm.ScreenH == 0 {
+		return // Not initialized yet
+	}
+
+	// Update file browser region
+	if lm.FileBrowser != nil {
+		lm.FileBrowser.Region.Width = lm.getTreeWidth()
+	}
+
+	// Update terminal regions
+	lm.mu.RLock()
+	term := lm.Terminal
+	term2 := lm.Terminal2
+	term3 := lm.Terminal3
+	lm.mu.RUnlock()
+
+	if term != nil {
+		term.Region.X = lm.getTermX()
+		term.Region.Width = lm.getTermWidth()
+	}
+
+	if term2 != nil {
+		term2.Region.X = lm.getTerm2X()
+		term2.Region.Width = lm.getTerm2Width()
+	}
+
+	if term3 != nil {
+		term3.Region.X = lm.getTerm3X()
+		term3.Region.Width = lm.getTerm3Width()
 	}
 }
 
