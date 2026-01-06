@@ -1560,6 +1560,13 @@ func (lm *LayoutManager) cycleFocus() {
 func (lm *LayoutManager) previewFileInEditor(path string) {
 	log.Printf("THICC: Previewing file: %s", path)
 
+	// Make editor visible if it's hidden
+	if !lm.EditorVisible {
+		lm.EditorVisible = true
+		lm.updateLayout()
+		lm.triggerRedraw()
+	}
+
 	// Make path absolute for dedup check
 	absPath, err := filepath.Abs(path)
 	if err != nil {
