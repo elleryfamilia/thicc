@@ -1192,6 +1192,24 @@ func InitDashboard() {
 		thiccDashboard.RecentStore.AddProject(path, true)
 	}
 
+	thiccDashboard.OnNewFolder = func(path string) {
+		log.Println("THOCK Dashboard: New folder created, opening:", path)
+		showDashboard = false
+		// Change to the new folder
+		if err := os.Chdir(path); err != nil {
+			log.Printf("THOCK Dashboard: Failed to chdir to %s: %v", path, err)
+		}
+		// Reset layout so it gets recreated with the new working directory
+		thiccLayout = nil
+		TransitionToEditor(nil, "")
+		// Add to recent projects
+		thiccDashboard.RecentStore.AddProject(path, true)
+		// Focus the file browser so user can see the new project
+		if thiccLayout != nil {
+			thiccLayout.FocusTree()
+		}
+	}
+
 	thiccDashboard.OnInstallTool = func(cmd string) {
 		log.Printf("THOCK Dashboard: Install tool selected: %s", cmd)
 		pendingInstallCmd = cmd

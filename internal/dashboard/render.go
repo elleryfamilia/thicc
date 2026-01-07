@@ -38,6 +38,16 @@ func (d *Dashboard) Render(screen tcell.Screen) {
 		d.ProjectPicker.Render(screen)
 	}
 
+	// Draw file picker overlay if active
+	if d.IsFilePickerActive() {
+		d.FilePicker.Render(screen)
+	}
+
+	// Draw folder creator overlay if active
+	if d.IsFolderCreatorActive() {
+		d.FolderCreator.Render(screen)
+	}
+
 	// Draw onboarding guide overlay if active
 	if d.IsOnboardingGuideActive() {
 		d.OnboardingGuide.Render(screen)
@@ -544,16 +554,17 @@ func (d *Dashboard) drawKeyboardHints(screen tcell.Screen) {
 		key  string
 		desc string
 	}{
-		{"n", "New"},
-		{"o", "Open"},
+		{"n", "New File"},
+		{"f", "Open File"},
+		{"o", "Open Project"},
+		{"d", "New Folder"},
 		{"q", "Quit"},
-		{"↑↓", "Navigate"},
 		{"?", "Help"},
 	}
 
-	// Add recent hint if there are recent projects (insert after Quit, before Navigate)
+	// Add recent hint if there are recent projects
 	if len(d.RecentStore.Projects) > 0 {
-		hints = append(hints[:3], append([]struct{ key, desc string }{{"1-9", "Recent"}}, hints[3:]...)...)
+		hints = append(hints[:4], append([]struct{ key, desc string }{{"1-9", "Recent"}}, hints[4:]...)...)
 	}
 
 	// Build hint string

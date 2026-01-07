@@ -12,7 +12,9 @@ type MenuItemID int
 
 const (
 	MenuNewFile MenuItemID = iota
+	MenuOpenFile
 	MenuOpenProject
+	MenuNewFolder
 	MenuExit
 )
 
@@ -57,6 +59,12 @@ type Dashboard struct {
 	// Project Picker modal
 	ProjectPicker *ProjectPicker
 
+	// File Picker modal
+	FilePicker *FilePicker
+
+	// Folder Creator modal
+	FolderCreator *FolderCreator
+
 	// Onboarding Guide modal
 	OnboardingGuide *OnboardingGuide
 
@@ -65,6 +73,7 @@ type Dashboard struct {
 	OnOpenProject func(path string)  // Open a project folder
 	OnOpenFile    func(path string)  // Open specific file
 	OnOpenFolder  func(path string)  // Open specific folder
+	OnNewFolder   func(path string)  // Create and open a new folder
 	OnInstallTool func(cmd string)   // Install a tool (opens shell with command)
 	OnExit        func()             // Exit application
 }
@@ -94,7 +103,9 @@ func NewDashboard(screen tcell.Screen) *Dashboard {
 
 		MenuItems: []MenuItem{
 			{ID: MenuNewFile, Icon: "+", Label: "New File", Shortcut: "n"},
+			{ID: MenuOpenFile, Icon: ">", Label: "Open File", Shortcut: "f"},
 			{ID: MenuOpenProject, Icon: ">", Label: "Open Project", Shortcut: "o"},
+			{ID: MenuNewFolder, Icon: "+", Label: "New Folder", Shortcut: "d"},
 			{ID: MenuExit, Icon: "x", Label: "Exit", Shortcut: "q"},
 		},
 		SelectedIdx: 0,
@@ -224,8 +235,12 @@ func (d *Dashboard) ActivateSelection() {
 		if d.OnNewFile != nil {
 			d.OnNewFile()
 		}
+	case MenuOpenFile:
+		d.ShowFilePicker()
 	case MenuOpenProject:
 		d.ShowProjectPicker()
+	case MenuNewFolder:
+		d.ShowFolderCreator()
 	case MenuExit:
 		if d.OnExit != nil {
 			d.OnExit()
@@ -530,4 +545,82 @@ func (d *Dashboard) ShowOnboardingGuide() {
 // IsOnboardingGuideActive returns true if the onboarding guide is currently shown
 func (d *Dashboard) IsOnboardingGuideActive() bool {
 	return d.OnboardingGuide != nil && d.OnboardingGuide.Active
+}
+
+// ShowFilePicker displays the file picker modal
+func (d *Dashboard) ShowFilePicker() {
+	if d.FilePicker == nil {
+		d.FilePicker = NewFilePicker(d.Screen,
+			func(path string) {
+				// File selected - call the callback
+				d.FilePicker.Hide()
+
+				// Trigger install if an installable tool is selected
+				if d.SelectedInstallCmd != "" && d.OnInstallTool != nil {
+					log.Printf("THICC Dashboard: Triggering install command: %s", d.SelectedInstallCmd)
+					d.OnInstallTool(d.SelectedInstallCmd)
+				}
+
+				if d.OnOpenFile != nil {
+					d.OnOpenFile(path)
+				}
+			},
+			func(path string) {
+				// Folder selected - open as project
+				d.FilePicker.Hide()
+
+				// Trigger install if an installable tool is selected
+				if d.SelectedInstallCmd != "" && d.OnInstallTool != nil {
+					log.Printf("THICC Dashboard: Triggering install command: %s", d.SelectedInstallCmd)
+					d.OnInstallTool(d.SelectedInstallCmd)
+				}
+
+				if d.OnOpenFolder != nil {
+					d.OnOpenFolder(path)
+				}
+			},
+			func() {
+				// Cancelled - hide picker
+				d.FilePicker.Hide()
+			},
+		)
+	}
+	d.FilePicker.Show()
+}
+
+// IsFilePickerActive returns true if the file picker is currently shown
+func (d *Dashboard) IsFilePickerActive() bool {
+	return d.FilePicker != nil && d.FilePicker.Active
+}
+
+// ShowFolderCreator displays the folder creator modal
+func (d *Dashboard) ShowFolderCreator() {
+	if d.FolderCreator == nil {
+		d.FolderCreator = NewFolderCreator(d.Screen,
+			func(path string) {
+				// Folder created - call the callback
+				d.FolderCreator.Hide()
+
+				// Trigger install if an installable tool is selected
+				if d.SelectedInstallCmd != "" && d.OnInstallTool != nil {
+					log.Printf("THICC Dashboard: Triggering install command: %s", d.SelectedInstallCmd)
+					d.OnInstallTool(d.SelectedInstallCmd)
+				}
+
+				if d.OnNewFolder != nil {
+					d.OnNewFolder(path)
+				}
+			},
+			func() {
+				// Cancelled - hide creator
+				d.FolderCreator.Hide()
+			},
+		)
+	}
+	d.FolderCreator.Show()
+}
+
+// IsFolderCreatorActive returns true if the folder creator is currently shown
+func (d *Dashboard) IsFolderCreatorActive() bool {
+	return d.FolderCreator != nil && d.FolderCreator.Active
 }

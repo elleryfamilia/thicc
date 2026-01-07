@@ -25,6 +25,22 @@ func (d *Dashboard) HandleEvent(event tcell.Event) bool {
 		// Fall through to handle unprocessed events like Ctrl+Q
 	}
 
+	// If file picker is active, route events to it
+	if d.IsFilePickerActive() {
+		if d.FilePicker.HandleEvent(event) {
+			return true
+		}
+		// Fall through to handle unprocessed events like Ctrl+Q
+	}
+
+	// If folder creator is active, route events to it
+	if d.IsFolderCreatorActive() {
+		if d.FolderCreator.HandleEvent(event) {
+			return true
+		}
+		// Fall through to handle unprocessed events like Ctrl+Q
+	}
+
 	switch ev := event.(type) {
 	case *tcell.EventKey:
 		return d.handleKey(ev)
@@ -80,8 +96,16 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 			}
 			return true
 
+		case 'f', 'F':
+			d.ShowFilePicker()
+			return true
+
 		case 'o', 'O':
 			d.ShowProjectPicker()
+			return true
+
+		case 'd', 'D':
+			d.ShowFolderCreator()
 			return true
 
 		// Number shortcuts for recent projects
