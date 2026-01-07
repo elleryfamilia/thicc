@@ -18,8 +18,9 @@ type Panel struct {
 	ready    int32 // Atomic flag: 1 = tree loaded and ready to render
 
 	// Callbacks
-	OnFileOpen      func(path string)                                      // Called when user previews/opens a file
-	OnTreeReady     func()                                                 // Called when tree finishes loading
+	OnFileOpen       func(path string) // Called when user previews/opens a file (navigation)
+	OnFileActualOpen func(path string) // Called when user clicks/enters on a file (unhides editor)
+	OnTreeReady      func()            // Called when tree finishes loading
 	OnFocusEditor   func()                                                 // Called when user wants to focus the editor (Enter on file)
 	OnFileSaved        func(path string)                                      // Called when a file is saved (for tree refresh)
 	OnProjectPathClick func()                                                 // Called when user clicks the project path header

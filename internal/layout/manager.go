@@ -619,7 +619,15 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 	)
 
 	// Set callbacks
-	lm.FileBrowser.OnFileOpen = lm.previewFileInEditor // Preview without switching focus
+	lm.FileBrowser.OnFileOpen = lm.previewFileInEditor // Preview without switching focus (navigation)
+	lm.FileBrowser.OnFileActualOpen = func(path string) { // Actual open (click) - unhides editor
+		if !lm.EditorVisible {
+			lm.EditorVisible = true
+			lm.updateLayout()
+			lm.triggerRedraw()
+		}
+		lm.previewFileInEditor(path)
+	}
 	lm.FileBrowser.OnTreeReady = lm.triggerRedraw
 	lm.FileBrowser.OnFocusEditor = lm.FocusEditor
 	lm.FileBrowser.OnProjectPathClick = lm.ShowProjectPicker
@@ -839,6 +847,11 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 	lm.QuickFindPicker = NewQuickFindPicker(screen, lm.FileIndex,
 		func(path string) {
 			lm.QuickFindPicker.Hide()
+			// Make editor visible if it's hidden
+			if !lm.EditorVisible {
+				lm.EditorVisible = true
+				lm.updateLayout()
+			}
 			lm.previewFileInEditor(path)
 			// Also select the file in the file browser
 			if lm.FileBrowser != nil {
@@ -1118,6 +1131,7 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 				ev.Key() == tcell.KeyCtrlW ||
 				ev.Key() == tcell.KeyCtrlSpace ||
 				ev.Key() == tcell.KeyCtrlBackslash ||
+				ev.Key() == tcell.KeyCtrlP ||
 				(ev.Key() == tcell.KeyRight && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Key() == tcell.KeyLeft && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == ']' && ev.Modifiers()&tcell.ModCtrl != 0) ||
@@ -1557,15 +1571,9 @@ func (lm *LayoutManager) cycleFocus() {
 // previewFileInEditor opens a file in the editor panel WITHOUT switching focus
 // Uses lazy loading - creates a preview tab first, then loads the buffer
 // Preview tabs are italicized and get replaced when navigating to another file
+// Note: Does NOT unhide editor - use OnFileActualOpen callback for that
 func (lm *LayoutManager) previewFileInEditor(path string) {
 	log.Printf("THICC: Previewing file: %s", path)
-
-	// Make editor visible if it's hidden
-	if !lm.EditorVisible {
-		lm.EditorVisible = true
-		lm.updateLayout()
-		lm.triggerRedraw()
-	}
 
 	// Make path absolute for dedup check
 	absPath, err := filepath.Abs(path)
@@ -2992,6 +3000,14 @@ func (lm *LayoutManager) navigateToProject(newRoot string) {
 
 	// Re-register all callbacks (pattern from Initialize method)
 	lm.FileBrowser.OnFileOpen = lm.previewFileInEditor
+	lm.FileBrowser.OnFileActualOpen = func(path string) {
+		if !lm.EditorVisible {
+			lm.EditorVisible = true
+			lm.updateLayout()
+			lm.triggerRedraw()
+		}
+		lm.previewFileInEditor(path)
+	}
 	lm.FileBrowser.OnTreeReady = lm.triggerRedraw
 	lm.FileBrowser.OnFocusEditor = lm.FocusEditor
 	lm.FileBrowser.OnProjectPathClick = lm.ShowProjectPicker

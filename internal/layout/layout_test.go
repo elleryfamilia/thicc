@@ -132,10 +132,11 @@ func TestLayout_EditorWidth_TakesRemainingSpace(t *testing.T) {
 func TestLayout_EditorWidth_AllScreenWhenTerminalHidden(t *testing.T) {
 	lm := newTestLayoutManager(100, 50)
 	lm.TerminalVisible = false
+	lm.ActivePanel = 1 // Editor focused (not file browser, so tree doesn't expand)
 
-	// Tree = 30, Editor should be = 100 - 30 = 70
+	// Tree = 40 (expanded because editor-only layout), Editor = 100 - 40 = 60
 	editorWidth := lm.getEditorWidth()
-	assert.Equal(t, 70, editorWidth, "Editor should expand when terminal is hidden")
+	assert.Equal(t, 60, editorWidth, "Editor should expand when terminal is hidden (tree is 40 in single-pane)")
 }
 
 func TestLayout_EditorWidth_HiddenReturnsZero(t *testing.T) {
@@ -185,11 +186,12 @@ func TestLayout_AllPanesHidden_NeedsPlaceholders(t *testing.T) {
 func TestLayout_EditorHidden_TerminalTakesRemainingSpace(t *testing.T) {
 	lm := newTestLayoutManager(100, 50)
 	lm.EditorVisible = false
+	lm.ActivePanel = 2 // Terminal focused
 
-	// When editor is hidden, terminal takes all space after tree
-	// Terminal space = 100 - 30 = 70
+	// When editor is hidden with single terminal, tree expands to 40
+	// Terminal space = 100 - 40 = 60
 	totalSpace := lm.getTotalTerminalSpace()
-	assert.Equal(t, 70, totalSpace, "Terminal should expand to fill space when editor hidden")
+	assert.Equal(t, 60, totalSpace, "Terminal should expand to fill space when editor hidden (tree is 40)")
 }
 
 func TestLayout_TreeHidden_EditorAndTerminalAdjust(t *testing.T) {
@@ -202,4 +204,91 @@ func TestLayout_TreeHidden_EditorAndTerminalAdjust(t *testing.T) {
 
 	termWidth := lm.getTermWidth()
 	assert.Equal(t, 45, termWidth)
+}
+
+// =============================================================================
+// Dynamic Tree Width Tests (Expands when focused or single-pane layout)
+// =============================================================================
+
+func TestLayout_ShouldExpandTree_WhenFileBrowserFocused(t *testing.T) {
+	lm := newTestLayoutManager(100, 50)
+	lm.ActivePanel = 0 // File browser focused
+
+	assert.True(t, lm.shouldExpandTree(), "Tree should expand when file browser is focused")
+	assert.Equal(t, 40, lm.getTreeWidth(), "Expanded tree width should be 40")
+}
+
+func TestLayout_ShouldExpandTree_EditorOnlyLayout(t *testing.T) {
+	lm := newTestLayoutManager(100, 50)
+	lm.ActivePanel = 1 // Editor focused
+	lm.TerminalVisible = false
+	lm.Terminal2Visible = false
+	lm.Terminal3Visible = false
+
+	assert.True(t, lm.shouldExpandTree(), "Tree should expand with editor-only layout")
+	assert.Equal(t, 40, lm.getTreeWidth())
+}
+
+func TestLayout_ShouldExpandTree_SingleTerminalOnlyLayout(t *testing.T) {
+	lm := newTestLayoutManager(100, 50)
+	lm.ActivePanel = 2 // Terminal focused
+	lm.EditorVisible = false
+	lm.TerminalVisible = true
+	lm.Terminal2Visible = false
+	lm.Terminal3Visible = false
+
+	assert.True(t, lm.shouldExpandTree(), "Tree should expand with single-terminal-only layout")
+	assert.Equal(t, 40, lm.getTreeWidth())
+}
+
+func TestLayout_ShouldNotExpandTree_EditorPlusTerminal(t *testing.T) {
+	lm := newTestLayoutManager(100, 50)
+	lm.ActivePanel = 1 // Editor focused
+	lm.EditorVisible = true
+	lm.TerminalVisible = true
+
+	assert.False(t, lm.shouldExpandTree(), "Tree should NOT expand with editor + terminal")
+	assert.Equal(t, 30, lm.getTreeWidth(), "Normal tree width should be 30")
+}
+
+func TestLayout_ShouldNotExpandTree_MultipleTerminals(t *testing.T) {
+	lm := newTestLayoutManager(100, 50)
+	lm.ActivePanel = 2 // Terminal focused
+	lm.EditorVisible = false
+	lm.TerminalVisible = true
+	lm.Terminal2Visible = true
+
+	assert.False(t, lm.shouldExpandTree(), "Tree should NOT expand with multiple terminals")
+	assert.Equal(t, 30, lm.getTreeWidth())
+}
+
+func TestLayout_TerminalSpaceReducedWhenTreeExpanded(t *testing.T) {
+	lm := newTestLayoutManager(100, 50)
+	lm.ActivePanel = 0 // File browser focused (triggers expansion)
+	lm.EditorVisible = true
+	lm.TerminalVisible = true
+
+	// Normal terminal space would be 45 (45% of 100)
+	// With expanded tree, should reduce by 10 (40-30)
+	// So terminal space = 45 - 10 = 35
+	termSpace := lm.getTotalTerminalSpace()
+	assert.Equal(t, 35, termSpace, "Terminal space should reduce when tree is expanded")
+}
+
+func TestLayout_EditorWidthUnchangedWhenTreeExpanded(t *testing.T) {
+	// When tree expands, the extra space comes from terminal, not editor
+	lm := newTestLayoutManager(100, 50)
+	lm.EditorVisible = true
+	lm.TerminalVisible = true
+
+	// First, get editor width with normal tree
+	lm.ActivePanel = 1 // Editor focused, tree not expanded
+	normalEditorWidth := lm.getEditorWidth()
+
+	// Now expand tree
+	lm.ActivePanel = 0 // File browser focused, tree expands
+	expandedEditorWidth := lm.getEditorWidth()
+
+	assert.Equal(t, normalEditorWidth, expandedEditorWidth,
+		"Editor width should remain the same when tree expands (terminal absorbs the change)")
 }
