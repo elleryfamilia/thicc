@@ -216,6 +216,47 @@ func (lm *LayoutManager) setupTerminalCallbacks(term *terminal.Panel) {
 		lm.cycleFocus()
 		lm.triggerRedraw()
 	}
+	term.OnSessionEnd = func() {
+		// Called when terminal process exits - hide pane and reset to show tool selector next time
+		lm.mu.Lock()
+
+		// Determine which terminal this is and hide it
+		if lm.Terminal == term {
+			log.Println("THICC: Terminal 1 session ended, hiding pane")
+			lm.TerminalVisible = false
+			lm.TerminalInitialized = false
+			lm.Terminal = nil
+			if lm.ActivePanel == 2 {
+				lm.mu.Unlock()
+				lm.focusNextVisiblePane()
+				lm.mu.Lock()
+			}
+		} else if lm.Terminal2 == term {
+			log.Println("THICC: Terminal 2 session ended, hiding pane")
+			lm.Terminal2Visible = false
+			lm.Terminal2Initialized = false
+			lm.Terminal2 = nil
+			if lm.ActivePanel == 3 {
+				lm.mu.Unlock()
+				lm.focusNextVisiblePane()
+				lm.mu.Lock()
+			}
+		} else if lm.Terminal3 == term {
+			log.Println("THICC: Terminal 3 session ended, hiding pane")
+			lm.Terminal3Visible = false
+			lm.Terminal3Initialized = false
+			lm.Terminal3 = nil
+			if lm.ActivePanel == 4 {
+				lm.mu.Unlock()
+				lm.focusNextVisiblePane()
+				lm.mu.Lock()
+			}
+		}
+
+		lm.mu.Unlock()
+		lm.updatePanelRegions()
+		lm.triggerRedraw()
+	}
 }
 
 // getActiveTerminal returns the terminal panel for the currently active panel (or nil)
@@ -1350,10 +1391,8 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 	case 1: // Editor (handled by micro's action.Tabs)
 		return false // Let micro handle it
 
-	case 2: // Terminal
-		lm.mu.RLock()
-		term := lm.Terminal
-		lm.mu.RUnlock()
+	case 2, 3, 4: // Terminal, Terminal2, Terminal3
+		term := lm.getActiveTerminal()
 
 		if term != nil {
 			// For key events, ALWAYS consume them when terminal has focus

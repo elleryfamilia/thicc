@@ -223,6 +223,8 @@ type Panel struct {
 	OnQuit func()
 	// OnNextPane callback when user triggers next pane from quick command mode
 	OnNextPane func()
+	// OnSessionEnd callback when terminal process exits (for auto-hiding the pane)
+	OnSessionEnd func()
 }
 
 // isShellCommand returns true if the command is a shell (bash, zsh, sh, fish, etc.)
@@ -425,6 +427,11 @@ func (p *Panel) readLoop() {
 				// Small delay to let the process fully exit
 				time.Sleep(100 * time.Millisecond)
 				p.RespawnShell()
+			} else {
+				// Notify layout manager to hide this terminal pane
+				if p.OnSessionEnd != nil {
+					p.OnSessionEnd()
+				}
 			}
 			return
 		}
