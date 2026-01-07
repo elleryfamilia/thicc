@@ -4,6 +4,7 @@ micro
 micro.exe
 !cmd/micro
 thock
+thicc-arm64
 thock.exe
 !cmd/thock
 thicc
