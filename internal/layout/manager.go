@@ -840,7 +840,13 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 
 	// Initialize file index for quick find (build in background)
 	lm.FileIndex = filemanager.NewFileIndex(lm.Root)
-	go lm.FileIndex.Build()
+	go func() {
+		lm.FileIndex.Build()
+		// Enable file system watching for index after initial build
+		if err := lm.FileIndex.EnableWatching(); err != nil {
+			log.Printf("THICC: Failed to enable file index watching: %v", err)
+		}
+	}()
 	log.Println("THICC: File index build started in background")
 
 	// Initialize quick find picker
@@ -2032,6 +2038,10 @@ func (lm *LayoutManager) Resize(w, h int) {
 func (lm *LayoutManager) Close() {
 	if lm.FileBrowser != nil {
 		lm.FileBrowser.Close()
+	}
+
+	if lm.FileIndex != nil {
+		lm.FileIndex.Close()
 	}
 
 	lm.mu.RLock()

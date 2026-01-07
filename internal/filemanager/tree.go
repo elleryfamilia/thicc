@@ -44,6 +44,10 @@ type Tree struct {
 	AutoRefresh     bool
 	RefreshInterval time.Duration
 
+	// File system watcher
+	watcher   *FileWatcher
+	onRefresh func() // Callback when tree is refreshed (for UI update)
+
 	// Synchronization
 	mu sync.RWMutex
 }
@@ -89,19 +93,189 @@ func (t *Tree) Scan(dir string) error {
 	return err
 }
 
-// Skip list for directories that commonly cause issues
-var skipDirs = map[string]bool{
-	".git":         true,
-	"node_modules": true,
-	".build":       true,
-	"vendor":       true,
-	".cache":       true,
-	"dist":         true,
-	"build":        true,
-	"target":       true,
-	".venv":        true,
-	"venv":         true,
-	"__pycache__":  true,
+// SkipDirs is the list of directories to skip during scanning and watching
+// Exported so it can be reused by FileWatcher and FileIndex
+var SkipDirs = map[string]bool{
+	// ===================
+	// VERSION CONTROL
+	// ===================
+	".git": true, ".svn": true, ".hg": true, ".bzr": true,
+	".fossil": true, "_darcs": true,
+
+	// ===================
+	// JAVASCRIPT / NODE.JS
+	// ===================
+	// Package managers
+	"node_modules": true, ".npm": true, ".yarn": true, ".pnpm": true,
+	"bower_components": true, ".bun": true,
+	// Frameworks
+	".next": true, ".nuxt": true, ".turbo": true, ".vite": true,
+	".svelte-kit": true, ".angular": true, ".remix": true,
+	// Build/Bundle
+	".parcel-cache": true, ".webpack": true, ".rollup.cache": true,
+	".esbuild": true, "storybook-static": true,
+	// Testing
+	".jest": true, "jest_cache": true,
+	"cypress": true, "playwright-report": true, "test-results": true,
+
+	// ===================
+	// PYTHON
+	// ===================
+	"__pycache__": true, ".pytest_cache": true, ".tox": true,
+	".venv": true, "venv": true, "env": true, ".env": true,
+	".eggs": true, ".mypy_cache": true, ".ruff_cache": true,
+	".hypothesis": true, ".nox": true, ".pytype": true,
+	"site-packages": true, ".python-version": true,
+	".pdm": true, ".hatch": true, "htmlcov": true,
+
+	// ===================
+	// RUST
+	// ===================
+	"target": true, ".cargo": true,
+
+	// ===================
+	// GO
+	// ===================
+	// vendor intentionally NOT skipped - many projects need it
+
+	// ===================
+	// JAVA / KOTLIN / SCALA
+	// ===================
+	".gradle": true, ".m2": true, "out": true,
+	".bsp": true, ".bloop": true, ".metals": true,
+	".sbt": true,
+
+	// ===================
+	// .NET / C#
+	// ===================
+	"bin": true, "obj": true, "packages": true,
+	".nuget": true, "TestResults": true,
+
+	// ===================
+	// RUBY
+	// ===================
+	".bundle": true,
+
+	// ===================
+	// PHP
+	// ===================
+	// Note: "vendor" intentionally NOT skipped - Go projects need it visible
+	".composer": true, ".phpunit.cache": true,
+
+	// ===================
+	// ELIXIR / ERLANG
+	// ===================
+	"_build": true, "deps": true, ".elixir_ls": true,
+	".fetch": true, "ebin": true,
+
+	// ===================
+	// HASKELL
+	// ===================
+	".stack-work": true, "dist-newstyle": true, ".cabal-sandbox": true,
+
+	// ===================
+	// CLOJURE
+	// ===================
+	".cpcache": true, ".lsp": true, ".clj-kondo": true,
+
+	// ===================
+	// OCAML / REASON
+	// ===================
+	"_opam": true, "_esy": true, ".merlin": true,
+
+	// ===================
+	// ZIG
+	// ===================
+	"zig-cache": true, "zig-out": true,
+
+	// ===================
+	// NIM
+	// ===================
+	"nimcache": true, ".nimble": true,
+
+	// ===================
+	// DART / FLUTTER
+	// ===================
+	".dart_tool": true, ".pub-cache": true, ".pub": true,
+	".flutter-plugins": true, ".flutter-plugins-dependencies": true,
+
+	// ===================
+	// MOBILE - iOS / SWIFT
+	// ===================
+	"DerivedData": true, "Pods": true, ".swiftpm": true,
+	"xcuserdata": true, "SourcePackages": true,
+
+	// ===================
+	// MOBILE - ANDROID
+	// ===================
+	".android": true, ".cxx": true, ".externalNativeBuild": true,
+	"intermediates": true, "generated": true,
+
+	// ===================
+	// MOBILE - REACT NATIVE
+	// ===================
+	".expo": true, ".metro": true, "metro-bundler-cache": true,
+	"haste-map-metro": true,
+
+	// ===================
+	// C / C++ / CMAKE
+	// ===================
+	"CMakeFiles": true, "cmake-build-debug": true, "cmake-build-release": true,
+	"cmake-build-relwithdebinfo": true, "cmake-build-minsizerel": true,
+	".cmake": true, "_deps": true,
+
+	// ===================
+	// IDE / EDITORS
+	// ===================
+	".idea": true, ".vscode": true, ".vs": true,
+	".eclipse": true, ".settings": true, ".metadata": true,
+	"nbproject": true, ".fleet": true, ".atom": true,
+	".zed": true, ".sublime-workspace": true,
+
+	// ===================
+	// BUILD / DIST (GENERIC)
+	// ===================
+	"dist": true, "build": true, ".cache": true, "cache": true,
+	"coverage": true, ".build": true, "Release": true, "Debug": true,
+	"lib": true, "libs": true, "output": true, "outputs": true,
+
+	// ===================
+	// DOCUMENTATION
+	// ===================
+	"_site": true, "site": true, ".docusaurus": true,
+	"_book": true, ".vuepress": true, ".vitepress": true,
+	"book": true,
+
+	// ===================
+	// CLOUD / DEVOPS
+	// ===================
+	".terraform": true, ".serverless": true,
+	".aws-sam": true, "cdk.out": true, ".amplify": true,
+	".vercel": true, ".netlify": true,
+	".vagrant": true, ".pulumi": true,
+	".azure": true, ".gcloud": true,
+
+	// ===================
+	// CONTAINERS
+	// ===================
+	".docker": true, ".devcontainer": true,
+
+	// ===================
+	// DATABASE / ORM
+	// ===================
+	".prisma": true, "migrations": true,
+
+	// ===================
+	// LOGS / TEMP
+	// ===================
+	"logs": true, "log": true, "tmp": true, "temp": true,
+
+	// ===================
+	// MISC
+	// ===================
+	".nx": true, ".bazel-cache": true, "bazel-out": true,
+	".pants.d": true, "buck-out": true,
+	".dub": true, ".crystal": true,
 }
 
 // scanDir recursively scans a directory (must be called with lock held)
@@ -133,7 +307,7 @@ func (t *Tree) scanDir(dir string, indent int, parentIdx int) error {
 		}
 
 		// Skip common problematic directories
-		if entry.IsDir() && skipDirs[name] {
+		if entry.IsDir() && SkipDirs[name] {
 			log.Printf("THOCK Tree: Skipping skipDir: %s", name)
 			continue
 		}
@@ -395,5 +569,43 @@ func (t *Tree) sortNodes(nodes []*TreeNode) {
 				}
 			}
 		}
+	}
+}
+
+// SetOnRefresh sets a callback to be called after the tree is refreshed
+func (t *Tree) SetOnRefresh(callback func()) {
+	t.onRefresh = callback
+}
+
+// EnableWatching starts file system watching for this tree
+func (t *Tree) EnableWatching() error {
+	if t.watcher != nil {
+		return nil // Already watching
+	}
+
+	watcher, err := NewFileWatcher(t.Root, SkipDirs, func() {
+		// Refresh tree and notify UI
+		if err := t.Refresh(); err != nil {
+			log.Printf("THICC Tree: Refresh after watch event failed: %v", err)
+		}
+		if t.onRefresh != nil {
+			t.onRefresh()
+		}
+	})
+	if err != nil {
+		return err
+	}
+
+	t.watcher = watcher
+	go t.watcher.Start()
+	log.Printf("THICC Tree: Watching enabled for %s", t.Root)
+	return nil
+}
+
+// Close stops watching and cleans up resources
+func (t *Tree) Close() {
+	if t.watcher != nil {
+		t.watcher.Stop()
+		t.watcher = nil
 	}
 }

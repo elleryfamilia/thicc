@@ -37,6 +37,9 @@ type FileIndex struct {
 	// Limits
 	MaxDepth int
 	MaxFiles int
+
+	// File system watcher
+	watcher *FileWatcher
 }
 
 // NewFileIndex creates a new file index
@@ -124,8 +127,8 @@ func (idx *FileIndex) walkDir(dir string, depth int, files *[]IndexedFile, count
 			continue
 		}
 
-		// Skip common problematic directories (reuse skipDirs from tree.go)
-		if entry.IsDir() && skipDirs[name] {
+		// Skip common problematic directories (reuse SkipDirs from tree.go)
+		if entry.IsDir() && SkipDirs[name] {
 			continue
 		}
 
@@ -207,4 +210,33 @@ func (idx *FileIndex) Count() int {
 	idx.mu.RLock()
 	defer idx.mu.RUnlock()
 	return len(idx.Files)
+}
+
+// EnableWatching starts file system watching for this index
+func (idx *FileIndex) EnableWatching() error {
+	if idx.watcher != nil {
+		return nil // Already watching
+	}
+
+	watcher, err := NewFileWatcher(idx.Root, SkipDirs, func() {
+		// Mark index as stale and rebuild
+		log.Println("THICC FileIndex: Rebuilding after file system change")
+		idx.Refresh()
+	})
+	if err != nil {
+		return err
+	}
+
+	idx.watcher = watcher
+	go idx.watcher.Start()
+	log.Printf("THICC FileIndex: Watching enabled for %s", idx.Root)
+	return nil
+}
+
+// Close stops watching and cleans up resources
+func (idx *FileIndex) Close() {
+	if idx.watcher != nil {
+		idx.watcher.Stop()
+		idx.watcher = nil
+	}
 }

@@ -50,6 +50,17 @@ func NewPanel(x, y, w, h int, root string) *Panel {
 			atomic.StoreInt32(&p.ready, 1)
 			log.Printf("THOCK FileBrowser: Tree refresh complete, loaded %d nodes", len(p.Tree.GetNodes()))
 
+			// Enable file system watching
+			p.Tree.SetOnRefresh(func() {
+				// Trigger UI redraw when tree changes
+				if p.OnTreeReady != nil {
+					p.OnTreeReady()
+				}
+			})
+			if err := p.Tree.EnableWatching(); err != nil {
+				log.Printf("THOCK FileBrowser: Failed to enable watching: %v", err)
+			}
+
 			// Trigger screen refresh if callback is set
 			if p.OnTreeReady != nil {
 				log.Println("THOCK FileBrowser: Calling OnTreeReady callback")
@@ -113,7 +124,9 @@ func (p *Panel) Refresh() {
 
 // Close cleans up resources
 func (p *Panel) Close() {
-	// No resources to clean up currently
+	if p.Tree != nil {
+		p.Tree.Close()
+	}
 }
 
 // SelectFile refreshes the tree and selects the given file
