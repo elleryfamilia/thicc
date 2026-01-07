@@ -92,7 +92,7 @@ func (p *Panel) drawNodes(screen tcell.Screen) {
 
 	for i, node := range nodes {
 		y := startY + i
-		if y >= p.Region.Height {
+		if y >= p.Region.Height-1 { // Stop before bottom border
 			break
 		}
 

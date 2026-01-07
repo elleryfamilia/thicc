@@ -39,9 +39,11 @@ func createTestDir(t *testing.T) string {
 // =============================================================================
 
 func TestFileIndex_New(t *testing.T) {
-	idx := NewFileIndex("/tmp/test")
+	// Use temp dir for cross-platform compatibility
+	dir := t.TempDir()
+	idx := NewFileIndex(dir)
 
-	assert.Equal(t, "/tmp/test", idx.Root)
+	assert.Equal(t, dir, idx.Root)
 	assert.False(t, idx.IsReady(), "New index should not be ready")
 	assert.False(t, idx.IsBuilding(), "New index should not be building")
 }

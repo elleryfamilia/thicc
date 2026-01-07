@@ -84,8 +84,9 @@ func (p *Panel) GetVisibleNodes() []*filemanager.TreeNode {
 		return nodes
 	}
 
-	// Calculate how many lines we have for content (minus header)
-	contentHeight := p.Region.Height - 2 // 2 lines for header
+	// Calculate how many lines we have for content
+	// Layout: top border (1) + header (1) + separator (1) + content + bottom border (1)
+	contentHeight := p.Region.Height - 4
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -165,7 +166,8 @@ func (p *Panel) SelectFile(path string) {
 
 // ensureSelectedVisible adjusts scrolling to make the selected item visible
 func (p *Panel) ensureSelectedVisible() {
-	contentHeight := p.Region.Height - 2 // 2 lines for header
+	// Layout: top border (1) + header (1) + separator (1) + content + bottom border (1)
+	contentHeight := p.Region.Height - 4
 	if contentHeight < 1 {
 		contentHeight = 1
 	}

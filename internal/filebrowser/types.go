@@ -21,11 +21,11 @@ func (r Region) Contains(x, y int) bool {
 
 // GetDefaultStyle returns the default style for the file browser, using the editor's background
 func GetDefaultStyle() tcell.Style {
-	return config.DefStyle.Foreground(tcell.ColorWhite)
+	return config.DefStyle.Foreground(tcell.Color252) // Soft gray
 }
 
 // DefaultStyle is kept for backwards compatibility (used at render time)
-var DefaultStyle = tcell.StyleDefault.Foreground(tcell.ColorWhite)
+var DefaultStyle = tcell.StyleDefault.Foreground(tcell.Color252)
 
 // GetFocusedStyle returns the style for focused/selected items
 // Uses config.DefStyle to ensure correct background with dark theme
@@ -45,11 +45,11 @@ var DirectoryStyle = tcell.StyleDefault.Foreground(tcell.Color33).Bold(true)
 
 // GetFileStyle returns the style for regular files, using the editor's background
 func GetFileStyle() tcell.Style {
-	return config.DefStyle.Foreground(tcell.ColorWhite)
+	return config.DefStyle.Foreground(tcell.Color252) // Soft gray
 }
 
 // FileStyle is kept for backwards compatibility
-var FileStyle = tcell.StyleDefault.Foreground(tcell.ColorWhite)
+var FileStyle = tcell.StyleDefault.Foreground(tcell.Color252)
 
 // GetDividerStyle returns the style for panel dividers, using the editor's background
 func GetDividerStyle() tcell.Style {
@@ -67,26 +67,48 @@ var (
 	pythonFileColor     = tcell.Color226 // Bright yellow
 	javaScriptFileColor = tcell.Color220 // Gold yellow
 	luaFileColor        = tcell.Color63  // Blue-purple
+	rubyFileColor       = tcell.Color167 // Red
+	javaFileColor       = tcell.Color166 // Orange-red
+	cFileColor          = tcell.Color75  // Blue
+	csharpFileColor     = tcell.Color135 // Purple
+	phpFileColor        = tcell.Color98  // Indigo
 
 	// Web files
-	htmlFileColor = tcell.Color208 // Orange
-	cssFileColor  = tcell.Color39  // Deep sky blue
+	htmlFileColor       = tcell.Color208 // Orange
+	cssFileColor        = tcell.Color39  // Deep sky blue
+	vueFileColor        = tcell.Color35  // Green
 
 	// Data/Config
-	jsonFileColor = tcell.Color226 // Bright yellow
-	yamlFileColor = tcell.Color40  // Green
+	jsonFileColor   = tcell.Color226 // Bright yellow
+	yamlFileColor   = tcell.Color40  // Green
+	xmlFileColor    = tcell.Color172 // Orange
+	configFileColor = tcell.Color67  // Gray-blue
 
 	// Documentation
-	markdownFileColor = tcell.Color33 // Bright blue (same as directories)
+	markdownFileColor = tcell.Color141 // Light purple
+	textFileColor     = tcell.Color250 // Light gray
+	pdfFileColor      = tcell.Color160 // Red
 
-	// Images
+	// Media
 	imageFileColor = tcell.Color201 // Magenta/fuchsia
+	audioFileColor = tcell.Color213 // Light magenta
+	videoFileColor = tcell.Color129 // Purple
+
+	// Database
+	databaseFileColor = tcell.Color44 // Cyan
 
 	// Archives
 	archiveFileColor = tcell.Color196 // Bright red
 
 	// Executables
 	executableFileColor = tcell.Color40 // Green
+
+	// Other
+	lockFileColor   = tcell.Color243 // Dark gray
+	logFileColor    = tcell.Color245 // Gray
+	gitFileColor    = tcell.Color208 // Orange
+	diffFileColor   = tcell.Color148 // Yellow-green
+	defaultFileColor = tcell.Color252 // Soft gray
 )
 
 // StyleForPath returns the appropriate style for a file path
@@ -122,30 +144,89 @@ func StyleForPath(path string, isDir bool) tcell.Style {
 	// Lua
 	case ".lua":
 		return config.DefStyle.Foreground(luaFileColor)
-	// Web
+	// Ruby
+	case ".rb", ".rake", ".gemspec":
+		return config.DefStyle.Foreground(rubyFileColor)
+	// Java/Kotlin
+	case ".java", ".kt", ".kts", ".scala":
+		return config.DefStyle.Foreground(javaFileColor)
+	// C/C++
+	case ".c", ".cpp", ".cc", ".cxx", ".h", ".hpp", ".hxx":
+		return config.DefStyle.Foreground(cFileColor)
+	// C#
+	case ".cs":
+		return config.DefStyle.Foreground(csharpFileColor)
+	// PHP
+	case ".php":
+		return config.DefStyle.Foreground(phpFileColor)
+	// Web - HTML
 	case ".html", ".htm":
 		return config.DefStyle.Foreground(htmlFileColor)
+	// Web - CSS
 	case ".css", ".scss", ".sass", ".less":
 		return config.DefStyle.Foreground(cssFileColor)
-	// Data/Config
+	// Web - Vue/Svelte
+	case ".vue", ".svelte":
+		return config.DefStyle.Foreground(vueFileColor)
+	// Data - JSON
 	case ".json":
 		return config.DefStyle.Foreground(jsonFileColor)
-	case ".yaml", ".yml":
+	// Data - YAML/TOML
+	case ".yaml", ".yml", ".toml":
 		return config.DefStyle.Foreground(yamlFileColor)
-	// Documentation
-	case ".md", ".markdown":
+	// Data - XML
+	case ".xml", ".xsl", ".xslt":
+		return config.DefStyle.Foreground(xmlFileColor)
+	// Config files
+	case ".ini", ".conf", ".cfg", ".env":
+		return config.DefStyle.Foreground(configFileColor)
+	// Documentation - Markdown
+	case ".md", ".markdown", ".rst":
 		return config.DefStyle.Foreground(markdownFileColor)
+	// Documentation - Plain text
+	case ".txt":
+		return config.DefStyle.Foreground(textFileColor)
+	// Documentation - PDF
+	case ".pdf":
+		return config.DefStyle.Foreground(pdfFileColor)
 	// Images
 	case ".png", ".jpg", ".jpeg", ".gif", ".svg", ".ico", ".bmp", ".webp":
 		return config.DefStyle.Foreground(imageFileColor)
+	// Audio
+	case ".mp3", ".wav", ".flac", ".ogg", ".m4a", ".aac":
+		return config.DefStyle.Foreground(audioFileColor)
+	// Video
+	case ".mp4", ".mov", ".avi", ".mkv", ".webm", ".flv":
+		return config.DefStyle.Foreground(videoFileColor)
+	// Database
+	case ".db", ".sqlite", ".sqlite3", ".sql":
+		return config.DefStyle.Foreground(databaseFileColor)
 	// Archives
 	case ".zip", ".tar", ".gz", ".bz2", ".xz", ".7z", ".rar":
 		return config.DefStyle.Foreground(archiveFileColor)
-	// Executables (by extension)
+	// Executables (shell scripts)
 	case ".sh", ".bash", ".zsh", ".fish":
 		return config.DefStyle.Foreground(executableFileColor).Bold(true)
+	// Lock files
+	case ".lock":
+		return config.DefStyle.Foreground(lockFileColor)
+	// Log files
+	case ".log":
+		return config.DefStyle.Foreground(logFileColor)
+	// Git files
+	case ".gitignore", ".gitmodules", ".gitattributes":
+		return config.DefStyle.Foreground(gitFileColor)
+	// Diff/Patch
+	case ".diff", ".patch":
+		return config.DefStyle.Foreground(diffFileColor)
+	// Vim
+	case ".vim":
+		return config.DefStyle.Foreground(vueFileColor) // Green like Vue
+	// TeX
+	case ".tex":
+		return config.DefStyle.Foreground(markdownFileColor) // Same as documentation
 	default:
-		return GetFileStyle()
+		return config.DefStyle.Foreground(defaultFileColor)
 	}
 }
 

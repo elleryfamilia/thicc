@@ -97,6 +97,32 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 	// Convert to local coordinates
 	localY := y - p.Region.Y
 
+	// Handle mouse wheel scrolling
+	if ev.Buttons() == tcell.WheelUp {
+		// Scroll up by 3 lines
+		if p.Selected > 0 {
+			p.Selected -= 3
+			if p.Selected < 0 {
+				p.Selected = 0
+			}
+			p.ensureSelectedVisible()
+		}
+		return true
+	}
+
+	if ev.Buttons() == tcell.WheelDown {
+		// Scroll down by 3 lines
+		nodes := p.Tree.GetNodes()
+		if p.Selected < len(nodes)-1 {
+			p.Selected += 3
+			if p.Selected >= len(nodes) {
+				p.Selected = len(nodes) - 1
+			}
+			p.ensureSelectedVisible()
+		}
+		return true
+	}
+
 	// Handle left click
 	if ev.Buttons() == tcell.Button1 {
 		// Check if click is on header (line 1 - line 0 is for border)
@@ -139,6 +165,7 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 func (p *Panel) cursorUp() bool {
 	if p.Selected > 0 {
 		p.Selected--
+		p.ensureSelectedVisible()
 		p.previewSelected() // Auto-preview on selection change
 		return true
 	}
@@ -146,6 +173,7 @@ func (p *Panel) cursorUp() bool {
 	// If at first node (Selected == 0), move to header
 	if p.Selected == 0 {
 		p.Selected = -1 // Header is selected
+		p.TopLine = 0   // Scroll to top when header selected
 		return true
 	}
 
@@ -159,6 +187,7 @@ func (p *Panel) cursorDown() bool {
 		nodes := p.Tree.GetNodes()
 		if len(nodes) > 0 {
 			p.Selected = 0
+			p.ensureSelectedVisible()
 			p.previewSelected() // Preview the first node
 			return true
 		}
@@ -169,6 +198,7 @@ func (p *Panel) cursorDown() bool {
 	nodes := p.Tree.GetNodes()
 	if p.Selected < len(nodes)-1 {
 		p.Selected++
+		p.ensureSelectedVisible()
 		p.previewSelected() // Auto-preview on selection change
 		return true
 	}
@@ -232,6 +262,7 @@ func (p *Panel) collapseSelected() bool {
 		// If not a directory, go to parent
 		if node.Owner >= 0 && node.Owner < len(nodes) {
 			p.Selected = node.Owner
+			p.ensureSelectedVisible()
 			return true
 		}
 		return false
@@ -246,6 +277,7 @@ func (p *Panel) collapseSelected() bool {
 	// If already collapsed, go to parent
 	if node.Owner >= 0 && node.Owner < len(nodes) {
 		p.Selected = node.Owner
+		p.ensureSelectedVisible()
 		return true
 	}
 
@@ -288,7 +320,8 @@ func (p *Panel) openSelected() bool {
 
 // pageUp moves up by one page
 func (p *Panel) pageUp() bool {
-	contentHeight := p.Region.Height - 2
+	// Layout: top border (1) + header (1) + separator (1) + content + bottom border (1)
+	contentHeight := p.Region.Height - 4
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -297,6 +330,7 @@ func (p *Panel) pageUp() bool {
 	if p.Selected < 0 {
 		p.Selected = 0
 	}
+	p.ensureSelectedVisible()
 
 	return true
 }
@@ -304,7 +338,8 @@ func (p *Panel) pageUp() bool {
 // pageDown moves down by one page
 func (p *Panel) pageDown() bool {
 	nodes := p.Tree.GetNodes()
-	contentHeight := p.Region.Height - 2
+	// Layout: top border (1) + header (1) + separator (1) + content + bottom border (1)
+	contentHeight := p.Region.Height - 4
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -313,6 +348,7 @@ func (p *Panel) pageDown() bool {
 	if p.Selected >= len(nodes) {
 		p.Selected = len(nodes) - 1
 	}
+	p.ensureSelectedVisible()
 
 	return true
 }
@@ -332,6 +368,7 @@ func (p *Panel) goToBottom() bool {
 	nodes := p.Tree.GetNodes()
 	if len(nodes) > 0 && p.Selected != len(nodes)-1 {
 		p.Selected = len(nodes) - 1
+		p.ensureSelectedVisible()
 		return true
 	}
 	return false
