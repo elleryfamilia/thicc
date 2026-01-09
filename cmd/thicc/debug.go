@@ -87,13 +87,16 @@ func (w *RotatingWriter) Write(data []byte) (n int, err error) {
 	return n, err
 }
 
-// InitLog sets up the debug log system for micro if it has been enabled by compile-time variables
+// InitLog sets up the debug log system if enabled by compile-time variables
 func InitLog() {
-	writer, err := NewRotatingWriter("log.txt", maxLogSize)
-	if err != nil {
-		log.Fatalf("error opening log file: %v", err)
+	if util.Debug == "ON" {
+		writer, err := NewRotatingWriter("log.txt", maxLogSize)
+		if err != nil {
+			log.Fatalf("error opening log file: %v", err)
+		}
+		log.SetOutput(writer)
+		log.Println("THOCK started with logging enabled")
+	} else {
+		log.SetOutput(NullWriter{})
 	}
-
-	log.SetOutput(writer)
-	log.Println("THOCK started with logging enabled")
 }
