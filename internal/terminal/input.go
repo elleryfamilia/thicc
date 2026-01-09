@@ -103,9 +103,22 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 	x := mouseX - contentX
 	y := mouseY - contentY
 
-	// Clamp to content bounds
+	// Content bounds
 	contentW := p.Region.Width - 2
 	contentH := p.Region.Height - 2
+
+	// Auto-scroll when dragging near edges (before clamping)
+	if ev.Buttons() == tcell.Button1 && !p.mouseReleased {
+		if y < 0 {
+			// Dragging above top edge - scroll up
+			p.ScrollUp(1)
+		} else if y >= contentH {
+			// Dragging below bottom edge - scroll down
+			p.ScrollDown(1)
+		}
+	}
+
+	// Clamp to content bounds
 	if x < 0 {
 		x = 0
 	}
@@ -120,15 +133,19 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 	}
 
 	if ev.Buttons() == tcell.Button1 {
+		// Convert screen Y to line index (absolute position in scrollback+live buffer)
+		scrollbackCount := p.Scrollback.Count()
+		lineIndex := scrollbackCount - p.scrollOffset + y
+
 		if p.mouseReleased {
 			// New click - start selection
-			p.Selection[0] = Loc{X: x, Y: y}
-			p.Selection[1] = Loc{X: x, Y: y}
-			log.Printf("THOCK Terminal: Selection start at (%d, %d)", x, y)
+			p.Selection[0] = Loc{X: x, Y: lineIndex}
+			p.Selection[1] = Loc{X: x, Y: lineIndex}
+			log.Printf("THOCK Terminal: Selection start at (%d, %d) lineIndex", x, lineIndex)
 		} else {
 			// Drag - extend selection
-			p.Selection[1] = Loc{X: x, Y: y}
-			log.Printf("THOCK Terminal: Selection drag to (%d, %d)", x, y)
+			p.Selection[1] = Loc{X: x, Y: lineIndex}
+			log.Printf("THOCK Terminal: Selection drag to (%d, %d) lineIndex", x, lineIndex)
 		}
 		p.mouseReleased = false
 
@@ -140,9 +157,11 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 	} else if ev.Buttons() == tcell.ButtonNone {
 		if !p.mouseReleased {
 			// Button released - finalize selection
-			p.Selection[1] = Loc{X: x, Y: y}
+			scrollbackCount := p.Scrollback.Count()
+			lineIndex := scrollbackCount - p.scrollOffset + y
+			p.Selection[1] = Loc{X: x, Y: lineIndex}
 			p.mouseReleased = true
-			log.Printf("THOCK Terminal: Selection end at (%d, %d)", x, y)
+			log.Printf("THOCK Terminal: Selection end at (%d, %d) lineIndex", x, lineIndex)
 
 			// Trigger redraw
 			if p.OnRedraw != nil {

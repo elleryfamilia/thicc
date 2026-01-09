@@ -158,7 +158,11 @@ func (p *Panel) renderScrolledView(screen tcell.Screen, contentX, contentY, cont
 		if lineIndex < 0 {
 			// Above scrollback - render empty line
 			for x := 0; x < contentW; x++ {
-				screen.SetContent(contentX+x, contentY+y, ' ', nil, config.DefStyle)
+				style := config.DefStyle
+				if p.isSelected(x, y) {
+					style = style.Reverse(true)
+				}
+				screen.SetContent(contentX+x, contentY+y, ' ', nil, style)
 			}
 		} else if lineIndex < scrollbackCount {
 			// In scrollback buffer
@@ -177,12 +181,20 @@ func (p *Panel) renderScrolledView(screen tcell.Screen, contentX, contentY, cont
 						style = glyphToTcellStyle(glyph)
 					}
 
+					if p.isSelected(x, y) {
+						style = style.Reverse(true)
+					}
+
 					screen.SetContent(contentX+x, contentY+y, r, nil, style)
 				}
 			} else {
 				// Nil line (shouldn't happen) - render empty
 				for x := 0; x < contentW; x++ {
-					screen.SetContent(contentX+x, contentY+y, ' ', nil, config.DefStyle)
+					style := config.DefStyle
+					if p.isSelected(x, y) {
+						style = style.Reverse(true)
+					}
+					screen.SetContent(contentX+x, contentY+y, ' ', nil, style)
 				}
 			}
 		} else {
@@ -196,16 +208,27 @@ func (p *Panel) renderScrolledView(screen tcell.Screen, contentX, contentY, cont
 						r = ' '
 					}
 					style := glyphToTcellStyle(glyph)
+					if p.isSelected(x, y) {
+						style = style.Reverse(true)
+					}
 					screen.SetContent(contentX+x, contentY+y, r, nil, style)
 				}
 				// Fill remaining width if cols < contentW
 				for x := cols; x < contentW; x++ {
-					screen.SetContent(contentX+x, contentY+y, ' ', nil, config.DefStyle)
+					style := config.DefStyle
+					if p.isSelected(x, y) {
+						style = style.Reverse(true)
+					}
+					screen.SetContent(contentX+x, contentY+y, ' ', nil, style)
 				}
 			} else {
 				// Beyond live view - render empty
 				for x := 0; x < contentW; x++ {
-					screen.SetContent(contentX+x, contentY+y, ' ', nil, config.DefStyle)
+					style := config.DefStyle
+					if p.isSelected(x, y) {
+						style = style.Reverse(true)
+					}
+					screen.SetContent(contentX+x, contentY+y, ' ', nil, style)
 				}
 			}
 		}

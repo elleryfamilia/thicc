@@ -200,13 +200,13 @@ type Panel struct {
 	autoRespawn bool
 
 	// Selection state for copy/paste
-	Selection     [2]Loc // Start and end of selection
+	Selection     [2]Loc // Start and end of selection (Y is lineIndex into scrollback+live buffer)
 	mouseReleased bool   // Track mouse button state for drag detection
 
 	// Scrollback support
 	Scrollback     *ScrollbackBuffer // Circular buffer for terminal history
 	scrollOffset   int               // 0 = live view, >0 = scrolled up N lines
-	previousTopRow []vt10x.Glyph     // For detecting scroll events
+	previousScreen [][]vt10x.Glyph   // All rows before VT.Write for scroll detection
 
 	// Startup state - for showing loading indicator
 	hasReceivedOutput bool // True once terminal has received any output
@@ -445,8 +445,8 @@ func (p *Panel) readLoop() {
 				p.hasReceivedOutput = true
 			}
 
-			// Capture top row before write (for scroll detection)
-			p.captureTopRowBefore()
+			// Capture screen before write (for scroll detection)
+			p.captureScreenBefore()
 
 			// Write to VT emulator
 			p.VT.Write(buf[:n])
@@ -462,44 +462,109 @@ func (p *Panel) readLoop() {
 	}
 }
 
-// captureTopRowBefore captures the top row before VT.Write for scroll detection
-func (p *Panel) captureTopRowBefore() {
-	cols, _ := p.VT.Size()
-	p.previousTopRow = make([]vt10x.Glyph, cols)
-	for x := 0; x < cols; x++ {
-		p.previousTopRow[x] = p.VT.Cell(x, 0)
+// captureScreenBefore captures all rows before VT.Write for scroll detection
+func (p *Panel) captureScreenBefore() {
+	cols, rows := p.VT.Size()
+	p.previousScreen = make([][]vt10x.Glyph, rows)
+	for y := 0; y < rows; y++ {
+		p.previousScreen[y] = make([]vt10x.Glyph, cols)
+		for x := 0; x < cols; x++ {
+			p.previousScreen[y][x] = p.VT.Cell(x, y)
+		}
 	}
 }
 
-// captureScrolledLines checks if the top row changed and captures it to scrollback
+// rowsMatch checks if two rows have the same content
+func rowsMatch(row1, row2 []vt10x.Glyph) bool {
+	if len(row1) != len(row2) {
+		return false
+	}
+	for x := 0; x < len(row1); x++ {
+		if row1[x].Char != row2[x].Char {
+			return false
+		}
+	}
+	return true
+}
+
+// captureScrolledLines detects scrolled lines and adds them to scrollback
 func (p *Panel) captureScrolledLines() {
-	if len(p.previousTopRow) == 0 {
+	if len(p.previousScreen) == 0 {
 		return
 	}
 
-	cols, _ := p.VT.Size()
-	if cols != len(p.previousTopRow) {
+	cols, rows := p.VT.Size()
+	if rows != len(p.previousScreen) || (rows > 0 && cols != len(p.previousScreen[0])) {
 		return // Size changed, skip
 	}
 
-	// Compare current top row with previous
-	changed := false
+	// Get current top row
+	currentTopRow := make([]vt10x.Glyph, cols)
 	for x := 0; x < cols; x++ {
-		current := p.VT.Cell(x, 0)
-		if current.Char != p.previousTopRow[x].Char {
-			changed = true
-			break
+		currentTopRow[x] = p.VT.Cell(x, 0)
+	}
+
+	// Check if top row changed at all
+	if rowsMatch(currentTopRow, p.previousScreen[0]) {
+		return // No scroll, top row unchanged
+	}
+
+	// Strategy 1: Look for old row 0 somewhere in new screen
+	// If found at newY, then newY lines scrolled off
+	for newY := 1; newY < rows; newY++ {
+		newRow := make([]vt10x.Glyph, cols)
+		for x := 0; x < cols; x++ {
+			newRow[x] = p.VT.Cell(x, newY)
+		}
+
+		if rowsMatch(newRow, p.previousScreen[0]) {
+			// Verify with next row
+			if newY+1 < rows && 1 < len(p.previousScreen) {
+				nextRow := make([]vt10x.Glyph, cols)
+				for x := 0; x < cols; x++ {
+					nextRow[x] = p.VT.Cell(x, newY+1)
+				}
+				if rowsMatch(nextRow, p.previousScreen[1]) {
+					// Confirmed scroll - capture newY lines
+					for i := 0; i < newY; i++ {
+						line := ScrollbackLine{
+							Cells: make([]vt10x.Glyph, len(p.previousScreen[i])),
+						}
+						copy(line.Cells, p.previousScreen[i])
+						p.Scrollback.Push(line)
+					}
+					return
+				}
+			}
 		}
 	}
 
-	if changed {
-		// Line scrolled off - add previous top row to scrollback
-		line := ScrollbackLine{
-			Cells: make([]vt10x.Glyph, len(p.previousTopRow)),
+	// Strategy 2: Old row 0 not visible - check if any old row is now at new row 0
+	// If old row N is at new row 0, then N lines scrolled off entirely
+	for oldY := 1; oldY < len(p.previousScreen); oldY++ {
+		if rowsMatch(currentTopRow, p.previousScreen[oldY]) {
+			// Verify with next row
+			if oldY+1 < len(p.previousScreen) {
+				nextNewRow := make([]vt10x.Glyph, cols)
+				for x := 0; x < cols; x++ {
+					nextNewRow[x] = p.VT.Cell(x, 1)
+				}
+				if rowsMatch(nextNewRow, p.previousScreen[oldY+1]) {
+					// Confirmed large scroll - capture oldY lines
+					for i := 0; i < oldY; i++ {
+						line := ScrollbackLine{
+							Cells: make([]vt10x.Glyph, len(p.previousScreen[i])),
+						}
+						copy(line.Cells, p.previousScreen[i])
+						p.Scrollback.Push(line)
+					}
+					return
+				}
+			}
 		}
-		copy(line.Cells, p.previousTopRow)
-		p.Scrollback.Push(line)
 	}
+
+	// No scroll pattern detected - might be a screen clear or redraw
 }
 
 // RespawnShell starts a new shell in the terminal after the previous process exited
@@ -697,11 +762,8 @@ func (p *Panel) GetSelection() string {
 	cols, rows := p.VT.Size()
 	scrollbackCount := p.Scrollback.Count()
 
-	// Helper to get a cell at screen coordinates, accounting for scroll offset
-	getCell := func(x, screenY int) rune {
-		// Calculate actual line index (same logic as renderScrolledView)
-		lineIndex := scrollbackCount - p.scrollOffset + screenY
-
+	// Helper to get a cell at a given line index
+	getCell := func(x, lineIndex int) rune {
 		if lineIndex < 0 {
 			// Above scrollback - empty
 			return ' '
@@ -731,27 +793,24 @@ func (p *Panel) GetSelection() string {
 		}
 	}
 
-	// Screen height for bounds checking
-	contentH := rows
-
 	var result string
-	for y := start.Y; y <= end.Y && y < contentH; y++ {
+	for lineIndex := start.Y; lineIndex <= end.Y; lineIndex++ {
 		lineStart := 0
 		lineEnd := cols
 
-		if y == start.Y {
+		if lineIndex == start.Y {
 			lineStart = start.X
 		}
-		if y == end.Y {
+		if lineIndex == end.Y {
 			lineEnd = end.X
 		}
 
 		for x := lineStart; x < lineEnd && x < cols; x++ {
-			result += string(getCell(x, y))
+			result += string(getCell(x, lineIndex))
 		}
 
 		// Add newline between lines (but not at the end)
-		if y < end.Y {
+		if lineIndex < end.Y {
 			result += "\n"
 		}
 	}
@@ -760,12 +819,17 @@ func (p *Panel) GetSelection() string {
 }
 
 // isSelected returns true if the given cell position is within the selection
+// x and y are screen coordinates; selection Y is stored as lineIndex
 func (p *Panel) isSelected(x, y int) bool {
 	if !p.HasSelection() {
 		return false
 	}
 
-	loc := Loc{X: x, Y: y}
+	// Convert screen Y to line index (same coordinate space as selection)
+	scrollbackCount := p.Scrollback.Count()
+	lineIndex := scrollbackCount - p.scrollOffset + y
+	loc := Loc{X: x, Y: lineIndex}
+
 	start := p.Selection[0]
 	end := p.Selection[1]
 

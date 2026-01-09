@@ -106,7 +106,13 @@ func (rs *RecentStore) Save() error {
 }
 
 // AddProject adds or updates a project in the recent list
+// Only directories are added; individual files are ignored
 func (rs *RecentStore) AddProject(path string, isFolder bool) {
+	// Only add directories, not individual files
+	if !isFolder {
+		return
+	}
+
 	// Get absolute path
 	absPath, err := filepath.Abs(path)
 	if err != nil {
@@ -168,12 +174,13 @@ func (rs *RecentStore) sort() {
 	})
 }
 
-// cleanup removes entries that no longer exist on disk
+// cleanup removes entries that no longer exist on disk or are not directories
 func (rs *RecentStore) cleanup() {
 	validProjects := make([]RecentProject, 0, len(rs.Projects))
 
 	for _, proj := range rs.Projects {
-		if _, err := os.Stat(proj.Path); err == nil {
+		info, err := os.Stat(proj.Path)
+		if err == nil && info.IsDir() {
 			validProjects = append(validProjects, proj)
 		}
 	}
