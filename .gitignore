@@ -17,7 +17,7 @@ test/
 packages/
 todo.txt
 test.txt
-log.txt
+log.txt*
 *.old
 benchmark_results*
 tools/build-version
