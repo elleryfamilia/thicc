@@ -570,6 +570,14 @@ func exit(rc int) {
 		}
 	}
 
+	// Close layout manager (terminals, file browser, etc.)
+	// This must be done BEFORE closing the history store so that
+	// terminal recorders can flush their data
+	if thiccLayout != nil {
+		thiccLayout.Close()
+		thiccLayout.CloseHistoryStore()
+	}
+
 	if screen.Screen != nil {
 		screen.Screen.Fini()
 	}
@@ -578,6 +586,15 @@ func exit(rc int) {
 }
 
 func main() {
+	// Handle subcommands early (before flag parsing)
+	// This allows: thicc mcp serve, thicc gem list, etc.
+	if handleMCPCommand(os.Args) {
+		return
+	}
+	if handleGemCommand(os.Args) {
+		return
+	}
+
 	defer func() {
 		if util.Stdout.Len() > 0 {
 			fmt.Fprint(os.Stdout, util.Stdout.String())
@@ -1099,6 +1116,9 @@ func InitThiccLayout() {
 
 	// Create layout manager
 	thiccLayout = layout.NewLayoutManager(root)
+
+	// Initialize LLM history store for recording terminal sessions
+	thiccLayout.InitHistoryStore()
 
 	log.Println("THICC: Layout manager created")
 
