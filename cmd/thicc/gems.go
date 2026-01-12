@@ -54,6 +54,8 @@ func handleGemCommand(args []string) bool {
 		searchGems(args[3])
 	case "add":
 		addGemInteractive()
+	case "extract":
+		extractGems(args[3:])
 	case "help", "-h", "--help":
 		printGemUsage()
 	default:
@@ -77,7 +79,14 @@ func printGemUsage() {
 	fmt.Println("  reject <id>        Reject a pending gem (delete)")
 	fmt.Println("  search <query>     Search gems by text")
 	fmt.Println("  add                Manually add a gem (interactive)")
+	fmt.Println("  extract [options]  Extract gems from a session file")
 	fmt.Println("  help               Show this help message")
+	fmt.Println("")
+	fmt.Println("Extract options:")
+	fmt.Println("  --file <path>      Session file to extract from (required)")
+	fmt.Println("  --summarizer       Summarizer type: ollama (default) or anthropic")
+	fmt.Println("  --model            Model name (default: llama3.2 for ollama)")
+	fmt.Println("  --api-key          API key (required for anthropic)")
 	fmt.Println("")
 	fmt.Println("Gems are valuable insights captured from AI coding sessions:")
 	fmt.Println("  - Architectural decisions and their rationale")
@@ -376,4 +385,148 @@ func addGemInteractive() {
 	fmt.Println()
 	fmt.Printf("Gem added: %s\n", gem.ID)
 	fmt.Printf("Saved to: %s\n", store.GetProjectRoot()+"/.agent-gems.json")
+}
+
+// extractGems extracts gems from a session file using an LLM summarizer
+func extractGems(args []string) {
+	var sessionFile string
+	var summarizerType string = "ollama"
+	var model string
+	var apiKey string
+
+	// Parse arguments
+	for i := 0; i < len(args); i++ {
+		switch args[i] {
+		case "--file", "-f":
+			if i+1 < len(args) {
+				sessionFile = args[i+1]
+				i++
+			}
+		case "--summarizer", "-s":
+			if i+1 < len(args) {
+				summarizerType = args[i+1]
+				i++
+			}
+		case "--model", "-m":
+			if i+1 < len(args) {
+				model = args[i+1]
+				i++
+			}
+		case "--api-key", "-k":
+			if i+1 < len(args) {
+				apiKey = args[i+1]
+				i++
+			}
+		default:
+			// If no flag, treat as file path
+			if sessionFile == "" && !strings.HasPrefix(args[i], "-") {
+				sessionFile = args[i]
+			}
+		}
+	}
+
+	if sessionFile == "" {
+		fmt.Fprintln(os.Stderr, "Error: session file is required")
+		fmt.Fprintln(os.Stderr, "Usage: thicc gem extract --file <path>")
+		os.Exit(1)
+	}
+
+	// Read session file
+	sessionData, err := os.ReadFile(sessionFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to read session file: %v\n", err)
+		os.Exit(1)
+	}
+	sessionText := string(sessionData)
+
+	// Configure summarizer
+	var config gems.SummarizerConfig
+	switch summarizerType {
+	case "ollama":
+		config = gems.DefaultOllamaConfig()
+		if model != "" {
+			config.Model = model
+		}
+		// Check if Ollama is available
+		if err := gems.CheckOllamaAvailable(config.Host, config.Model); err != nil {
+			fmt.Fprintf(os.Stderr, "Ollama not available: %v\n", err)
+			os.Exit(1)
+		}
+	case "anthropic":
+		if apiKey == "" {
+			apiKey = os.Getenv("ANTHROPIC_API_KEY")
+		}
+		if apiKey == "" {
+			fmt.Fprintln(os.Stderr, "Error: Anthropic API key required (--api-key or ANTHROPIC_API_KEY)")
+			os.Exit(1)
+		}
+		config = gems.DefaultAnthropicConfig(apiKey)
+		if model != "" {
+			config.Model = model
+		}
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown summarizer type: %s\n", summarizerType)
+		fmt.Fprintln(os.Stderr, "Supported: ollama, anthropic")
+		os.Exit(1)
+	}
+
+	// Create summarizer
+	summarizer, err := gems.NewSummarizer(config)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create summarizer: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Extracting gems using %s (%s)...\n", summarizer.Name(), config.Model)
+
+	// Load existing gems for deduplication
+	store := openGemStore()
+	gemFile, err := store.LoadGems()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: could not load existing gems: %v\n", err)
+		gemFile = gems.NewGemFile()
+	}
+
+	// Extract gems
+	result, err := summarizer.Extract(sessionText, "", gemFile.Gems)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Extraction failed: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(result.Gems) == 0 {
+		fmt.Println("No gems found in session.")
+		if result.Incomplete {
+			fmt.Println("Note: The conversation appears incomplete.")
+		}
+		return
+	}
+
+	fmt.Printf("\nFound %d gems:\n\n", len(result.Gems))
+	for _, g := range result.Gems {
+		printGemSummary(g)
+	}
+
+	if result.Incomplete {
+		fmt.Println("Note: The conversation appears incomplete. More gems may be extracted with additional context.")
+	}
+
+	// Add gems to pending
+	fmt.Println("")
+	fmt.Print("Add these gems to pending? [Y/n] ")
+	reader := bufio.NewReader(os.Stdin)
+	response, _ := reader.ReadString('\n')
+	response = strings.TrimSpace(strings.ToLower(response))
+
+	if response == "" || response == "y" || response == "yes" {
+		for _, g := range result.Gems {
+			g.Created = time.Now()
+			if err := store.AddPendingGem(&g); err != nil {
+				fmt.Fprintf(os.Stderr, "Failed to add gem %s: %v\n", g.ID, err)
+			}
+		}
+		fmt.Printf("Added %d gems to pending. Use 'thicc gem pending' to review.\n", len(result.Gems))
+	} else {
+		fmt.Println("Gems not saved.")
+	}
 }
