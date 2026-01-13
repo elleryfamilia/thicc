@@ -462,7 +462,8 @@ func (d *Dashboard) drawRecentItem(screen tcell.Screen, x, y, width int, num int
 
 // drawAIToolItem renders a single AI tool item with radio button
 func (d *Dashboard) drawAIToolItem(screen tcell.Screen, x, y, width int, tool aiterminal.AITool, focused bool, selected bool) {
-	style := StyleRecentItem
+	// Installed tools are colorful (cyan)
+	style := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark)
 	if focused {
 		style = StyleMenuSelected
 	}
@@ -509,12 +510,10 @@ func (d *Dashboard) drawInstallToolItem(screen tcell.Screen, x, y, width int, to
 	// Check if this install tool is selected
 	isSelected := d.SelectedInstallCmd == tool.InstallCommand
 
-	// Yellow style for installable tools
-	// All styles must have explicit fg AND bg to prevent color changes in light mode
-	style := tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(ColorBgDark)
-	if focused {
-		style = tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorYellow)
-	}
+	// Not-installed tools are greyed out, but [Install] stays yellow
+	greyStyle := tcell.StyleDefault.Foreground(ColorTextDim).Background(ColorBgDark)
+	yellowStyle := tcell.StyleDefault.Foreground(tcell.ColorYellow).Background(ColorBgDark)
+	focusedStyle := tcell.StyleDefault.Foreground(tcell.ColorBlack).Background(tcell.ColorYellow)
 
 	// Radio button character - filled if selected
 	radioChar := "( )"
@@ -522,8 +521,8 @@ func (d *Dashboard) drawInstallToolItem(screen tcell.Screen, x, y, width int, to
 		radioChar = "(*)"
 	}
 
-	// Format: "( ) Tool Name [Install]"
-	suffix := " [Install]"
+	// Format: "( ) Tool Name (install)"
+	suffix := " (install)"
 	name := tool.Name
 	// Truncate name if too long
 	maxNameLen := width - 5 - len(suffix) // "( ) " prefix + suffix
@@ -531,16 +530,28 @@ func (d *Dashboard) drawInstallToolItem(screen tcell.Screen, x, y, width int, to
 		name = name[:maxNameLen-1] + "…"
 	}
 
-	line := radioChar + " " + name + suffix
+	nameWithRadio := radioChar + " " + name
+	line := nameWithRadio + suffix
 
 	// Pad to width
 	if len(line) < width {
 		line += strings.Repeat(" ", width-len(line))
 	}
 
-	// Draw the line
+	// Draw the line - grey for name, yellow for [Install]
+	suffixStart := len(nameWithRadio)
+	suffixEnd := suffixStart + len(suffix)
+
 	for i, ch := range line {
 		if x+i < d.ScreenW {
+			var style tcell.Style
+			if focused {
+				style = focusedStyle
+			} else if i >= suffixStart && i < suffixEnd {
+				style = yellowStyle // [Install] in yellow
+			} else {
+				style = greyStyle // Tool name in grey
+			}
 			screen.SetContent(x+i, y, ch, nil, style)
 		}
 	}

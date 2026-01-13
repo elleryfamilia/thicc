@@ -201,6 +201,9 @@ func keyToBytes(ev *tcell.EventKey) []byte {
 	case tcell.KeyTab:
 		return []byte{'\t'}
 
+	case tcell.KeyBacktab:
+		return []byte{0x1b, '[', 'Z'} // Shift+Tab: ESC [ Z
+
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
 		return []byte{0x7f} // DEL character
 

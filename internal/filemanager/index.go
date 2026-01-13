@@ -4,7 +4,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -122,12 +121,8 @@ func (idx *FileIndex) walkDir(dir string, depth int, files *[]IndexedFile, count
 
 		name := entry.Name()
 
-		// Skip hidden files/directories
-		if strings.HasPrefix(name, ".") {
-			continue
-		}
-
 		// Skip common problematic directories (reuse SkipDirs from tree.go)
+		// Note: hidden files are included so they appear in quick-find
 		if entry.IsDir() && SkipDirs[name] {
 			continue
 		}

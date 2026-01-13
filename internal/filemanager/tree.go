@@ -95,6 +95,7 @@ func (t *Tree) Scan(dir string) error {
 
 // SkipDirs is the list of directories to skip during scanning and watching
 // Exported so it can be reused by FileWatcher and FileIndex
+// TODO: Make this configurable via settings UI (filebrowser.skipdirs)
 var SkipDirs = map[string]bool{
 	// ===================
 	// VERSION CONTROL
@@ -300,9 +301,9 @@ func (t *Tree) scanDir(dir string, indent int, parentIdx int) error {
 	for i, entry := range entries {
 		name := entry.Name()
 
-		// THOCK: Skip ALL hidden files/directories for safety (even if ShowDotfiles=true)
-		if strings.HasPrefix(name, ".") {
-			log.Printf("THOCK Tree: Skipping hidden: %s", name)
+		// Skip hidden files/directories unless ShowDotfiles is enabled
+		// Note: .git and other problematic dirs are handled separately by SkipDirs
+		if strings.HasPrefix(name, ".") && !t.ShowDotfiles {
 			continue
 		}
 

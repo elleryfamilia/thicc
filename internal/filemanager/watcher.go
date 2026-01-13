@@ -92,12 +92,8 @@ func (fw *FileWatcher) addDirRecursive(path string) error {
 			return filepath.SkipDir
 		}
 
-		// Skip hidden directories (except root)
-		if p != fw.root && len(name) > 0 && name[0] == '.' {
-			return filepath.SkipDir
-		}
-
 		// Add watch for this directory
+		// Note: hidden directories are watched; skipDirs handles .git etc.
 		if err := fw.watcher.Add(p); err != nil {
 			log.Printf("THICC Watcher: Failed to watch %s: %v", p, err)
 			// Continue anyway
