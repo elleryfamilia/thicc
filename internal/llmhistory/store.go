@@ -117,7 +117,7 @@ func (s *Store) initSchema() error {
 		return fmt.Errorf("failed to create schema: %w", err)
 	}
 
-	// Create FTS5 virtual table for full-text search (if not exists)
+	// Create FTS5 virtual table for tool_uses full-text search (if not exists)
 	// FTS5 doesn't support IF NOT EXISTS, so we check first
 	var tableName string
 	err := s.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='tool_uses_fts'").Scan(&tableName)
@@ -145,7 +145,36 @@ func (s *Store) initSchema() error {
 		END;
 		`
 		if _, err := s.db.Exec(ftsSchema); err != nil {
-			return fmt.Errorf("failed to create FTS schema: %w", err)
+			return fmt.Errorf("failed to create tool_uses FTS schema: %w", err)
+		}
+	}
+
+	// Create FTS5 virtual table for session_output full-text search (if not exists)
+	err = s.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='session_output_fts'").Scan(&tableName)
+	if err == sql.ErrNoRows {
+		ftsSchema := `
+		CREATE VIRTUAL TABLE session_output_fts USING fts5(
+			output,
+			content='session_output',
+			content_rowid='rowid'
+		);
+
+		-- Triggers to keep FTS index in sync
+		CREATE TRIGGER IF NOT EXISTS session_output_ai AFTER INSERT ON session_output BEGIN
+			INSERT INTO session_output_fts(rowid, output) VALUES (NEW.rowid, NEW.output);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS session_output_ad AFTER DELETE ON session_output BEGIN
+			INSERT INTO session_output_fts(session_output_fts, rowid, output) VALUES('delete', OLD.rowid, OLD.output);
+		END;
+
+		CREATE TRIGGER IF NOT EXISTS session_output_au AFTER UPDATE ON session_output BEGIN
+			INSERT INTO session_output_fts(session_output_fts, rowid, output) VALUES('delete', OLD.rowid, OLD.output);
+			INSERT INTO session_output_fts(rowid, output) VALUES (NEW.rowid, NEW.output);
+		END;
+		`
+		if _, err := s.db.Exec(ftsSchema); err != nil {
+			return fmt.Errorf("failed to create session_output FTS schema: %w", err)
 		}
 	}
 
@@ -189,13 +218,65 @@ func (s *Store) UpdateSession(session *Session) error {
 	return err
 }
 
-// GetSession retrieves a session by ID
+// DeleteSession deletes a session by ID (exact match or prefix)
+// Returns true if a session was deleted, false if not found
+func (s *Store) DeleteSession(id string) (bool, error) {
+	// Try exact match first
+	result, err := s.db.Exec(`DELETE FROM sessions WHERE id = ?`, id)
+	if err != nil {
+		return false, err
+	}
+	affected, err := result.RowsAffected()
+	if err != nil {
+		return false, err
+	}
+	if affected > 0 {
+		return true, nil
+	}
+
+	// Try prefix match if exact match fails and id is at least 8 chars
+	if len(id) >= 8 {
+		// First find the full ID
+		var fullID string
+		err := s.db.QueryRow(`SELECT id FROM sessions WHERE id LIKE ? LIMIT 1`, id+"%").Scan(&fullID)
+		if err == sql.ErrNoRows {
+			return false, nil
+		}
+		if err != nil {
+			return false, err
+		}
+		// Delete using full ID
+		_, err = s.db.Exec(`DELETE FROM sessions WHERE id = ?`, fullID)
+		if err != nil {
+			return false, err
+		}
+		return true, nil
+	}
+
+	return false, nil
+}
+
+// GetSession retrieves a session by ID (exact match or prefix)
 func (s *Store) GetSession(id string) (*Session, error) {
+	// Try exact match first
 	row := s.db.QueryRow(`
 		SELECT id, tool_name, tool_command, project_dir, start_time, end_time, output_bytes
 		FROM sessions WHERE id = ?`, id)
 
-	return scanSession(row)
+	session, err := scanSession(row)
+	if err == nil {
+		return session, nil
+	}
+
+	// Try prefix match if exact match fails and id is at least 8 chars
+	if len(id) >= 8 {
+		row = s.db.QueryRow(`
+			SELECT id, tool_name, tool_command, project_dir, start_time, end_time, output_bytes
+			FROM sessions WHERE id LIKE ? LIMIT 1`, id+"%")
+		return scanSession(row)
+	}
+
+	return nil, err
 }
 
 // ListSessions lists recent sessions, optionally filtered by project
@@ -361,12 +442,47 @@ func (s *Store) GetFileHistory(filePaths []string, limit int) ([]ToolUse, error)
 
 // --- Search Operations ---
 
-// Search performs full-text search across tool uses
+// Search performs full-text search across tool uses and session output
 func (s *Store) Search(query string, projectDir string, limit int) ([]SearchResult, error) {
 	if limit <= 0 {
 		limit = 10
 	}
 
+	var results []SearchResult
+
+	// Search tool uses
+	toolResults, err := s.searchToolUses(query, projectDir, limit)
+	if err != nil {
+		return nil, fmt.Errorf("tool_uses search failed: %w", err)
+	}
+	results = append(results, toolResults...)
+
+	// Search session output
+	outputResults, err := s.searchSessionOutput(query, projectDir, limit)
+	if err != nil {
+		return nil, fmt.Errorf("session_output search failed: %w", err)
+	}
+	results = append(results, outputResults...)
+
+	// Sort combined results by score (lower is better for BM25)
+	// and limit to requested count
+	if len(results) > limit {
+		// Simple sort by score
+		for i := 0; i < len(results)-1; i++ {
+			for j := i + 1; j < len(results); j++ {
+				if results[j].Score < results[i].Score {
+					results[i], results[j] = results[j], results[i]
+				}
+			}
+		}
+		results = results[:limit]
+	}
+
+	return results, nil
+}
+
+// searchToolUses searches the tool_uses FTS index
+func (s *Store) searchToolUses(query string, projectDir string, limit int) ([]SearchResult, error) {
 	var rows *sql.Rows
 	var err error
 
@@ -412,10 +528,69 @@ func (s *Store) Search(query string, projectDir string, limit int) ([]SearchResu
 		tu.Timestamp = time.Unix(ts, 0)
 
 		results = append(results, SearchResult{
-			ToolUse:   tu,
+			Type:      SearchResultToolUse,
+			ToolUse:   &tu,
 			SessionID: tu.SessionID,
 			Snippet:   snippet,
 			Score:     score,
+			Timestamp: tu.Timestamp,
+		})
+	}
+	return results, rows.Err()
+}
+
+// searchSessionOutput searches the session_output FTS index
+func (s *Store) searchSessionOutput(query string, projectDir string, limit int) ([]SearchResult, error) {
+	var rows *sql.Rows
+	var err error
+
+	if projectDir != "" {
+		rows, err = s.db.Query(`
+			SELECT so.session_id, s.start_time,
+			       snippet(session_output_fts, 0, '<b>', '</b>', '...', 64) as snippet,
+			       bm25(session_output_fts) as score
+			FROM session_output so
+			JOIN session_output_fts fts ON so.rowid = fts.rowid
+			JOIN sessions s ON so.session_id = s.id
+			WHERE session_output_fts MATCH ?
+			  AND s.project_dir = ?
+			ORDER BY score
+			LIMIT ?`, query, projectDir, limit)
+	} else {
+		rows, err = s.db.Query(`
+			SELECT so.session_id, s.start_time,
+			       snippet(session_output_fts, 0, '<b>', '</b>', '...', 64) as snippet,
+			       bm25(session_output_fts) as score
+			FROM session_output so
+			JOIN session_output_fts fts ON so.rowid = fts.rowid
+			JOIN sessions s ON so.session_id = s.id
+			WHERE session_output_fts MATCH ?
+			ORDER BY score
+			LIMIT ?`, query, limit)
+	}
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var sessionID string
+		var startTime int64
+		var snippet string
+		var score float64
+
+		err := rows.Scan(&sessionID, &startTime, &snippet, &score)
+		if err != nil {
+			return nil, err
+		}
+
+		results = append(results, SearchResult{
+			Type:      SearchResultSessionOutput,
+			SessionID: sessionID,
+			Snippet:   snippet,
+			Score:     score,
+			Timestamp: time.Unix(startTime, 0),
 		})
 	}
 	return results, rows.Err()
@@ -549,6 +724,25 @@ func (s *Store) EnforceSizeLimit(maxBytes int64) (int64, error) {
 func (s *Store) Vacuum() error {
 	_, err := s.db.Exec(`VACUUM`)
 	return err
+}
+
+// RebuildFTS rebuilds all FTS indexes to ensure they're in sync
+func (s *Store) RebuildFTS() error {
+	// Rebuild tool_uses FTS
+	if _, err := s.db.Exec(`INSERT INTO tool_uses_fts(tool_uses_fts) VALUES('rebuild')`); err != nil {
+		return fmt.Errorf("failed to rebuild tool_uses_fts: %w", err)
+	}
+
+	// Rebuild session_output FTS (check if table exists first for backwards compatibility)
+	var tableName string
+	err := s.db.QueryRow("SELECT name FROM sqlite_master WHERE type='table' AND name='session_output_fts'").Scan(&tableName)
+	if err == nil {
+		if _, err := s.db.Exec(`INSERT INTO session_output_fts(session_output_fts) VALUES('rebuild')`); err != nil {
+			return fmt.Errorf("failed to rebuild session_output_fts: %w", err)
+		}
+	}
+
+	return nil
 }
 
 // --- Helper Functions ---

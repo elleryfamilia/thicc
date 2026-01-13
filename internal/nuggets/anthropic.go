@@ -1,4 +1,4 @@
-package gems
+package nuggets
 
 import (
 	"bytes"
@@ -69,8 +69,8 @@ type anthropicResponse struct {
 }
 
 // Extract implements Summarizer.Extract
-func (a *AnthropicSummarizer) Extract(sessionText string, diff string, existingGems []Gem) (*ExtractionResult, error) {
-	prompt := ExtractionPrompt(sessionText, diff, existingGems)
+func (a *AnthropicSummarizer) Extract(sessionText string, diff string, existingNuggets []Nugget) (*ExtractionResult, error) {
+	prompt := ExtractionPrompt(sessionText, diff, existingNuggets)
 
 	reqBody := anthropicRequest{
 		Model:     a.config.Model,

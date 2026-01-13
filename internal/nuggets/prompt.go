@@ -1,4 +1,4 @@
-package gems
+package nuggets
 
 import (
 	"encoding/json"
@@ -6,8 +6,8 @@ import (
 	"strings"
 )
 
-// ExtractionPrompt builds the prompt for gem extraction
-func ExtractionPrompt(sessionText string, diff string, existingGems []Gem) string {
+// ExtractionPrompt builds the prompt for nugget extraction
+func ExtractionPrompt(sessionText string, diff string, existingNuggets []Nugget) string {
 	var sb strings.Builder
 
 	sb.WriteString(extractionSystemPrompt)
@@ -27,11 +27,11 @@ func ExtractionPrompt(sessionText string, diff string, existingGems []Gem) strin
 		sb.WriteString("\n```\n\n")
 	}
 
-	// Add existing gems for deduplication
-	if len(existingGems) > 0 {
-		sb.WriteString("## Existing Gems (do not duplicate)\n\n")
-		for _, g := range existingGems {
-			sb.WriteString(fmt.Sprintf("- [%s] %s: %s\n", g.Type, g.Title, g.Summary))
+	// Add existing nuggets for deduplication
+	if len(existingNuggets) > 0 {
+		sb.WriteString("## Existing Nuggets (do not duplicate)\n\n")
+		for _, n := range existingNuggets {
+			sb.WriteString(fmt.Sprintf("- [%s] %s: %s\n", n.Type, n.Title, n.Summary))
 		}
 		sb.WriteString("\n")
 	}
@@ -43,11 +43,11 @@ func ExtractionPrompt(sessionText string, diff string, existingGems []Gem) strin
 
 const extractionSystemPrompt = `You are an expert at extracting valuable insights from AI coding sessions.
 
-Your job is to identify "gems" - valuable knowledge worth preserving for future reference. These are insights that would help a future developer (or AI) understand important decisions, avoid pitfalls, or reuse patterns.`
+Your job is to identify "nuggets" - valuable knowledge worth preserving for future reference. These are insights that would help a future developer (or AI) understand important decisions, avoid pitfalls, or reuse patterns.`
 
 const extractionInstructions = `## Instructions
 
-Analyze the session transcript and extract any valuable gems. Focus on:
+Analyze the session transcript and extract any valuable nuggets. Focus on:
 
 1. **Decisions** - Architectural or design choices with lasting impact
    - Why was this approach chosen over alternatives?
@@ -86,11 +86,12 @@ Skip mundane interactions:
 Respond with a JSON object in this exact format:
 
 {
-  "gems": [
+  "nuggets": [
     {
       "type": "decision|discovery|gotcha|pattern|issue|context",
       "title": "Short title (< 60 chars)",
       "summary": "One-line summary of the insight",
+      "significance": "Why this is worth keeping - what makes it non-obvious or valuable",
       "tags": ["tag1", "tag2"],
       "files": ["path/to/file.go"],
       "content": {
@@ -103,27 +104,35 @@ Respond with a JSON object in this exact format:
   "incomplete": false
 }
 
+The "significance" field is CRITICAL - it explains why this nugget is worth preserving. Ask yourself:
+- Is this something a developer would NOT easily find in documentation?
+- Did it require debugging or trial-and-error to discover?
+- Would forgetting this cause wasted time in the future?
+
+If you can't articulate a strong significance, don't extract it as a nugget.
+
 Set "incomplete": true if the conversation appears to be in the middle of something and more context is needed.
 
-If there are no valuable gems to extract, respond with:
-{"gems": [], "incomplete": false}
+If there are no valuable nuggets to extract, respond with:
+{"nuggets": [], "incomplete": false}
 
 Respond ONLY with the JSON object, no other text.`
 
 // ExtractionResponse represents the expected JSON response from the LLM
 type ExtractionResponse struct {
-	Gems       []ExtractedGem `json:"gems"`
-	Incomplete bool           `json:"incomplete"`
+	Nuggets    []ExtractedNugget `json:"nuggets"`
+	Incomplete bool              `json:"incomplete"`
 }
 
-// ExtractedGem represents a gem as extracted from the LLM response
-type ExtractedGem struct {
-	Type    string         `json:"type"`
-	Title   string         `json:"title"`
-	Summary string         `json:"summary"`
-	Tags    []string       `json:"tags"`
-	Files   []string       `json:"files"`
-	Content map[string]any `json:"content"`
+// ExtractedNugget represents a nugget as extracted from the LLM response
+type ExtractedNugget struct {
+	Type         string         `json:"type"`
+	Title        string         `json:"title"`
+	Summary      string         `json:"summary"`
+	Significance string         `json:"significance"`
+	Tags         []string       `json:"tags"`
+	Files        []string       `json:"files"`
+	Content      map[string]any `json:"content"`
 }
 
 // ParseExtractionResponse parses the LLM response into an ExtractionResult
@@ -140,10 +149,10 @@ func ParseExtractionResponse(response string, client string, model string) (*Ext
 		response = strings.TrimSpace(response)
 	}
 
-	// Check for NO_GEMS response (legacy format)
-	if response == "NO_GEMS" {
+	// Check for NO_NUGGETS response (legacy format)
+	if response == "NO_NUGGETS" {
 		return &ExtractionResult{
-			Gems:       []Gem{},
+			Nuggets:    []Nugget{},
 			Incomplete: false,
 		}, nil
 	}
@@ -153,32 +162,33 @@ func ParseExtractionResponse(response string, client string, model string) (*Ext
 		return nil, fmt.Errorf("failed to parse extraction response: %w\nResponse was: %s", err, response)
 	}
 
-	// Convert extracted gems to Gem structs
+	// Convert extracted nuggets to Nugget structs
 	result := &ExtractionResult{
-		Gems:       make([]Gem, 0, len(extracted.Gems)),
+		Nuggets:    make([]Nugget, 0, len(extracted.Nuggets)),
 		Incomplete: extracted.Incomplete,
 	}
 
-	for _, eg := range extracted.Gems {
-		gem := Gem{
-			ID:      generateGemID(),
-			Type:    GemType(eg.Type),
-			Title:   eg.Title,
-			Summary: eg.Summary,
-			Client:  client,
-			Model:   model,
-			Tags:    eg.Tags,
-			Files:   eg.Files,
-			Content: eg.Content,
+	for _, en := range extracted.Nuggets {
+		nugget := Nugget{
+			ID:           generateNuggetID(),
+			Type:         NuggetType(en.Type),
+			Title:        en.Title,
+			Summary:      en.Summary,
+			Significance: en.Significance,
+			Client:       client,
+			Model:        model,
+			Tags:         en.Tags,
+			Files:        en.Files,
+			Content:      en.Content,
 		}
 
-		// Validate gem type
-		if !gem.Type.IsValid() {
+		// Validate nugget type
+		if !nugget.Type.IsValid() {
 			// Default to context if invalid
-			gem.Type = GemContext
+			nugget.Type = NuggetContext
 		}
 
-		result.Gems = append(result.Gems, gem)
+		result.Nuggets = append(result.Nuggets, nugget)
 	}
 
 	return result, nil

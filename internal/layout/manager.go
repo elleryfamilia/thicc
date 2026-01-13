@@ -15,6 +15,7 @@ import (
 	"github.com/ellery/thicc/internal/dashboard"
 	"github.com/ellery/thicc/internal/filebrowser"
 	"github.com/ellery/thicc/internal/filemanager"
+	"github.com/ellery/thicc/internal/llmhistory"
 	"github.com/ellery/thicc/internal/terminal"
 	"github.com/micro-editor/tcell/v2"
 )
@@ -99,6 +100,9 @@ type LayoutManager struct {
 
 	// Multiplexer detection - true if running in tmux/zellij/screen
 	InMultiplexer bool
+
+	// LLM History store for recording terminal sessions
+	HistoryStore *llmhistory.Store
 }
 
 // NewLayoutManager creates a new layout manager
@@ -132,6 +136,98 @@ func NewLayoutManager(root string) *LayoutManager {
 // Must be called before Initialize() for the command to take effect
 func (lm *LayoutManager) SetAIToolCommand(cmd []string) {
 	lm.AIToolCommand = cmd
+}
+
+// InitHistoryStore initializes the LLM history store
+// Should be called early in app startup
+func (lm *LayoutManager) InitHistoryStore() {
+	configDir := dashboard.GetConfigDir()
+	store, err := llmhistory.NewStore(configDir)
+	if err != nil {
+		log.Printf("THICC: Failed to initialize LLM history store: %v", err)
+		return
+	}
+	lm.HistoryStore = store
+	log.Printf("THICC: LLM history store initialized at %s", configDir)
+}
+
+// CloseHistoryStore closes the LLM history store
+// Should be called on app shutdown
+func (lm *LayoutManager) CloseHistoryStore() {
+	if lm.HistoryStore != nil {
+		lm.HistoryStore.Close()
+		lm.HistoryStore = nil
+	}
+}
+
+// startRecordingIfAITool starts LLM history recording for the terminal if it's running an AI tool
+// cmdArgs is the command being run (nil = default shell)
+// toolName is the display name of the AI tool (e.g., "claude", "aider")
+func (lm *LayoutManager) startRecordingIfAITool(term *terminal.Panel, cmdArgs []string, toolName string) {
+	// Check if LLM history recording is enabled
+	if !llmhistory.IsEnabled() {
+		return
+	}
+
+	// Don't record if no history store
+	if lm.HistoryStore == nil {
+		return
+	}
+
+	// Don't record shell sessions, only AI tools
+	if cmdArgs == nil || len(cmdArgs) == 0 {
+		return
+	}
+
+	// Check if it's a shell command (not an AI tool)
+	if isShellCommand(cmdArgs) {
+		return
+	}
+
+	// Get project directory
+	projectDir := lm.Root
+	if projectDir == "" {
+		var err error
+		projectDir, err = os.Getwd()
+		if err != nil {
+			projectDir = ""
+		}
+	}
+
+	// Build tool command string
+	toolCmd := strings.Join(cmdArgs, " ")
+
+	// If toolName not provided, derive from command
+	if toolName == "" {
+		toolName = filepath.Base(cmdArgs[0])
+	}
+
+	// Create recorder
+	recorder, err := llmhistory.NewRecorder(lm.HistoryStore, toolName, toolCmd, projectDir)
+	if err != nil {
+		log.Printf("THICC: Failed to create LLM history recorder: %v", err)
+		return
+	}
+
+	// Set recorder on terminal
+	term.SetRecorder(recorder)
+	term.AIToolName = toolName
+	term.AIToolCmd = toolCmd
+
+	log.Printf("THICC: Started LLM history recording for %s in %s", toolName, projectDir)
+}
+
+// isShellCommand returns true if the command is a shell (bash, zsh, sh, fish, etc.)
+func isShellCommand(cmdArgs []string) bool {
+	if len(cmdArgs) == 0 {
+		return false
+	}
+	base := filepath.Base(cmdArgs[0])
+	switch base {
+	case "bash", "zsh", "sh", "fish", "ksh", "csh", "tcsh", "dash":
+		return true
+	}
+	return false
 }
 
 // PreloadTerminal creates the terminal in the background while dashboard is showing
@@ -170,6 +266,9 @@ func (lm *LayoutManager) PreloadTerminal(screenW, screenH int) {
 
 		// Set up terminal callbacks
 		lm.setupTerminalCallbacks(term)
+
+		// Start LLM history recording if this is an AI tool
+		lm.startRecordingIfAITool(term, cmdArgs, "")
 
 		// Safely set terminal (prevent race with Initialize)
 		lm.mu.Lock()
@@ -849,6 +948,9 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 
 			// Set up terminal callbacks
 			lm.setupTerminalCallbacks(term)
+
+			// Start LLM history recording if this is an AI tool
+			lm.startRecordingIfAITool(term, cmdArgs, "")
 
 			// Safely set terminal (prevent race with PreloadTerminal)
 			lm.mu.Lock()
@@ -2326,6 +2428,9 @@ func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
 		}
 
 		lm.setupTerminalCallbacks(term)
+
+		// Start LLM history recording if this is an AI tool
+		lm.startRecordingIfAITool(term, cmdArgs, "")
 
 		lm.mu.Lock()
 		switch panel {

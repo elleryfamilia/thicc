@@ -4,33 +4,28 @@ import (
 	"bytes"
 	"log"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/ellery/thicc/internal/gems"
+	"github.com/ellery/thicc/internal/nuggets"
 	"github.com/google/uuid"
 )
 
-// Recorder manages session recording with line-based deduplication
+// Recorder manages session recording using scrollback-based capture
 type Recorder struct {
 	store     *Store
 	session   *Session
-	processor *OutputProcessor
 	mu        sync.Mutex
 	isRunning bool
 
-	// Atomic counter for raw bytes received
-	rawBytes atomic.Int64
-
-	// Deduplicated output buffer
+	// Output buffer (receives clean lines from scrollback)
 	outputBuffer bytes.Buffer
 	outputMu     sync.Mutex
 
 	// Background sync
 	stopSync chan struct{}
 
-	// Gem extraction
-	extractor        *gems.Extractor
+	// Nugget extraction
+	extractor         *nuggets.Extractor
 	extractionEnabled bool
 }
 
@@ -56,9 +51,6 @@ func NewRecorder(store *Store, toolName, toolCommand, projectDir string) (*Recor
 		stopSync:  make(chan struct{}),
 	}
 
-	// Create output processor with callback to store deduplicated lines
-	r.processor = NewOutputProcessor(r.onLine)
-
 	// Start background sync
 	go r.backgroundSync()
 
@@ -67,31 +59,52 @@ func NewRecorder(store *Store, toolName, toolCommand, projectDir string) (*Recor
 	return r, nil
 }
 
-// onLine is called for each deduplicated line
-func (r *Recorder) onLine(line string) {
+// OnScrolledLine receives a clean line from the scrollback buffer
+// This is called when content scrolls off the top of the terminal
+func (r *Recorder) OnScrolledLine(line string) {
+	r.mu.Lock()
+	running := r.isRunning
+	r.mu.Unlock()
+
+	if !running || line == "" {
+		return
+	}
+
 	r.outputMu.Lock()
 	defer r.outputMu.Unlock()
 
-	// Strip ANSI codes for storage
+	// Strip any remaining ANSI codes (scrollback should be clean, but just in case)
 	clean := stripANSI(line)
-	if clean != "" {
-		r.outputBuffer.WriteString(clean)
-		r.outputBuffer.WriteByte('\n')
+	if clean == "" {
+		return
+	}
 
-		// Feed to extractor if enabled
-		if r.extractionEnabled && r.extractor != nil {
-			// Add line to extractor (non-blocking, extractor handles its own locking)
-			go func(text string) {
-				if err := r.extractor.ProcessChunk(text + "\n"); err != nil {
-					log.Printf("LLMHISTORY: Extraction error: %v", err)
-				}
-			}(clean)
+	r.outputBuffer.WriteString(clean)
+	r.outputBuffer.WriteByte('\n')
+
+	// DEBUG: Log first few lines and periodically
+	lineCount := r.outputBuffer.Len()
+	if lineCount <= 500 || lineCount%5000 == 0 {
+		truncated := clean
+		if len(truncated) > 80 {
+			truncated = truncated[:80] + "..."
 		}
+		log.Printf("LLMHISTORY: OnScrolledLine() stored: %s (buffer: %d bytes)", truncated, lineCount)
+	}
+
+	// Feed to extractor if enabled
+	if r.extractionEnabled && r.extractor != nil {
+		go func(text string) {
+			if err := r.extractor.ProcessChunk(text + "\n"); err != nil {
+				log.Printf("LLMHISTORY: Extraction error: %v", err)
+			}
+		}(clean)
 	}
 }
 
-// Write processes terminal output data
-func (r *Recorder) Write(data []byte) {
+// FlushLiveScreen captures remaining visible content that hasn't scrolled yet
+// Call this when the session is ending to capture final output
+func (r *Recorder) FlushLiveScreen(lines []string) {
 	r.mu.Lock()
 	running := r.isRunning
 	r.mu.Unlock()
@@ -100,11 +113,18 @@ func (r *Recorder) Write(data []byte) {
 		return
 	}
 
-	// Track raw bytes
-	r.rawBytes.Add(int64(len(data)))
+	r.outputMu.Lock()
+	defer r.outputMu.Unlock()
 
-	// Process through deduplicator
-	r.processor.Process(data)
+	for _, line := range lines {
+		clean := stripANSI(line)
+		if clean != "" {
+			r.outputBuffer.WriteString(clean)
+			r.outputBuffer.WriteByte('\n')
+		}
+	}
+
+	log.Printf("LLMHISTORY: FlushLiveScreen() added %d lines", len(lines))
 }
 
 // backgroundSync periodically syncs session data to DB
@@ -152,9 +172,6 @@ func (r *Recorder) Stop() error {
 	r.isRunning = false
 	r.mu.Unlock()
 
-	// Flush any remaining content
-	r.processor.Flush()
-
 	// Stop background sync
 	select {
 	case <-r.stopSync:
@@ -168,6 +185,9 @@ func (r *Recorder) Stop() error {
 	r.outputMu.Lock()
 	output := r.outputBuffer.String()
 	r.outputMu.Unlock()
+
+	// DEBUG: Log final state
+	log.Printf("LLMHISTORY: Stop() - outputBuffer: %d bytes", len(output))
 
 	// Final sync
 	r.mu.Lock()
@@ -190,19 +210,19 @@ func (r *Recorder) Stop() error {
 		r.session.EndTime.Sub(r.session.StartTime).Round(time.Second),
 		r.session.OutputBytes)
 
-	// Finalize gem extraction if enabled
+	// Finalize nugget extraction if enabled
 	r.mu.Lock()
 	extractor := r.extractor
 	r.mu.Unlock()
 
 	if extractor != nil {
-		log.Printf("LLMHISTORY: Finalizing gem extraction...")
+		log.Printf("LLMHISTORY: Finalizing nugget extraction...")
 		if err := extractor.Finalize(); err != nil {
-			log.Printf("LLMHISTORY: Gem extraction finalization failed: %v", err)
+			log.Printf("LLMHISTORY: Nugget extraction finalization failed: %v", err)
 		} else {
 			count := extractor.GetPendingCount()
 			if count > 0 {
-				log.Printf("LLMHISTORY: Extracted %d gems (pending review)", count)
+				log.Printf("LLMHISTORY: Extracted %d nuggets (pending review)", count)
 			}
 		}
 	}
@@ -230,35 +250,35 @@ func (r *Recorder) SessionID() string {
 	return r.session.ID
 }
 
-// EnableExtraction enables gem extraction with the given summarizer
-func (r *Recorder) EnableExtraction(summarizer gems.Summarizer, gemStore *gems.Store, threshold int) {
+// EnableExtraction enables nugget extraction with the given summarizer
+func (r *Recorder) EnableExtraction(summarizer nuggets.Summarizer, nuggetStore *nuggets.Store, threshold int) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	if threshold <= 0 {
-		threshold = gems.DefaultExtractionThreshold
+		threshold = nuggets.DefaultExtractionThreshold
 	}
 
-	r.extractor = gems.NewExtractor(gems.ExtractorConfig{
+	r.extractor = nuggets.NewExtractor(nuggets.ExtractorConfig{
 		Summarizer:  summarizer,
-		Store:       gemStore,
+		Store:       nuggetStore,
 		Threshold:   threshold,
 		ProjectRoot: r.session.ProjectDir,
 	})
 	r.extractionEnabled = true
 
-	log.Printf("LLMHISTORY: Gem extraction enabled (threshold: %d tokens)", threshold)
+	log.Printf("LLMHISTORY: Nugget extraction enabled (threshold: %d tokens)", threshold)
 }
 
-// DisableExtraction disables gem extraction
+// DisableExtraction disables nugget extraction
 func (r *Recorder) DisableExtraction() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.extractionEnabled = false
 }
 
-// GetExtractedGemCount returns the number of gems extracted so far
-func (r *Recorder) GetExtractedGemCount() int {
+// GetExtractedNuggetCount returns the number of gems extracted so far
+func (r *Recorder) GetExtractedNuggetCount() int {
 	r.mu.Lock()
 	extractor := r.extractor
 	r.mu.Unlock()

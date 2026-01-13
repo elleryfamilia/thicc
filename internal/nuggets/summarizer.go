@@ -1,4 +1,4 @@
-package gems
+package nuggets
 
 import (
 	"errors"
@@ -11,6 +11,7 @@ type SummarizerType string
 const (
 	SummarizerOllama    SummarizerType = "ollama"
 	SummarizerAnthropic SummarizerType = "anthropic"
+	SummarizerOpenAI    SummarizerType = "openai" // OpenAI-compatible API (works with many providers)
 )
 
 // SummarizerConfig holds configuration for the summarizer
@@ -39,19 +40,19 @@ func DefaultAnthropicConfig(apiKey string) SummarizerConfig {
 	}
 }
 
-// ExtractionResult contains the result of gem extraction
+// ExtractionResult contains the result of nugget extraction
 type ExtractionResult struct {
-	Gems       []Gem // Extracted gems
-	Incomplete bool  // True if conversation seems unfinished
+	Nuggets    []Nugget // Extracted nuggets
+	Incomplete bool     // True if conversation seems unfinished
 }
 
-// Summarizer is the interface for LLM-based gem extraction
+// Summarizer is the interface for LLM-based nugget extraction
 type Summarizer interface {
-	// Extract analyzes session text and returns extracted gems
+	// Extract analyzes session text and returns extracted nuggets
 	// sessionText: The AI session transcript
 	// diff: Git diff of changes made (optional, can be empty)
-	// existingGems: Previously extracted gems (for deduplication)
-	Extract(sessionText string, diff string, existingGems []Gem) (*ExtractionResult, error)
+	// existingNuggets: Previously extracted nuggets (for deduplication)
+	Extract(sessionText string, diff string, existingNuggets []Nugget) (*ExtractionResult, error)
 
 	// Name returns the summarizer type name
 	Name() string
@@ -64,13 +65,15 @@ func NewSummarizer(config SummarizerConfig) (Summarizer, error) {
 		return NewOllamaSummarizer(config)
 	case SummarizerAnthropic:
 		return NewAnthropicSummarizer(config)
+	case SummarizerOpenAI:
+		return NewOpenAISummarizer(config)
 	default:
 		return nil, fmt.Errorf("unknown summarizer type: %s", config.Type)
 	}
 }
 
-// ErrNoGems is returned when extraction finds no valuable gems
-var ErrNoGems = errors.New("no gems found in session")
+// ErrNoNuggets is returned when extraction finds no valuable nuggets
+var ErrNoNuggets = errors.New("no nuggets found in session")
 
 // ErrAPIError is returned when the LLM API returns an error
 type ErrAPIError struct {

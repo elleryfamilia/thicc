@@ -7,10 +7,12 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/creack/pty"
+	"github.com/ellery/thicc/internal/llmhistory"
 	"github.com/ellery/thicc/internal/screen"
 	"github.com/hinshun/vt10x"
 )
@@ -225,6 +227,11 @@ type Panel struct {
 	OnNextPane func()
 	// OnSessionEnd callback when terminal process exits (for auto-hiding the pane)
 	OnSessionEnd func()
+
+	// LLM History recording
+	Recorder    *llmhistory.Recorder // Session recorder (nil if not recording)
+	AIToolName  string               // Name of AI tool (e.g., "claude", "aider")
+	AIToolCmd   string               // Full command string
 }
 
 // isShellCommand returns true if the command is a shell (bash, zsh, sh, fish, etc.)
@@ -420,6 +427,14 @@ func (p *Panel) readLoop() {
 			p.mu.Lock()
 			shouldRespawn := p.autoRespawn
 			p.Running = false
+
+			// Stop LLM history recording if active
+			if p.Recorder != nil {
+				// Flush remaining live screen content to recorder
+				p.flushLiveScreenToRecorder()
+				p.Recorder.Stop()
+				p.Recorder = nil
+			}
 			p.mu.Unlock()
 
 			// If auto-respawn is enabled (AI tool was running), spawn a new shell
@@ -452,6 +467,7 @@ func (p *Panel) readLoop() {
 			p.VT.Write(buf[:n])
 
 			// Check if scroll occurred and capture scrolled lines
+			// (this also feeds clean lines to the LLM history recorder)
 			p.captureScrolledLines()
 
 			p.mu.Unlock()
@@ -532,6 +548,11 @@ func (p *Panel) captureScrolledLines() {
 						}
 						copy(line.Cells, p.previousScreen[i])
 						p.Scrollback.Push(line)
+
+						// Feed to LLM history recorder if active
+						if p.Recorder != nil {
+							p.Recorder.OnScrolledLine(line.ToString())
+						}
 					}
 					return
 				}
@@ -557,6 +578,11 @@ func (p *Panel) captureScrolledLines() {
 						}
 						copy(line.Cells, p.previousScreen[i])
 						p.Scrollback.Push(line)
+
+						// Feed to LLM history recorder if active
+						if p.Recorder != nil {
+							p.Recorder.OnScrolledLine(line.ToString())
+						}
 					}
 					return
 				}
@@ -712,6 +738,14 @@ func (p *Panel) Close() {
 
 	p.Running = false
 
+	// Stop LLM history recording if active
+	if p.Recorder != nil {
+		// Flush remaining live screen content to recorder
+		p.flushLiveScreenToRecorder()
+		p.Recorder.Stop()
+		p.Recorder = nil
+	}
+
 	if p.redrawTimer != nil {
 		p.redrawTimer.Stop()
 	}
@@ -723,6 +757,47 @@ func (p *Panel) Close() {
 
 	if p.Cmd != nil && p.Cmd.Process != nil {
 		_ = p.Cmd.Process.Kill()
+	}
+}
+
+// SetRecorder sets the LLM history recorder for this terminal
+// Call this after creating the panel but before it receives output
+func (p *Panel) SetRecorder(recorder *llmhistory.Recorder) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.Recorder = recorder
+}
+
+// flushLiveScreenToRecorder captures remaining visible content and sends to recorder
+// This should be called before stopping the recorder to capture content that hasn't scrolled
+// Caller must hold p.mu
+func (p *Panel) flushLiveScreenToRecorder() {
+	if p.Recorder == nil {
+		return
+	}
+
+	cols, rows := p.VT.Size()
+	var lines []string
+
+	for y := 0; y < rows; y++ {
+		var line strings.Builder
+		for x := 0; x < cols; x++ {
+			glyph := p.VT.Cell(x, y)
+			if glyph.Char == 0 {
+				line.WriteRune(' ')
+			} else {
+				line.WriteRune(glyph.Char)
+			}
+		}
+		// Trim trailing spaces
+		trimmed := strings.TrimRight(line.String(), " ")
+		if trimmed != "" {
+			lines = append(lines, trimmed)
+		}
+	}
+
+	if len(lines) > 0 {
+		p.Recorder.FlushLiveScreen(lines)
 	}
 }
 

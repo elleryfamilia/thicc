@@ -41,6 +41,8 @@ You'll need:
 | [File Browser](file-browser.md) | Navigating and managing files |
 | [Terminal](terminal.md) | Terminal panes and shell integration |
 | [AI Workflow](ai-workflow.md) | Using thicc with Claude, Copilot, and more |
+| [LLM History](llm-history.md) | AI session recording and MCP search |
+| [Gems Spec](gems-spec.md) | Open standard for AI coding insights |
 | [Keybindings](keybindings.md) | Complete keyboard shortcut reference |
 | [Dashboard](dashboard.md) | Project picker and onboarding |
 | [Command Line](command-line.md) | CLI flags and configuration |

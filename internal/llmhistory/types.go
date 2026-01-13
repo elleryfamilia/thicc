@@ -39,12 +39,22 @@ type SessionWithToolUses struct {
 	ToolUses []ToolUse `json:"tool_uses"`
 }
 
+// SearchResultType indicates the source of a search result
+type SearchResultType string
+
+const (
+	SearchResultToolUse       SearchResultType = "tool_use"
+	SearchResultSessionOutput SearchResultType = "session_output"
+)
+
 // SearchResult represents a search hit from FTS5
 type SearchResult struct {
-	ToolUse   ToolUse `json:"tool_use"`
-	SessionID string  `json:"session_id"`
-	Snippet   string  `json:"snippet"` // Highlighted snippet from FTS5
-	Score     float64 `json:"score"`   // BM25 relevance score
+	Type      SearchResultType `json:"type"`                 // "tool_use" or "session_output"
+	ToolUse   *ToolUse         `json:"tool_use,omitempty"`   // Set if Type == "tool_use"
+	SessionID string           `json:"session_id"`           // Always set
+	Snippet   string           `json:"snippet"`              // Highlighted snippet from FTS5
+	Score     float64          `json:"score"`                // BM25 relevance score
+	Timestamp time.Time        `json:"timestamp,omitempty"`  // For tool_use, the tool timestamp
 }
 
 // FileHistory represents the history of tool uses for a file

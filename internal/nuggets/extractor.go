@@ -1,4 +1,4 @@
-package gems
+package nuggets
 
 import (
 	"log"
@@ -16,20 +16,20 @@ const (
 	ContextOverlap = 500 // tokens
 )
 
-// Extractor manages chunked gem extraction from streaming session output
+// Extractor manages chunked nugget extraction from streaming session output
 type Extractor struct {
 	summarizer Summarizer
 	store      *Store
 	threshold  int // tokens before extraction
 
 	// State
-	mu              sync.Mutex
-	buffer          strings.Builder
-	tokenCount      int
-	lastChunkEnd    string // End of last chunk for context overlap
-	incompleteGems  []Gem  // Gems from incomplete extractions
-	extractedGems   []Gem  // All gems extracted so far
-	extractionCount int
+	mu                  sync.Mutex
+	buffer              strings.Builder
+	tokenCount          int
+	lastChunkEnd        string   // End of last chunk for context overlap
+	incompleteNuggets   []Nugget // Nuggets from incomplete extractions
+	extractedNuggets    []Nugget // All nuggets extracted so far
+	extractionCount     int
 
 	// Configuration
 	projectRoot string
@@ -42,7 +42,7 @@ type ExtractorConfig struct {
 	Summarizer  Summarizer
 	Store       *Store
 	Threshold   int    // Token threshold (default: 4000)
-	ProjectRoot string // Project root for gem storage
+	ProjectRoot string // Project root for nugget storage
 }
 
 // NewExtractor creates a new extraction orchestrator
@@ -104,34 +104,34 @@ func (e *Extractor) extractLocked() error {
 	}
 
 	e.extractionCount++
-	log.Printf("GEMS: Extraction #%d triggered (%d tokens)", e.extractionCount, e.tokenCount)
+	log.Printf("NUGGETS: Extraction #%d triggered (%d tokens)", e.extractionCount, e.tokenCount)
 
 	// Run extraction (this can be slow, but we're holding the lock)
 	// In a production system, you might want to do this async
-	result, err := e.summarizer.Extract(fullText, "", e.extractedGems)
+	result, err := e.summarizer.Extract(fullText, "", e.extractedNuggets)
 	if err != nil {
-		log.Printf("GEMS: Extraction failed: %v", err)
+		log.Printf("NUGGETS: Extraction failed: %v", err)
 		// Don't lose the buffer on error, but prevent infinite retries
 		e.resetBufferLocked()
 		return err
 	}
 
-	// Handle extracted gems
-	if len(result.Gems) > 0 {
-		log.Printf("GEMS: Found %d gems in chunk", len(result.Gems))
-		for i := range result.Gems {
-			result.Gems[i].Created = time.Now()
-			result.Gems[i].Client = e.client
+	// Handle extracted nuggets
+	if len(result.Nuggets) > 0 {
+		log.Printf("NUGGETS: Found %d nuggets in chunk", len(result.Nuggets))
+		for i := range result.Nuggets {
+			result.Nuggets[i].Created = time.Now()
+			result.Nuggets[i].Client = e.client
 		}
 
 		if result.Incomplete {
 			// Save for potential merging with next chunk
-			e.incompleteGems = append(e.incompleteGems, result.Gems...)
+			e.incompleteNuggets = append(e.incompleteNuggets, result.Nuggets...)
 		} else {
-			// Finalize gems
-			e.extractedGems = append(e.extractedGems, result.Gems...)
-			// Clear incomplete gems if we got a complete extraction
-			e.incompleteGems = nil
+			// Finalize nuggets
+			e.extractedNuggets = append(e.extractedNuggets, result.Nuggets...)
+			// Clear incomplete nuggets if we got a complete extraction
+			e.incompleteNuggets = nil
 		}
 	}
 
@@ -162,7 +162,7 @@ func (e *Extractor) resetBufferLocked() {
 	e.tokenCount = 0
 }
 
-// Finalize performs final extraction and saves all pending gems
+// Finalize performs final extraction and saves all pending nuggets
 func (e *Extractor) Finalize() error {
 	e.mu.Lock()
 	defer e.mu.Unlock()
@@ -170,26 +170,26 @@ func (e *Extractor) Finalize() error {
 	// Extract any remaining content
 	if e.buffer.Len() > 0 && e.summarizer != nil {
 		if err := e.extractLocked(); err != nil {
-			log.Printf("GEMS: Final extraction failed: %v", err)
+			log.Printf("NUGGETS: Final extraction failed: %v", err)
 		}
 	}
 
-	// Merge incomplete gems into extracted
-	if len(e.incompleteGems) > 0 {
-		e.extractedGems = append(e.extractedGems, e.incompleteGems...)
-		e.incompleteGems = nil
+	// Merge incomplete nuggets into extracted
+	if len(e.incompleteNuggets) > 0 {
+		e.extractedNuggets = append(e.extractedNuggets, e.incompleteNuggets...)
+		e.incompleteNuggets = nil
 	}
 
-	// Deduplicate gems
-	e.extractedGems = deduplicateGems(e.extractedGems)
+	// Deduplicate nuggets
+	e.extractedNuggets = deduplicateNuggets(e.extractedNuggets)
 
-	// Save all gems to pending
-	if len(e.extractedGems) > 0 && e.store != nil {
-		log.Printf("GEMS: Saving %d gems to pending", len(e.extractedGems))
-		for _, gem := range e.extractedGems {
-			gemCopy := gem
-			if err := e.store.AddPendingGem(&gemCopy); err != nil {
-				log.Printf("GEMS: Failed to save gem %s: %v", gem.ID, err)
+	// Save all nuggets to pending
+	if len(e.extractedNuggets) > 0 && e.store != nil {
+		log.Printf("NUGGETS: Saving %d nuggets to pending", len(e.extractedNuggets))
+		for _, nugget := range e.extractedNuggets {
+			nuggetCopy := nugget
+			if err := e.store.AddPendingNugget(&nuggetCopy); err != nil {
+				log.Printf("NUGGETS: Failed to save nugget %s: %v", nugget.ID, err)
 			}
 		}
 	}
@@ -197,38 +197,38 @@ func (e *Extractor) Finalize() error {
 	return nil
 }
 
-// GetExtractedGems returns all gems extracted so far
-func (e *Extractor) GetExtractedGems() []Gem {
+// GetExtractedNuggets returns all nuggets extracted so far
+func (e *Extractor) GetExtractedNuggets() []Nugget {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 
-	result := make([]Gem, len(e.extractedGems))
-	copy(result, e.extractedGems)
+	result := make([]Nugget, len(e.extractedNuggets))
+	copy(result, e.extractedNuggets)
 	return result
 }
 
-// GetPendingCount returns the count of gems pending finalization
+// GetPendingCount returns the count of nuggets pending finalization
 func (e *Extractor) GetPendingCount() int {
 	e.mu.Lock()
 	defer e.mu.Unlock()
-	return len(e.extractedGems) + len(e.incompleteGems)
+	return len(e.extractedNuggets) + len(e.incompleteNuggets)
 }
 
-// deduplicateGems removes duplicate gems based on title similarity
-func deduplicateGems(gems []Gem) []Gem {
-	if len(gems) <= 1 {
-		return gems
+// deduplicateNuggets removes duplicate nuggets based on title similarity
+func deduplicateNuggets(nuggets []Nugget) []Nugget {
+	if len(nuggets) <= 1 {
+		return nuggets
 	}
 
 	seen := make(map[string]bool)
-	result := make([]Gem, 0, len(gems))
+	result := make([]Nugget, 0, len(nuggets))
 
-	for _, g := range gems {
+	for _, n := range nuggets {
 		// Create a key from normalized title
-		key := normalizeTitle(g.Title)
+		key := normalizeTitle(n.Title)
 		if !seen[key] {
 			seen[key] = true
-			result = append(result, g)
+			result = append(result, n)
 		}
 	}
 
@@ -263,7 +263,7 @@ func (e *Extractor) SetSummarizer(s Summarizer) {
 	}
 }
 
-// SetStore sets the gem store (can be called after creation)
+// SetStore sets the nugget store (can be called after creation)
 func (e *Extractor) SetStore(store *Store) {
 	e.mu.Lock()
 	defer e.mu.Unlock()

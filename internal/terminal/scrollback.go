@@ -1,6 +1,7 @@
 package terminal
 
 import (
+	"strings"
 	"sync"
 
 	"github.com/hinshun/vt10x"
@@ -9,6 +10,20 @@ import (
 // ScrollbackLine stores a single line of terminal content with styling
 type ScrollbackLine struct {
 	Cells []vt10x.Glyph // One glyph per column (preserves colors/attributes)
+}
+
+// ToString converts the scrollback line to a plain text string
+// Trailing spaces are trimmed for cleaner output
+func (sl *ScrollbackLine) ToString() string {
+	var result strings.Builder
+	for _, cell := range sl.Cells {
+		if cell.Char == 0 {
+			result.WriteRune(' ')
+		} else {
+			result.WriteRune(cell.Char)
+		}
+	}
+	return strings.TrimRight(result.String(), " ")
 }
 
 // ScrollbackBuffer is a circular buffer for terminal history

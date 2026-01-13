@@ -587,11 +587,11 @@ func exit(rc int) {
 
 func main() {
 	// Handle subcommands early (before flag parsing)
-	// This allows: thicc mcp serve, thicc gem list, etc.
+	// This allows: thicc mcp serve, thicc nugget list, etc.
 	if handleMCPCommand(os.Args) {
 		return
 	}
-	if handleGemCommand(os.Args) {
+	if handleNuggetCommand(os.Args) {
 		return
 	}
 

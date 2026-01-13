@@ -1,4 +1,4 @@
-package gems
+package nuggets
 
 import (
 	"bytes"
@@ -47,15 +47,15 @@ type ollamaRequest struct {
 
 // ollamaResponse is the response from Ollama API
 type ollamaResponse struct {
-	Model     string `json:"model"`
-	Response  string `json:"response"`
-	Done      bool   `json:"done"`
+	Model      string `json:"model"`
+	Response   string `json:"response"`
+	Done       bool   `json:"done"`
 	DoneReason string `json:"done_reason,omitempty"`
 }
 
 // Extract implements Summarizer.Extract
-func (o *OllamaSummarizer) Extract(sessionText string, diff string, existingGems []Gem) (*ExtractionResult, error) {
-	prompt := ExtractionPrompt(sessionText, diff, existingGems)
+func (o *OllamaSummarizer) Extract(sessionText string, diff string, existingNuggets []Nugget) (*ExtractionResult, error) {
+	prompt := ExtractionPrompt(sessionText, diff, existingNuggets)
 
 	reqBody := ollamaRequest{
 		Model:  o.config.Model,
