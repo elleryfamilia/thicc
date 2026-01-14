@@ -147,7 +147,11 @@ func (fw *FileWatcher) eventLoop() {
 				continue
 			}
 
-			log.Printf("THICC Watcher: Event %s on %s", event.Op, event.Name)
+			// Skip log file events to avoid feedback loop that fills disk
+			base := filepath.Base(event.Name)
+			if base == "thicc-debug.log" || base == "thicc-debug.log.1" {
+				continue
+			}
 
 			// Handle new directories - add watches for them
 			if event.Has(fsnotify.Create) {
