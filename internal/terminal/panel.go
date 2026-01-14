@@ -13,6 +13,7 @@ import (
 	"github.com/creack/pty"
 	"github.com/ellery/thicc/internal/screen"
 	"github.com/hinshun/vt10x"
+	"github.com/micro-editor/tcell/v2"
 )
 
 // hasStarship checks if the starship prompt is installed
@@ -200,8 +201,9 @@ type Panel struct {
 	autoRespawn bool
 
 	// Selection state for copy/paste
-	Selection     [2]Loc // Start and end of selection (Y is lineIndex into scrollback+live buffer)
-	mouseReleased bool   // Track mouse button state for drag detection
+	Selection          [2]Loc // Start and end of selection (Y is lineIndex into scrollback+live buffer)
+	mouseReleased      bool   // Track mouse button state for drag detection
+	keyboardSelecting  bool   // True when actively selecting with Shift+Arrow
 
 	// Scrollback support
 	Scrollback     *ScrollbackBuffer // Circular buffer for terminal history
@@ -225,6 +227,10 @@ type Panel struct {
 	OnNextPane func()
 	// OnSessionEnd callback when terminal process exits (for auto-hiding the pane)
 	OnSessionEnd func()
+
+	// Auto-scroll state for drag-to-select
+	autoScrollDirection int         // -1=up, 0=none, 1=down
+	autoScrollTimer     *time.Timer // Timer for continuous scrolling
 }
 
 // isShellCommand returns true if the command is a shell (bash, zsh, sh, fish, etc.)
@@ -448,8 +454,12 @@ func (p *Panel) readLoop() {
 			// Capture screen before write (for scroll detection)
 			p.captureScreenBefore()
 
+			// Filter out CPR responses before writing to VT emulator
+			// (CPR = Cursor Position Report, response to ESC[6n query)
+			filtered := filterCPRResponses(buf[:n])
+
 			// Write to VT emulator
-			p.VT.Write(buf[:n])
+			p.VT.Write(filtered)
 
 			// Check if scroll occurred and capture scrolled lines
 			p.captureScrolledLines()
@@ -716,6 +726,9 @@ func (p *Panel) Close() {
 		p.redrawTimer.Stop()
 	}
 
+	// Stop auto-scroll timer
+	p.stopAutoScrollLocked()
+
 	if p.PTY != nil {
 		p.PTY.Close()
 		p.PTY = nil
@@ -900,4 +913,167 @@ func (p *Panel) ScrollOffset() int {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.scrollOffset
+}
+
+// Auto-scroll constants
+const (
+	autoScrollInterval = 50 * time.Millisecond // How often to scroll when holding at edge
+	autoScrollLines    = 1                     // Lines to scroll per tick
+)
+
+// StartAutoScroll begins continuous scrolling in the given direction (-1=up, 1=down)
+func (p *Panel) StartAutoScroll(direction int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.autoScrollDirection == direction {
+		return // Already scrolling in this direction
+	}
+
+	p.stopAutoScrollLocked()
+	p.autoScrollDirection = direction
+
+	p.autoScrollTimer = time.AfterFunc(autoScrollInterval, func() {
+		p.autoScrollTick()
+	})
+}
+
+// StopAutoScroll stops continuous scrolling
+func (p *Panel) StopAutoScroll() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.stopAutoScrollLocked()
+}
+
+func (p *Panel) stopAutoScrollLocked() {
+	p.autoScrollDirection = 0
+	if p.autoScrollTimer != nil {
+		p.autoScrollTimer.Stop()
+		p.autoScrollTimer = nil
+	}
+}
+
+func (p *Panel) autoScrollTick() {
+	p.mu.Lock()
+	direction := p.autoScrollDirection
+	p.mu.Unlock()
+
+	if direction == 0 {
+		return
+	}
+
+	// Scroll in the appropriate direction (these methods handle their own locking)
+	if direction < 0 {
+		p.ScrollUp(autoScrollLines)
+	} else {
+		p.ScrollDown(autoScrollLines)
+	}
+
+	// Extend selection while scrolling
+	p.extendSelectionWhileScrolling(direction)
+
+	// Schedule next tick
+	p.mu.Lock()
+	if p.autoScrollDirection != 0 {
+		p.autoScrollTimer = time.AfterFunc(autoScrollInterval, func() {
+			p.autoScrollTick()
+		})
+	}
+	p.mu.Unlock()
+}
+
+func (p *Panel) extendSelectionWhileScrolling(direction int) {
+	p.mu.Lock()
+	scrollbackCount := p.Scrollback.Count()
+	_, rows := p.VT.Size()
+	cols, _ := p.VT.Size()
+
+	if direction < 0 {
+		// Scrolling up - extend selection to top of visible area
+		lineIndex := scrollbackCount - p.scrollOffset
+		p.Selection[1] = Loc{X: 0, Y: lineIndex}
+	} else {
+		// Scrolling down - extend selection to bottom of visible area
+		lineIndex := scrollbackCount - p.scrollOffset + rows - 1
+		p.Selection[1] = Loc{X: cols - 1, Y: lineIndex}
+	}
+	p.mu.Unlock()
+
+	if p.OnRedraw != nil {
+		p.OnRedraw()
+	}
+}
+
+// ExtendSelectionByKey extends the current selection based on arrow key direction
+func (p *Panel) ExtendSelectionByKey(key tcell.Key) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	cols, rows := p.VT.Size()
+	scrollbackCount := p.Scrollback.Count()
+	totalLines := scrollbackCount + rows
+	current := p.Selection[1]
+
+	switch key {
+	case tcell.KeyLeft:
+		if current.X > 0 {
+			current.X--
+		} else if current.Y > 0 {
+			current.Y--
+			current.X = cols - 1 // Wrap to previous line
+		}
+	case tcell.KeyRight:
+		if current.X < cols-1 {
+			current.X++
+		} else if current.Y < totalLines-1 {
+			current.Y++
+			current.X = 0 // Wrap to next line
+		}
+	case tcell.KeyUp:
+		if current.Y > 0 {
+			current.Y--
+		}
+	case tcell.KeyDown:
+		if current.Y < totalLines-1 {
+			current.Y++
+		}
+	}
+
+	p.Selection[1] = current
+}
+
+// filterCPRResponses removes Cursor Position Report responses (ESC[row;colR) from output.
+// These are responses to DSR (Device Status Report) queries sent by applications like
+// Claude CLI, and should not be displayed as visible text.
+func filterCPRResponses(data []byte) []byte {
+	result := make([]byte, 0, len(data))
+	i := 0
+	for i < len(data) {
+		// Check for ESC[
+		if i+2 < len(data) && data[i] == 0x1b && data[i+1] == '[' {
+			// Look for pattern: digits ; digits R
+			j := i + 2
+			// Read first number (row)
+			for j < len(data) && data[j] >= '0' && data[j] <= '9' {
+				j++
+			}
+			// Check for semicolon
+			if j < len(data) && data[j] == ';' {
+				k := j + 1
+				// Read second number (col)
+				for k < len(data) && data[k] >= '0' && data[k] <= '9' {
+					k++
+				}
+				// Check for R (CPR terminator)
+				if k < len(data) && data[k] == 'R' {
+					// This is a CPR response, skip it entirely
+					i = k + 1
+					continue
+				}
+			}
+		}
+		result = append(result, data[i])
+		i++
+	}
+	return result
 }

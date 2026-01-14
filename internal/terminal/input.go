@@ -64,6 +64,28 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 			// No selection - fall through to send SIGINT to terminal
 		}
 
+		// Handle Shift+Arrow for keyboard selection
+		if ev.Modifiers()&tcell.ModShift != 0 {
+			switch ev.Key() {
+			case tcell.KeyUp, tcell.KeyDown, tcell.KeyLeft, tcell.KeyRight:
+				return p.handleShiftArrow(ev)
+			}
+		}
+
+		// Clear keyboard selection on unshifted arrow keys
+		if ev.Modifiers()&tcell.ModShift == 0 {
+			switch ev.Key() {
+			case tcell.KeyUp, tcell.KeyDown, tcell.KeyLeft, tcell.KeyRight:
+				if p.keyboardSelecting {
+					p.ClearSelection()
+					p.keyboardSelecting = false
+					if p.OnRedraw != nil {
+						p.OnRedraw()
+					}
+				}
+			}
+		}
+
 		// If any key is pressed while scrolled up, snap back to live view
 		if p.IsScrolledUp() {
 			p.ScrollToBottom()
@@ -108,14 +130,21 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 	contentH := p.Region.Height - 2
 
 	// Auto-scroll when dragging near edges (before clamping)
+	// Uses timer-based continuous scrolling while mouse is held at edge
 	if ev.Buttons() == tcell.Button1 && !p.mouseReleased {
 		if y < 0 {
-			// Dragging above top edge - scroll up
-			p.ScrollUp(1)
+			// Dragging above top edge - start continuous scroll up
+			p.StartAutoScroll(-1)
 		} else if y >= contentH {
-			// Dragging below bottom edge - scroll down
-			p.ScrollDown(1)
+			// Dragging below bottom edge - start continuous scroll down
+			p.StartAutoScroll(1)
+		} else {
+			// Mouse back in content area - stop auto-scrolling
+			p.StopAutoScroll()
 		}
+	} else if ev.Buttons() == tcell.ButtonNone {
+		// Mouse released - stop auto-scrolling
+		p.StopAutoScroll()
 	}
 
 	// Clamp to content bounds
@@ -178,6 +207,66 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 	return false
 }
 
+// handleShiftArrow handles Shift+Arrow keys for keyboard-based text selection
+func (p *Panel) handleShiftArrow(ev *tcell.EventKey) bool {
+	// Initialize selection from cursor if not already selecting
+	if !p.HasSelection() {
+		cursor := p.VT.Cursor()
+		scrollbackCount := p.Scrollback.Count()
+		lineIndex := scrollbackCount + cursor.Y
+		p.Selection[0] = Loc{X: cursor.X, Y: lineIndex}
+		p.Selection[1] = Loc{X: cursor.X, Y: lineIndex}
+		p.keyboardSelecting = true
+	}
+
+	// Extend selection in the arrow direction
+	p.ExtendSelectionByKey(ev.Key())
+
+	// Auto-scroll if selection moved outside visible area
+	p.scrollToShowSelection()
+
+	// Trigger redraw to show selection
+	if p.OnRedraw != nil {
+		p.OnRedraw()
+	}
+
+	log.Printf("THOCK Terminal: Shift+Arrow selection, Key=%v", ev.Key())
+	return true // Consume event, don't send to PTY
+}
+
+// scrollToShowSelection scrolls the view if the selection endpoint is outside visible area
+func (p *Panel) scrollToShowSelection() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	_, rows := p.VT.Size()
+	scrollbackCount := p.Scrollback.Count()
+
+	// Calculate visible line range
+	topVisible := scrollbackCount - p.scrollOffset
+	bottomVisible := topVisible + rows - 1
+
+	selectionY := p.Selection[1].Y
+
+	if selectionY < topVisible {
+		// Selection is above visible area - scroll up
+		linesToScroll := topVisible - selectionY
+		p.scrollOffset += linesToScroll
+		// Clamp to max scrollback
+		maxOffset := scrollbackCount
+		if p.scrollOffset > maxOffset {
+			p.scrollOffset = maxOffset
+		}
+	} else if selectionY > bottomVisible {
+		// Selection is below visible area - scroll down
+		linesToScroll := selectionY - bottomVisible
+		p.scrollOffset -= linesToScroll
+		if p.scrollOffset < 0 {
+			p.scrollOffset = 0
+		}
+	}
+}
+
 // handleKey processes keyboard events and sends to PTY
 func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 	// Convert tcell key to bytes
@@ -199,6 +288,10 @@ func keyToBytes(ev *tcell.EventKey) []byte {
 		return []byte{'\r'}
 
 	case tcell.KeyTab:
+		// Check for Shift+Tab (may come as Tab+ModShift on some terminals)
+		if ev.Modifiers()&tcell.ModShift != 0 {
+			return []byte{0x1b, '[', 'Z'} // Shift+Tab: ESC [ Z
+		}
 		return []byte{'\t'}
 
 	case tcell.KeyBacktab:
