@@ -108,10 +108,6 @@ var extensionIcons = map[string]string{
 	// Other
 	".lock": "󰌾",
 	".log":  "󰌱",
-	".git":  "",
-	".gitignore": "",
-	".gitmodules": "",
-	".gitattributes": "",
 }
 
 // nameIcons maps specific filenames to Nerd Font icons
@@ -145,7 +141,10 @@ var nameIcons = map[string]string{
 	".prettierrc":   "󰘦",
 	".babelrc":      "󰘦",
 	".npmrc":        "󰘦",
-	".nvmrc":        "󰘦",
+	".nvmrc":         "󰘦",
+	".gitignore":     "",
+	".gitmodules":    "",
+	".gitattributes": "",
 
 	// Package files
 	"package.json":    "󰏗",

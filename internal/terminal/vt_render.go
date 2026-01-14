@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ellery/thicc/internal/config"
+	screenPkg "github.com/ellery/thicc/internal/screen"
 	"github.com/hinshun/vt10x"
 	"github.com/micro-editor/tcell/v2"
 )
@@ -65,11 +66,12 @@ func (p *Panel) Render(screen tcell.Screen) {
 	}
 
 	// Show cursor if focused and NOT scrolled (offset by content area)
+	// Always use fake cursor for terminal to ensure visibility (native cursor may be invisible)
 	if p.Focus && p.VT.CursorVisible() && p.scrollOffset == 0 {
 		cursor := p.VT.Cursor()
 		cx, cy := cursor.X, cursor.Y
 		if cx >= 0 && cx < contentW && cy >= 0 && cy < contentH {
-			screen.ShowCursor(contentX+cx, contentY+cy)
+			screenPkg.ShowFakeCursor(contentX+cx, contentY+cy)
 		}
 	}
 
@@ -336,7 +338,8 @@ func (p *Panel) drawBorder(screen tcell.Screen) {
 }
 
 // ShowCursor shows the terminal cursor at its current position
-func (p *Panel) ShowCursor(screen tcell.Screen) {
+// Always uses fake cursor to ensure visibility (native cursor may be invisible on dark backgrounds)
+func (p *Panel) ShowCursor(s tcell.Screen) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
@@ -353,7 +356,7 @@ func (p *Panel) ShowCursor(screen tcell.Screen) {
 	cursor := p.VT.Cursor()
 	cx, cy := cursor.X, cursor.Y
 	if cx >= 0 && cx < contentW && cy >= 0 && cy < contentH {
-		screen.ShowCursor(contentX+cx, contentY+cy)
+		screenPkg.ShowFakeCursor(contentX+cx, contentY+cy)
 	}
 }
 

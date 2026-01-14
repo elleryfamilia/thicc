@@ -1538,6 +1538,16 @@ func (lm *LayoutManager) setActivePanel(panel int) {
 		term3.Focus = (panel == 4)
 	}
 
+	// Update editor active state (controls cursor visibility)
+	editorActive := (panel == 1)
+	if tab := action.MainTab(); tab != nil {
+		for _, pane := range tab.Panes {
+			if bp, ok := pane.(*action.BufPane); ok {
+				bp.SetActive(editorActive)
+			}
+		}
+	}
+
 	// Pin preview tab when switching to editor (user is committing to this file)
 	if panel == 1 && lm.TabBar != nil {
 		activeTab := lm.TabBar.GetActiveTab()
