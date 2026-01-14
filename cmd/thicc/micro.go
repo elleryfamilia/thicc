@@ -947,6 +947,10 @@ func main() {
 				log.Println("THICC: Layout panels initialized successfully")
 				// Mark terminal as initialized since it was created with saved preferences
 				thiccLayout.TerminalInitialized = true
+				// Hide editor for directory-only startup, focus terminal
+				log.Println("THICC: Hiding editor, focusing terminal for project startup")
+				thiccLayout.EditorVisible = false
+				thiccLayout.ActivePanel = 2 // Focus terminal
 			}
 		}
 	}
@@ -1149,7 +1153,7 @@ func InitDashboard() {
 	thiccDashboard.OnNewFile = func() {
 		log.Println("THOCK Dashboard: New File selected")
 		showDashboard = false
-		TransitionToEditor(nil, "")
+		TransitionToEditor(nil, "", true) // Show editor for new file
 	}
 
 	thiccDashboard.OnOpenProject = func(path string) {
@@ -1161,19 +1165,15 @@ func InitDashboard() {
 		}
 		// Reset layout so it gets recreated with the new working directory
 		thiccLayout = nil
-		TransitionToEditor(nil, "")
+		TransitionToEditor(nil, "", false) // Hide editor, show file browser + terminal
 		// Add to recent projects
 		thiccDashboard.RecentStore.AddProject(path, true)
-		// Focus the file browser so user can see the project
-		if thiccLayout != nil {
-			thiccLayout.FocusTree()
-		}
 	}
 
 	thiccDashboard.OnOpenFile = func(path string) {
 		log.Println("THOCK Dashboard: Opening file:", path)
 		showDashboard = false
-		TransitionToEditor(nil, path)
+		TransitionToEditor(nil, path, true) // Show editor with file
 		// Add to recent projects
 		thiccDashboard.RecentStore.AddProject(path, false)
 	}
@@ -1187,7 +1187,7 @@ func InitDashboard() {
 		}
 		// Reset layout so it gets recreated with the new working directory
 		thiccLayout = nil
-		TransitionToEditor(nil, "")
+		TransitionToEditor(nil, "", false) // Hide editor, show file browser + terminal
 		// Add to recent projects
 		thiccDashboard.RecentStore.AddProject(path, true)
 	}
@@ -1201,13 +1201,9 @@ func InitDashboard() {
 		}
 		// Reset layout so it gets recreated with the new working directory
 		thiccLayout = nil
-		TransitionToEditor(nil, "")
+		TransitionToEditor(nil, "", false) // Hide editor, show file browser + terminal
 		// Add to recent projects
 		thiccDashboard.RecentStore.AddProject(path, true)
-		// Focus the file browser so user can see the new project
-		if thiccLayout != nil {
-			thiccLayout.FocusTree()
-		}
 	}
 
 	thiccDashboard.OnInstallTool = func(cmd string) {
@@ -1259,8 +1255,9 @@ func DoDashboardEvent() {
 }
 
 // TransitionToEditor switches from dashboard to editor mode
-func TransitionToEditor(buffers []*buffer.Buffer, filePath string) {
-	log.Println("THICC: TransitionToEditor started")
+// showEditor controls whether the editor panel is visible (false = file browser + terminal only)
+func TransitionToEditor(buffers []*buffer.Buffer, filePath string, showEditor bool) {
+	log.Printf("THICC: TransitionToEditor started (showEditor=%v)", showEditor)
 
 	// Create buffer(s) if needed
 	if len(buffers) == 0 {
@@ -1274,8 +1271,11 @@ func TransitionToEditor(buffers []*buffer.Buffer, filePath string) {
 			} else {
 				buffers = append(buffers, buf)
 			}
+		} else if showEditor {
+			// Only create empty buffer if editor should be shown
+			buffers = append(buffers, buffer.NewBufferFromString("", "", buffer.BTDefault))
 		} else {
-			// Create empty buffer
+			// No file and no editor - create minimal placeholder buffer for tabs
 			buffers = append(buffers, buffer.NewBufferFromString("", "", buffer.BTDefault))
 		}
 	}
@@ -1304,6 +1304,13 @@ func TransitionToEditor(buffers []*buffer.Buffer, filePath string) {
 		} else {
 			// Mark Terminal 1 as initialized since tool was selected from dashboard
 			thiccLayout.TerminalInitialized = true
+
+			// Hide editor and focus terminal if showEditor is false
+			if !showEditor {
+				log.Println("THICC: Hiding editor, focusing terminal")
+				thiccLayout.EditorVisible = false
+				thiccLayout.ActivePanel = 2 // Focus terminal
+			}
 		}
 	}
 
