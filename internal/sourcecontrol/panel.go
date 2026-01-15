@@ -4,6 +4,7 @@ import (
 	"log"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Region represents a rectangular area on screen
@@ -56,6 +57,9 @@ type Panel struct {
 	LocalBranches    []string
 	BranchSelected   int
 	BranchTopLine    int
+
+	// Operation progress state
+	OperationInProgress string // "Committing", "Pushing", "Pulling", or ""
 
 	// Mutex for thread safety
 	mu sync.RWMutex
@@ -132,9 +136,9 @@ func (p *Panel) Close() {
 
 // ensureSelectedVisible adjusts scrolling to make the selected item visible
 func (p *Panel) ensureSelectedVisible() {
-	// Layout: border (1) + header (1) + section header (1) + content + buttons (2) + border (1)
+	// Layout: border (1) + header (1) + section header (1) + content + commit section (9)
 	// We'll calculate actual content height in render
-	contentHeight := p.Region.Height - 8
+	contentHeight := p.Region.Height - 9
 	if contentHeight < 1 {
 		contentHeight = 1
 	}
@@ -289,27 +293,79 @@ func (p *Panel) DoCommit() {
 		return
 	}
 
-	err := p.Commit(p.CommitMsg)
-	if err != nil {
-		log.Printf("THOCK SourceControl: Commit failed: %v", err)
-	} else {
-		log.Println("THOCK SourceControl: Commit successful")
-		p.CommitMsg = ""
-		p.CommitCursor = 0
+	// Already in progress?
+	if p.OperationInProgress != "" {
+		return
+	}
+
+	msg := p.CommitMsg
+	p.OperationInProgress = "Committing"
+	go p.spinnerLoop()
+
+	go func() {
+		err := p.Commit(msg)
+
+		p.mu.Lock()
+		p.OperationInProgress = ""
+		if err != nil {
+			log.Printf("THOCK SourceControl: Commit failed: %v", err)
+		} else {
+			log.Println("THOCK SourceControl: Commit successful")
+			p.CommitMsg = ""
+			p.CommitCursor = 0
+		}
+		p.mu.Unlock()
+
 		p.RefreshStatus()
 		if p.OnRefresh != nil {
 			p.OnRefresh()
 		}
-	}
+	}()
 }
 
 // DoPush pushes to remote
 func (p *Panel) DoPush() {
-	err := p.Push()
-	if err != nil {
-		log.Printf("THOCK SourceControl: Push failed: %v", err)
-	} else {
-		log.Println("THOCK SourceControl: Push successful")
+	// Already in progress?
+	if p.OperationInProgress != "" {
+		return
+	}
+
+	p.OperationInProgress = "Pushing"
+	go p.spinnerLoop()
+
+	go func() {
+		err := p.Push()
+
+		p.mu.Lock()
+		p.OperationInProgress = ""
+		if err != nil {
+			log.Printf("THOCK SourceControl: Push failed: %v", err)
+		} else {
+			log.Println("THOCK SourceControl: Push successful")
+		}
+		p.mu.Unlock()
+
+		p.RefreshStatus()
+		if p.OnRefresh != nil {
+			p.OnRefresh()
+		}
+	}()
+}
+
+// spinnerLoop triggers UI redraws while an operation is in progress
+func (p *Panel) spinnerLoop() {
+	ticker := time.NewTicker(80 * time.Millisecond)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		p.mu.RLock()
+		done := p.OperationInProgress == ""
+		p.mu.RUnlock()
+
+		if done {
+			return
+		}
+
 		if p.OnRefresh != nil {
 			p.OnRefresh()
 		}
@@ -351,13 +407,59 @@ func (p *Panel) MoveCursorRight() {
 	}
 }
 
+// MoveCursorUp moves cursor up by one visual line
+func (p *Panel) MoveCursorUp(lineWidth int) {
+	if lineWidth <= 0 {
+		lineWidth = 40 // fallback
+	}
+	if p.CommitCursor >= lineWidth {
+		p.CommitCursor -= lineWidth
+	} else {
+		p.CommitCursor = 0
+	}
+}
+
+// MoveCursorDown moves cursor down by one visual line
+func (p *Panel) MoveCursorDown(lineWidth int) {
+	if lineWidth <= 0 {
+		lineWidth = 40 // fallback
+	}
+	if p.CommitCursor+lineWidth <= len(p.CommitMsg) {
+		p.CommitCursor += lineWidth
+	} else {
+		p.CommitCursor = len(p.CommitMsg)
+	}
+}
+
+// InsertNewline inserts a newline at cursor position
+func (p *Panel) InsertNewline() {
+	p.CommitMsg = p.CommitMsg[:p.CommitCursor] + "\n" + p.CommitMsg[p.CommitCursor:]
+	p.CommitCursor++
+}
+
 // PasteToCommitMsg pastes text into commit message at cursor position
 func (p *Panel) PasteToCommitMsg(text string) {
-	// Replace newlines with spaces for single-line commit messages
+	// Replace newlines and carriage returns with spaces
+	text = strings.ReplaceAll(text, "\r\n", " ")
 	text = strings.ReplaceAll(text, "\n", " ")
-	text = strings.ReplaceAll(text, "\r", "")
+	text = strings.ReplaceAll(text, "\r", " ")
+
+	// Collapse multiple spaces into single space (handles terminal line padding)
+	for strings.Contains(text, "  ") {
+		text = strings.ReplaceAll(text, "  ", " ")
+	}
+
+	// Trim leading/trailing whitespace
+	text = strings.TrimSpace(text)
+
 	p.CommitMsg = p.CommitMsg[:p.CommitCursor] + text + p.CommitMsg[p.CommitCursor:]
 	p.CommitCursor += len(text)
+}
+
+// ClearCommitMsg clears the commit message
+func (p *Panel) ClearCommitMsg() {
+	p.CommitMsg = ""
+	p.CommitCursor = 0
 }
 
 // CanCommit returns true if commit is possible
@@ -377,16 +479,31 @@ func (p *Panel) CanPull() bool {
 
 // DoPull pulls from remote
 func (p *Panel) DoPull() {
-	err := p.Pull()
-	if err != nil {
-		log.Printf("THOCK SourceControl: Pull failed: %v", err)
-	} else {
-		log.Println("THOCK SourceControl: Pull successful")
+	// Already in progress?
+	if p.OperationInProgress != "" {
+		return
+	}
+
+	p.OperationInProgress = "Pulling"
+	go p.spinnerLoop()
+
+	go func() {
+		err := p.Pull()
+
+		p.mu.Lock()
+		p.OperationInProgress = ""
+		if err != nil {
+			log.Printf("THOCK SourceControl: Pull failed: %v", err)
+		} else {
+			log.Println("THOCK SourceControl: Pull successful")
+		}
+		p.mu.Unlock()
+
 		p.RefreshStatus()
 		if p.OnRefresh != nil {
 			p.OnRefresh()
 		}
-	}
+	}()
 }
 
 // ShowBranchSwitcher opens the branch switching dialog

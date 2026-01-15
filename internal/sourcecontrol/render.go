@@ -3,6 +3,7 @@ package sourcecontrol
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/ellery/thicc/internal/config"
 	"github.com/micro-editor/tcell/v2"
@@ -35,6 +36,9 @@ var (
 	colorButtonText = tcell.ColorBlack
 )
 
+// Spinner animation frames (braille dots)
+var spinnerFrames = []rune{'⠋', '⠙', '⠹', '⠸', '⠼', '⠴', '⠦', '⠧', '⠇', '⠏'}
+
 // Render draws the source control panel to the screen
 func (p *Panel) Render(screen tcell.Screen) {
 	// Don't render if region is too small
@@ -57,6 +61,11 @@ func (p *Panel) Render(screen tcell.Screen) {
 
 	// Draw border
 	p.drawBorder(screen)
+
+	// Draw spinner overlay if operation in progress
+	if p.OperationInProgress != "" {
+		p.drawSpinner(screen)
+	}
 
 	// Draw branch dialog overlay if visible
 	if p.ShowBranchDialog {
@@ -118,11 +127,11 @@ func (p *Panel) drawUnstagedSection(screen tcell.Screen, startY int) int {
 	p.unstagedFileYs = make([]int, 0, len(p.UnstagedFiles))
 
 	// Calculate bottom limit based on whether commit section is shown
-	// When staged files exist: need 8 rows for commit section
+	// When staged files exist: need 9 rows for commit section (4 rows + borders + header + buttons)
 	// When no staged files: need 2 rows for buttons only
 	bottomLimit := p.Region.Height - 2
 	if len(p.StagedFiles) > 0 {
-		bottomLimit = p.Region.Height - 8
+		bottomLimit = p.Region.Height - 9
 	}
 
 	// Files
@@ -177,11 +186,11 @@ func (p *Panel) drawStagedSection(screen tcell.Screen, startY int) int {
 	p.stagedFileYs = make([]int, 0, len(p.StagedFiles))
 
 	// Calculate bottom limit based on whether commit section is shown
-	// When staged files exist: need 8 rows for commit section
+	// When staged files exist: need 9 rows for commit section (4 rows + borders + header + buttons)
 	// When no staged files: need 2 rows for buttons only
 	bottomLimit := p.Region.Height - 2
 	if len(p.StagedFiles) > 0 {
-		bottomLimit = p.Region.Height - 8
+		bottomLimit = p.Region.Height - 9
 	}
 
 	// Files
@@ -283,8 +292,8 @@ func (p *Panel) drawCommitSection(screen tcell.Screen, startY int) int {
 		return y + 1
 	}
 
-	// Position commit section at bottom of panel (3 rows + borders + header + buttons = 8)
-	y := p.Region.Height - 8
+	// Position commit section at bottom of panel (4 rows + borders + header + buttons = 9)
+	y := p.Region.Height - 9
 
 	// Track commit section Y for click detection
 	p.commitSectionY = y
@@ -305,7 +314,7 @@ func (p *Panel) drawCommitSection(screen tcell.Screen, startY int) int {
 		boxWidth = 10
 	}
 	contentWidth := boxWidth - 2 // Width inside the box
-	numRows := 3
+	numRows := 4
 
 	// Draw input box border
 	boxStyle := config.DefStyle.Foreground(tcell.ColorGray)
@@ -317,20 +326,20 @@ func (p *Panel) drawCommitSection(screen tcell.Screen, startY int) int {
 	p.drawText(screen, 2, y, "┌"+strings.Repeat("─", contentWidth)+"┐", boxStyle)
 	y++
 
-	// Draw 3 content rows
+	// Draw content rows
 	msgStyle := config.DefStyle.Foreground(tcell.Color252)
 	placeholderStyle := config.DefStyle.Foreground(tcell.ColorGray)
 
-	// Calculate which portion of the message to show (scroll if needed)
-	totalChars := len(p.CommitMsg)
-	charsPerRow := contentWidth
-	totalVisibleChars := charsPerRow * numRows
+	// Build visual lines from commit message (split by newlines, then wrap)
+	visualLines := p.buildVisualLines(p.CommitMsg, contentWidth)
 
-	// Determine scroll offset to keep cursor visible
-	scrollOffset := 0
-	if p.CommitCursor >= totalVisibleChars {
-		// Scroll to keep cursor visible in last row
-		scrollOffset = ((p.CommitCursor - totalVisibleChars) / charsPerRow + 1) * charsPerRow
+	// Find cursor's visual position
+	cursorRow, cursorCol := p.getCursorVisualPos(p.CommitMsg, p.CommitCursor, contentWidth)
+
+	// Calculate scroll offset to keep cursor visible
+	scrollRow := 0
+	if cursorRow >= numRows {
+		scrollRow = cursorRow - numRows + 1
 	}
 
 	for row := 0; row < numRows; row++ {
@@ -338,35 +347,25 @@ func (p *Panel) drawCommitSection(screen tcell.Screen, startY int) int {
 		p.drawText(screen, 2, y, "│", boxStyle)
 		p.drawText(screen, 2+boxWidth-1, y, "│", boxStyle)
 
-		// Calculate start/end indices for this row
-		startIdx := scrollOffset + row*charsPerRow
-		endIdx := startIdx + charsPerRow
+		lineIdx := scrollRow + row
 
 		if row == 0 && p.CommitMsg == "" && !(p.Section == SectionCommitInput && p.Focus) {
 			// Show placeholder on first row when empty and not focused
 			p.drawText(screen, 3, y, "Enter commit message...", placeholderStyle)
-		} else if startIdx < totalChars {
-			// Draw portion of message for this row
-			if endIdx > totalChars {
-				endIdx = totalChars
-			}
-			rowText := p.CommitMsg[startIdx:endIdx]
-			p.drawText(screen, 3, y, rowText, msgStyle)
+		} else if lineIdx < len(visualLines) {
+			// Draw this visual line
+			p.drawText(screen, 3, y, visualLines[lineIdx], msgStyle)
 		}
 
 		// Draw cursor if in this row
 		if p.Section == SectionCommitInput && p.Focus {
-			cursorPosInView := p.CommitCursor - scrollOffset
-			rowStart := row * charsPerRow
-			rowEnd := rowStart + charsPerRow
-			if cursorPosInView >= rowStart && cursorPosInView < rowEnd {
-				cursorX := cursorPosInView - rowStart
+			if cursorRow == lineIdx {
 				cursorStyle := config.DefStyle.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
 				cursorChar := ' '
-				if p.CommitCursor < len(p.CommitMsg) {
+				if p.CommitCursor < len(p.CommitMsg) && p.CommitMsg[p.CommitCursor] != '\n' {
 					cursorChar = rune(p.CommitMsg[p.CommitCursor])
 				}
-				screen.SetContent(p.Region.X+3+cursorX, p.Region.Y+y, cursorChar, nil, cursorStyle)
+				screen.SetContent(p.Region.X+3+cursorCol, p.Region.Y+y, cursorChar, nil, cursorStyle)
 			}
 		}
 
@@ -630,4 +629,92 @@ func (p *Panel) drawBranchDialog(screen tcell.Screen) {
 		screen.SetContent(dialogX+x, dialogY+dialogHeight-1, '═', nil, borderStyle)
 	}
 	screen.SetContent(dialogX+dialogWidth-1, dialogY+dialogHeight-1, '╝', nil, borderStyle)
+}
+
+// buildVisualLines converts a message with newlines into visual lines for display
+// Each line is wrapped to fit within lineWidth
+func (p *Panel) buildVisualLines(msg string, lineWidth int) []string {
+	if msg == "" {
+		return []string{""}
+	}
+
+	var result []string
+	lines := strings.Split(msg, "\n")
+
+	for _, line := range lines {
+		if len(line) == 0 {
+			result = append(result, "")
+			continue
+		}
+		// Wrap long lines
+		for len(line) > lineWidth {
+			result = append(result, line[:lineWidth])
+			line = line[lineWidth:]
+		}
+		result = append(result, line)
+	}
+
+	return result
+}
+
+// getCursorVisualPos returns the visual row and column for a cursor position
+func (p *Panel) getCursorVisualPos(msg string, cursor int, lineWidth int) (row, col int) {
+	if cursor <= 0 || msg == "" {
+		return 0, 0
+	}
+
+	// Count through the message up to cursor position
+	row = 0
+	col = 0
+
+	for i := 0; i < cursor && i < len(msg); i++ {
+		if msg[i] == '\n' {
+			row++
+			col = 0
+		} else {
+			col++
+			if col >= lineWidth {
+				row++
+				col = 0
+			}
+		}
+	}
+
+	return row, col
+}
+
+// drawSpinner draws a spinner overlay during git operations
+func (p *Panel) drawSpinner(screen tcell.Screen) {
+	if p.OperationInProgress == "" {
+		return
+	}
+
+	// Calculate spinner frame based on time
+	frame := int(time.Now().UnixMilli()/80) % len(spinnerFrames)
+	spinner := spinnerFrames[frame]
+
+	// Build message
+	msg := fmt.Sprintf(" %c %s... ", spinner, p.OperationInProgress)
+
+	// Center in panel
+	msgLen := len(msg) + 1 // +1 for spinner rune width
+	x := p.Region.X + (p.Region.Width-msgLen)/2
+	y := p.Region.Y + p.Region.Height/2
+
+	// Draw background box
+	boxStyle := config.DefStyle.Background(tcell.Color236) // Dark gray background
+	for dx := -1; dx <= msgLen; dx++ {
+		screen.SetContent(x+dx, y-1, ' ', nil, boxStyle)
+		screen.SetContent(x+dx, y, ' ', nil, boxStyle)
+		screen.SetContent(x+dx, y+1, ' ', nil, boxStyle)
+	}
+
+	// Draw spinner and message
+	spinnerStyle := config.DefStyle.Foreground(colorBorder).Background(tcell.Color236)
+	screen.SetContent(x, y, spinner, nil, spinnerStyle)
+
+	textStyle := config.DefStyle.Foreground(tcell.ColorWhite).Background(tcell.Color236)
+	for i, r := range p.OperationInProgress + "..." {
+		screen.SetContent(x+2+i, y, r, nil, textStyle)
+	}
 }

@@ -39,6 +39,25 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 		return p.handleBranchDialogKey(ev)
 	}
 
+	// Global shortcuts with Alt modifier (work from any section, including commit input)
+	if ev.Modifiers()&tcell.ModAlt != 0 {
+		switch ev.Rune() {
+		case 'c', 'C':
+			p.DoCommit()
+			return true
+		case 'p', 'P':
+			if p.CanPush() {
+				p.DoPush()
+			}
+			return true
+		case 'l', 'L':
+			if p.CanPull() {
+				p.DoPull()
+			}
+			return true
+		}
+	}
+
 	// Special handling for commit input section - captures text input
 	// But only if there are staged files (commit is enabled)
 	if p.Section == SectionCommitInput {
@@ -142,13 +161,21 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 
 // handleCommitInputKey handles keyboard events in the commit input section
 func (p *Panel) handleCommitInputKey(ev *tcell.EventKey) bool {
+	// Calculate line width for up/down navigation
+	lineWidth := p.Region.Width - 6 // box width minus borders and padding
+	if lineWidth < 10 {
+		lineWidth = 10
+	}
+
 	switch ev.Key() {
 	case tcell.KeyUp:
-		p.MoveUp()
+		// Navigate within text, not exit input
+		p.MoveCursorUp(lineWidth)
 		return true
 
 	case tcell.KeyDown:
-		p.MoveDown()
+		// Navigate within text, not exit input
+		p.MoveCursorDown(lineWidth)
 		return true
 
 	case tcell.KeyTab:
@@ -156,14 +183,19 @@ func (p *Panel) handleCommitInputKey(ev *tcell.EventKey) bool {
 		return true
 
 	case tcell.KeyEnter:
-		// Move to commit button (don't commit directly from input)
-		p.Section = SectionCommitBtn
+		// Enter: insert newline (use Tab to exit input)
+		p.InsertNewline()
 		return true
 
 	case tcell.KeyEsc:
 		// Exit commit section
 		p.Section = SectionUnstaged
 		p.Selected = 0
+		return true
+
+	case tcell.KeyCtrlU:
+		// Clear commit message
+		p.ClearCommitMsg()
 		return true
 
 	case tcell.KeyBackspace, tcell.KeyBackspace2:
