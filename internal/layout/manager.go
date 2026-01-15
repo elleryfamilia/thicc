@@ -1593,6 +1593,11 @@ func (lm *LayoutManager) setActivePanel(panel int) {
 		lm.FileBrowser.Focus = (panel == 0)
 	}
 
+	// Refresh source control on focus
+	if panel == 0 && lm.SourceControlVisible && lm.SourceControl != nil {
+		lm.SourceControl.RefreshStatus()
+	}
+
 	lm.mu.RLock()
 	term := lm.Terminal
 	term2 := lm.Terminal2
@@ -2417,13 +2422,17 @@ func (lm *LayoutManager) ToggleSourceControl() {
 			lm.SourceControl.RefreshStatus()
 		}
 
-		// Focus source control
+		// Focus source control and start polling
 		lm.setActivePanel(0)
+		lm.SourceControl.StartPolling()
 		lm.updatePanelRegions()
 		lm.triggerRedraw()
 	} else {
-		// Hide Source Control
+		// Hide Source Control and stop polling
 		lm.SourceControlVisible = false
+		if lm.SourceControl != nil {
+			lm.SourceControl.StopPolling()
+		}
 		log.Printf("THICC: Source Control visibility toggled to %v", lm.SourceControlVisible)
 
 		// If we just hid the focused pane, move focus to next visible pane

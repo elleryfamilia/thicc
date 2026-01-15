@@ -64,6 +64,11 @@ type Panel struct {
 	// Mutex for thread safety
 	mu sync.RWMutex
 
+	// Polling for auto-refresh
+	pollTicker *time.Ticker
+	pollStop   chan struct{}
+	polling    bool
+
 	// Click position tracking (set during render, used by mouse handler)
 	unstagedHeaderY int   // Y position of unstaged section header
 	stagedHeaderY   int   // Y position of staged section header
@@ -131,7 +136,55 @@ func (p *Panel) SetRegion(x, y, w, h int) {
 
 // Close cleans up resources
 func (p *Panel) Close() {
-	// Nothing to clean up for now
+	p.StopPolling()
+}
+
+// StartPolling begins periodic git status refresh (every 5 seconds)
+func (p *Panel) StartPolling() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if p.polling {
+		return // Already polling
+	}
+
+	p.polling = true
+	p.pollTicker = time.NewTicker(5 * time.Second)
+	p.pollStop = make(chan struct{})
+
+	go func() {
+		for {
+			select {
+			case <-p.pollStop:
+				return
+			case <-p.pollTicker.C:
+				p.RefreshStatus()
+				if p.OnRefresh != nil {
+					p.OnRefresh()
+				}
+			}
+		}
+	}()
+}
+
+// StopPolling stops the periodic git status refresh
+func (p *Panel) StopPolling() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if !p.polling {
+		return
+	}
+
+	p.polling = false
+	if p.pollTicker != nil {
+		p.pollTicker.Stop()
+		p.pollTicker = nil
+	}
+	if p.pollStop != nil {
+		close(p.pollStop)
+		p.pollStop = nil
+	}
 }
 
 // ensureSelectedVisible adjusts scrolling to make the selected item visible
