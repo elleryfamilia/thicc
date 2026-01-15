@@ -3,6 +3,8 @@ package layout
 import (
 	"testing"
 
+	"github.com/ellery/thicc/internal/filebrowser"
+	"github.com/ellery/thicc/internal/sourcecontrol"
 	"github.com/stretchr/testify/assert"
 )
 
@@ -291,4 +293,77 @@ func TestLayout_EditorWidthUnchangedWhenTreeExpanded(t *testing.T) {
 
 	assert.Equal(t, normalEditorWidth, expandedEditorWidth,
 		"Editor width should remain the same when tree expands (terminal absorbs the change)")
+}
+
+// =============================================================================
+// Source Control Panel Resize Tests
+// =============================================================================
+
+func TestLayout_SourceControlWidth_UpdatedOnFocusChange(t *testing.T) {
+	lm := newTestLayoutManager(100, 50)
+
+	// Manually create a mock SourceControl panel with a Region
+	lm.SourceControl = &sourcecontrol.Panel{
+		Region: sourcecontrol.Region{X: 0, Y: 1, Width: 0, Height: 49},
+	}
+	lm.SourceControlVisible = true
+
+	// When focused (ActivePanel=0), tree expands to 40
+	lm.ActivePanel = 0
+	lm.updateLayout()
+	assert.Equal(t, 40, lm.SourceControl.Region.Width, "SC width should expand when focused")
+
+	// When not focused and multiple panes visible, tree is 30
+	lm.ActivePanel = 1
+	lm.EditorVisible = true
+	lm.TerminalVisible = true
+	lm.updateLayout()
+	assert.Equal(t, 30, lm.SourceControl.Region.Width, "SC width should shrink when not focused")
+}
+
+func TestLayout_SourceControlResize_UpdatesRegion(t *testing.T) {
+	lm := newTestLayoutManager(100, 50)
+
+	// Manually create a mock SourceControl panel
+	lm.SourceControl = &sourcecontrol.Panel{
+		Region: sourcecontrol.Region{X: 0, Y: 0, Width: 0, Height: 0},
+	}
+	lm.SourceControlVisible = true
+
+	// Resize should update SC panel region
+	lm.Resize(120, 60)
+
+	assert.Equal(t, 1, lm.SourceControl.Region.Y, "SC Y should be 1 (below nav bar)")
+	assert.Equal(t, 59, lm.SourceControl.Region.Height, "SC height should be screen height - 1")
+	assert.True(t, lm.SourceControl.Region.Width > 0, "SC width should be set")
+}
+
+func TestLayout_SourceControlAndFileBrowser_SameWidth(t *testing.T) {
+	lm := newTestLayoutManager(100, 50)
+
+	// Create both panels
+	lm.SourceControl = &sourcecontrol.Panel{
+		Region: sourcecontrol.Region{},
+	}
+	lm.FileBrowser = &filebrowser.Panel{
+		Region: filebrowser.Region{},
+	}
+
+	// Test with various focus states
+	testCases := []struct {
+		activePanel int
+		desc        string
+	}{
+		{0, "tree focused"},
+		{1, "editor focused"},
+		{2, "terminal focused"},
+	}
+
+	for _, tc := range testCases {
+		lm.ActivePanel = tc.activePanel
+		lm.updateLayout()
+
+		assert.Equal(t, lm.FileBrowser.Region.Width, lm.SourceControl.Region.Width,
+			"SC and FileBrowser should have same width when %s", tc.desc)
+	}
 }
