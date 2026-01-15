@@ -57,6 +57,11 @@ func (p *Panel) Render(screen tcell.Screen) {
 
 	// Draw border
 	p.drawBorder(screen)
+
+	// Draw branch dialog overlay if visible
+	if p.ShowBranchDialog {
+		p.drawBranchDialog(screen)
+	}
 }
 
 // clearRegion clears the panel's screen region
@@ -112,9 +117,17 @@ func (p *Panel) drawUnstagedSection(screen tcell.Screen, startY int) int {
 	// Reset file Y positions
 	p.unstagedFileYs = make([]int, 0, len(p.UnstagedFiles))
 
+	// Calculate bottom limit based on whether commit section is shown
+	// When staged files exist: need 8 rows for commit section
+	// When no staged files: need 2 rows for buttons only
+	bottomLimit := p.Region.Height - 2
+	if len(p.StagedFiles) > 0 {
+		bottomLimit = p.Region.Height - 8
+	}
+
 	// Files
 	for i, file := range p.UnstagedFiles {
-		if y >= p.Region.Height-4 { // Leave room for commit section
+		if y >= bottomLimit-2 { // Leave room for staged section
 			break
 		}
 
@@ -163,9 +176,17 @@ func (p *Panel) drawStagedSection(screen tcell.Screen, startY int) int {
 	// Reset file Y positions
 	p.stagedFileYs = make([]int, 0, len(p.StagedFiles))
 
+	// Calculate bottom limit based on whether commit section is shown
+	// When staged files exist: need 8 rows for commit section
+	// When no staged files: need 2 rows for buttons only
+	bottomLimit := p.Region.Height - 2
+	if len(p.StagedFiles) > 0 {
+		bottomLimit = p.Region.Height - 8
+	}
+
 	// Files
 	for i, file := range p.StagedFiles {
-		if y >= p.Region.Height-4 { // Leave room for commit section
+		if y >= bottomLimit { // Leave room for commit section
 			break
 		}
 
@@ -249,8 +270,21 @@ func (p *Panel) getStatusTag(status string) (string, tcell.Style) {
 
 // drawCommitSection draws the commit message input and buttons
 func (p *Panel) drawCommitSection(screen tcell.Screen, startY int) int {
-	// Position commit section at bottom of panel
-	y := p.Region.Height - 6
+	// Check if commit section should be shown (has staged files)
+	commitEnabled := len(p.StagedFiles) > 0
+
+	// If no staged files, don't draw commit section at all
+	if !commitEnabled {
+		// Just draw buttons at bottom
+		y := p.Region.Height - 2
+		p.buttonsY = y
+		p.commitSectionY = -1 // Mark as not visible
+		p.drawButtons(screen, y)
+		return y + 1
+	}
+
+	// Position commit section at bottom of panel (3 rows + borders + header + buttons = 8)
+	y := p.Region.Height - 8
 
 	// Track commit section Y for click detection
 	p.commitSectionY = y
@@ -258,18 +292,20 @@ func (p *Panel) drawCommitSection(screen tcell.Screen, startY int) int {
 	// Section header with (c) hint
 	headerStyle := config.DefStyle.Foreground(colorHeader).Bold(true)
 	header := fmt.Sprintf(" %s Commit (c):", IconCommit)
-	if p.Section == SectionCommitInput || p.Section == SectionCommitBtn || p.Section == SectionPushBtn {
+	if p.Section == SectionCommitInput || p.Section == SectionCommitBtn || p.Section == SectionPushBtn || p.Section == SectionPullBtn {
 		header = "▸" + header[1:] // Active section indicator
 		headerStyle = headerStyle.Foreground(colorBorder) // Hot pink when active
 	}
 	p.drawText(screen, 1, y, header, headerStyle)
 	y++
 
-	// Commit message input box
+	// Commit message input box (3 rows)
 	boxWidth := p.Region.Width - 4
 	if boxWidth < 10 {
 		boxWidth = 10
 	}
+	contentWidth := boxWidth - 2 // Width inside the box
+	numRows := 3
 
 	// Draw input box border
 	boxStyle := config.DefStyle.Foreground(tcell.ColorGray)
@@ -278,54 +314,67 @@ func (p *Panel) drawCommitSection(screen tcell.Screen, startY int) int {
 	}
 
 	// Top border
-	topBorderWidth := boxWidth - 2
-	if topBorderWidth < 0 {
-		topBorderWidth = 0
-	}
-	p.drawText(screen, 2, y, "┌"+strings.Repeat("─", topBorderWidth)+"┐", boxStyle)
+	p.drawText(screen, 2, y, "┌"+strings.Repeat("─", contentWidth)+"┐", boxStyle)
 	y++
 
-	// Input line with message
-	p.drawText(screen, 2, y, "│", boxStyle)
-	p.drawText(screen, 2+boxWidth-1, y, "│", boxStyle)
+	// Draw 3 content rows
+	msgStyle := config.DefStyle.Foreground(tcell.Color252)
+	placeholderStyle := config.DefStyle.Foreground(tcell.ColorGray)
 
-	// Draw commit message or placeholder
-	if p.CommitMsg == "" && !(p.Section == SectionCommitInput && p.Focus) {
-		// Show placeholder text when empty and not focused on input
-		placeholderStyle := config.DefStyle.Foreground(tcell.ColorGray)
-		p.drawText(screen, 3, y, "Enter commit message...", placeholderStyle)
-	} else {
-		// Draw commit message
-		msg := p.CommitMsg
-		if len(msg) > boxWidth-4 {
-			// Show end of message if too long
-			msg = "..." + msg[len(msg)-boxWidth+7:]
-		}
-		msgStyle := config.DefStyle.Foreground(tcell.Color252)
-		p.drawText(screen, 3, y, msg, msgStyle)
+	// Calculate which portion of the message to show (scroll if needed)
+	totalChars := len(p.CommitMsg)
+	charsPerRow := contentWidth
+	totalVisibleChars := charsPerRow * numRows
+
+	// Determine scroll offset to keep cursor visible
+	scrollOffset := 0
+	if p.CommitCursor >= totalVisibleChars {
+		// Scroll to keep cursor visible in last row
+		scrollOffset = ((p.CommitCursor - totalVisibleChars) / charsPerRow + 1) * charsPerRow
 	}
 
-	// Draw cursor if in commit input section and focused
-	if p.Section == SectionCommitInput && p.Focus {
-		cursorPos := p.CommitCursor
-		if cursorPos > boxWidth-4 {
-			cursorPos = boxWidth - 4
+	for row := 0; row < numRows; row++ {
+		// Draw side borders
+		p.drawText(screen, 2, y, "│", boxStyle)
+		p.drawText(screen, 2+boxWidth-1, y, "│", boxStyle)
+
+		// Calculate start/end indices for this row
+		startIdx := scrollOffset + row*charsPerRow
+		endIdx := startIdx + charsPerRow
+
+		if row == 0 && p.CommitMsg == "" && !(p.Section == SectionCommitInput && p.Focus) {
+			// Show placeholder on first row when empty and not focused
+			p.drawText(screen, 3, y, "Enter commit message...", placeholderStyle)
+		} else if startIdx < totalChars {
+			// Draw portion of message for this row
+			if endIdx > totalChars {
+				endIdx = totalChars
+			}
+			rowText := p.CommitMsg[startIdx:endIdx]
+			p.drawText(screen, 3, y, rowText, msgStyle)
 		}
-		cursorStyle := config.DefStyle.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
-		cursorChar := ' '
-		if p.CommitCursor < len(p.CommitMsg) {
-			cursorChar = rune(p.CommitMsg[p.CommitCursor])
+
+		// Draw cursor if in this row
+		if p.Section == SectionCommitInput && p.Focus {
+			cursorPosInView := p.CommitCursor - scrollOffset
+			rowStart := row * charsPerRow
+			rowEnd := rowStart + charsPerRow
+			if cursorPosInView >= rowStart && cursorPosInView < rowEnd {
+				cursorX := cursorPosInView - rowStart
+				cursorStyle := config.DefStyle.Background(tcell.ColorWhite).Foreground(tcell.ColorBlack)
+				cursorChar := ' '
+				if p.CommitCursor < len(p.CommitMsg) {
+					cursorChar = rune(p.CommitMsg[p.CommitCursor])
+				}
+				screen.SetContent(p.Region.X+3+cursorX, p.Region.Y+y, cursorChar, nil, cursorStyle)
+			}
 		}
-		screen.SetContent(p.Region.X+3+cursorPos, p.Region.Y+y, cursorChar, nil, cursorStyle)
+
+		y++
 	}
-	y++
 
 	// Bottom border
-	bottomBorderWidth := boxWidth - 2
-	if bottomBorderWidth < 0 {
-		bottomBorderWidth = 0
-	}
-	p.drawText(screen, 2, y, "└"+strings.Repeat("─", bottomBorderWidth)+"┘", boxStyle)
+	p.drawText(screen, 2, y, "└"+strings.Repeat("─", contentWidth)+"┘", boxStyle)
 	y++
 
 	// Buttons
@@ -334,14 +383,14 @@ func (p *Panel) drawCommitSection(screen tcell.Screen, startY int) int {
 	return y + 1
 }
 
-// drawButtons draws the commit and push buttons
+// drawButtons draws the commit, push, and pull buttons
 func (p *Panel) drawButtons(screen tcell.Screen, y int) {
 	// Track buttons Y for click detection
 	p.buttonsY = y
 
 	x := 2
 
-	// Commit button - highlight if focused
+	// Commit button - enabled when staged files and commit message
 	commitEnabled := len(p.StagedFiles) > 0 && p.CommitMsg != ""
 	commitStyle := config.DefStyle.Foreground(tcell.ColorGray)
 	if p.Section == SectionCommitBtn && p.Focus {
@@ -350,18 +399,40 @@ func (p *Panel) drawButtons(screen tcell.Screen, y int) {
 	} else if commitEnabled {
 		commitStyle = config.DefStyle.Foreground(colorAdded).Bold(true)
 	}
-	commitBtn := " [Enter] Commit "
+	commitBtn := "[c]Commit"
 	p.drawText(screen, x, y, commitBtn, commitStyle)
 	x += len(commitBtn) + 1
 
-	// Push button - highlight if focused
-	pushStyle := config.DefStyle.Foreground(colorButton).Bold(true)
+	// Push button - enabled when ahead of remote
+	pushEnabled := p.AheadCount > 0
+	pushStyle := config.DefStyle.Foreground(tcell.ColorGray)
 	if p.Section == SectionPushBtn && p.Focus {
 		// Focused button - hot pink background
 		pushStyle = config.DefStyle.Foreground(tcell.ColorBlack).Background(colorBorder)
+	} else if pushEnabled {
+		pushStyle = config.DefStyle.Foreground(colorButton).Bold(true)
 	}
-	pushBtn := " [p] Push "
+	pushBtn := "[p]Push"
+	if pushEnabled {
+		pushBtn = fmt.Sprintf("[p]Push(%d)", p.AheadCount)
+	}
 	p.drawText(screen, x, y, pushBtn, pushStyle)
+	x += len(pushBtn) + 1
+
+	// Pull button - enabled when behind remote
+	pullEnabled := p.BehindCount > 0
+	pullStyle := config.DefStyle.Foreground(tcell.ColorGray)
+	if p.Section == SectionPullBtn && p.Focus {
+		// Focused button - hot pink background
+		pullStyle = config.DefStyle.Foreground(tcell.ColorBlack).Background(colorBorder)
+	} else if pullEnabled {
+		pullStyle = config.DefStyle.Foreground(colorModified).Bold(true) // Yellow for pull
+	}
+	pullBtn := "[l]Pull"
+	if pullEnabled {
+		pullBtn = fmt.Sprintf("[l]Pull(%d)", p.BehindCount)
+	}
+	p.drawText(screen, x, y, pullBtn, pullStyle)
 }
 
 // drawBorder draws the panel border
@@ -429,4 +500,134 @@ func (p *Panel) drawTextAt(screen tcell.Screen, x, y int, text string, style tce
 	}
 
 	return count
+}
+
+// drawBranchDialog draws a modal dialog for branch switching
+func (p *Panel) drawBranchDialog(screen tcell.Screen) {
+	if !p.ShowBranchDialog || len(p.LocalBranches) == 0 {
+		return
+	}
+
+	// Dialog dimensions
+	dialogWidth := 30
+	if p.Region.Width-4 < dialogWidth {
+		dialogWidth = p.Region.Width - 4
+	}
+	maxVisible := 8
+	if len(p.LocalBranches) < maxVisible {
+		maxVisible = len(p.LocalBranches)
+	}
+	dialogHeight := maxVisible + 4 // Title + border + footer
+
+	// Center dialog in panel
+	dialogX := p.Region.X + (p.Region.Width-dialogWidth)/2
+	dialogY := p.Region.Y + (p.Region.Height-dialogHeight)/2
+
+	// Clear dialog area
+	bgStyle := config.DefStyle
+	for dy := 0; dy < dialogHeight; dy++ {
+		for dx := 0; dx < dialogWidth; dx++ {
+			screen.SetContent(dialogX+dx, dialogY+dy, ' ', nil, bgStyle)
+		}
+	}
+
+	// Draw border
+	borderStyle := config.DefStyle.Foreground(colorBorder)
+	// Top border
+	screen.SetContent(dialogX, dialogY, '╔', nil, borderStyle)
+	for x := 1; x < dialogWidth-1; x++ {
+		screen.SetContent(dialogX+x, dialogY, '═', nil, borderStyle)
+	}
+	screen.SetContent(dialogX+dialogWidth-1, dialogY, '╗', nil, borderStyle)
+
+	// Title
+	title := " Switch Branch "
+	titleX := dialogX + (dialogWidth-len(title))/2
+	titleStyle := config.DefStyle.Foreground(colorHeader).Bold(true)
+	for i, r := range title {
+		screen.SetContent(titleX+i, dialogY, r, nil, titleStyle)
+	}
+
+	// Sides
+	for y := 1; y < dialogHeight-1; y++ {
+		screen.SetContent(dialogX, dialogY+y, '║', nil, borderStyle)
+		screen.SetContent(dialogX+dialogWidth-1, dialogY+y, '║', nil, borderStyle)
+	}
+
+	// Separator after title
+	screen.SetContent(dialogX, dialogY+1, '╠', nil, borderStyle)
+	for x := 1; x < dialogWidth-1; x++ {
+		screen.SetContent(dialogX+x, dialogY+1, '─', nil, borderStyle)
+	}
+	screen.SetContent(dialogX+dialogWidth-1, dialogY+1, '╣', nil, borderStyle)
+
+	// Branch list
+	currentBranch := p.GetBranchName()
+	listY := dialogY + 2
+	visibleCount := 0
+	for i := p.BranchTopLine; i < len(p.LocalBranches) && visibleCount < maxVisible; i++ {
+		branch := p.LocalBranches[i]
+		y := listY + visibleCount
+
+		// Selection highlight
+		isSelected := i == p.BranchSelected
+		isCurrent := branch == currentBranch
+
+		var style tcell.Style
+		if isSelected {
+			style = config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite)
+			// Fill line with selection background
+			for x := 1; x < dialogWidth-1; x++ {
+				screen.SetContent(dialogX+x, y, ' ', nil, style)
+			}
+		} else {
+			style = config.DefStyle.Foreground(tcell.Color252)
+		}
+
+		// Branch indicator
+		indicator := "  "
+		if isCurrent {
+			indicator = "* "
+			if !isSelected {
+				style = config.DefStyle.Foreground(colorAdded) // Green for current
+			}
+		} else if isSelected {
+			indicator = "> "
+		}
+
+		// Draw branch name
+		branchText := indicator + branch
+		if len(branchText) > dialogWidth-3 {
+			branchText = branchText[:dialogWidth-6] + "..."
+		}
+		for i, r := range branchText {
+			if dialogX+1+i < dialogX+dialogWidth-1 {
+				screen.SetContent(dialogX+1+i, y, r, nil, style)
+			}
+		}
+		visibleCount++
+	}
+
+	// Footer separator
+	footerY := dialogY + dialogHeight - 2
+	screen.SetContent(dialogX, footerY, '╠', nil, borderStyle)
+	for x := 1; x < dialogWidth-1; x++ {
+		screen.SetContent(dialogX+x, footerY, '─', nil, borderStyle)
+	}
+	screen.SetContent(dialogX+dialogWidth-1, footerY, '╣', nil, borderStyle)
+
+	// Footer with hints
+	footer := " ↑↓:select Enter Esc "
+	footerStyle := config.DefStyle.Foreground(tcell.ColorGray)
+	footerX := dialogX + (dialogWidth-len(footer))/2
+	for i, r := range footer {
+		screen.SetContent(footerX+i, footerY+1, r, nil, footerStyle)
+	}
+
+	// Bottom border
+	screen.SetContent(dialogX, dialogY+dialogHeight-1, '╚', nil, borderStyle)
+	for x := 1; x < dialogWidth-1; x++ {
+		screen.SetContent(dialogX+x, dialogY+dialogHeight-1, '═', nil, borderStyle)
+	}
+	screen.SetContent(dialogX+dialogWidth-1, dialogY+dialogHeight-1, '╝', nil, borderStyle)
 }

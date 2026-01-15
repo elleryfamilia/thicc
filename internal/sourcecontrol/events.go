@@ -18,6 +18,15 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 	case *tcell.EventMouse:
 		// Mouse always works (clicking focuses the panel)
 		return p.handleMouse(ev)
+	case *tcell.EventPaste:
+		// Handle paste into commit message input
+		if p.Focus && p.Section == SectionCommitInput && len(p.StagedFiles) > 0 {
+			p.PasteToCommitMsg(ev.Text())
+			if p.OnRefresh != nil {
+				p.OnRefresh()
+			}
+			return true
+		}
 	}
 
 	return false
@@ -25,9 +34,19 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 
 // handleKey processes keyboard events
 func (p *Panel) handleKey(ev *tcell.EventKey) bool {
+	// Modal: Branch dialog takes priority when visible
+	if p.ShowBranchDialog {
+		return p.handleBranchDialogKey(ev)
+	}
+
 	// Special handling for commit input section - captures text input
+	// But only if there are staged files (commit is enabled)
 	if p.Section == SectionCommitInput {
-		return p.handleCommitInputKey(ev)
+		if len(p.StagedFiles) > 0 {
+			return p.handleCommitInputKey(ev)
+		}
+		// When disabled, only allow navigation keys
+		return p.handleDisabledCommitKey(ev)
 	}
 
 	// Handle button sections
@@ -36,6 +55,9 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 	}
 	if p.Section == SectionPushBtn {
 		return p.handlePushBtnKey(ev)
+	}
+	if p.Section == SectionPullBtn {
+		return p.handlePullBtnKey(ev)
 	}
 
 	switch ev.Key() {
@@ -82,8 +104,20 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 			p.Section = SectionCommitInput
 			return true
 		case 'p':
-			// Push
-			p.DoPush()
+			// Push (only if enabled)
+			if p.CanPush() {
+				p.DoPush()
+			}
+			return true
+		case 'l':
+			// Pull (only if enabled)
+			if p.CanPull() {
+				p.DoPull()
+			}
+			return true
+		case 'b':
+			// Open branch switcher
+			p.ShowBranchSwitcher()
 			return true
 		case 'r':
 			// Refresh
@@ -205,8 +239,10 @@ func (p *Panel) handlePushBtnKey(ev *tcell.EventKey) bool {
 		p.NextSection()
 		return true
 	case tcell.KeyEnter:
-		// Push
-		p.DoPush()
+		// Push (only if enabled)
+		if p.CanPush() {
+			p.DoPush()
+		}
 		return true
 	case tcell.KeyEsc:
 		p.Section = SectionUnstaged
@@ -214,6 +250,101 @@ func (p *Panel) handlePushBtnKey(ev *tcell.EventKey) bool {
 		return true
 	}
 	return false
+}
+
+// handlePullBtnKey handles keyboard events when pull button is focused
+func (p *Panel) handlePullBtnKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyUp:
+		p.MoveUp()
+		return true
+	case tcell.KeyDown:
+		p.MoveDown()
+		return true
+	case tcell.KeyTab:
+		p.NextSection()
+		return true
+	case tcell.KeyEnter:
+		// Pull (only if enabled)
+		if p.CanPull() {
+			p.DoPull()
+		}
+		return true
+	case tcell.KeyEsc:
+		p.Section = SectionUnstaged
+		p.Selected = 0
+		return true
+	}
+	return false
+}
+
+// handleDisabledCommitKey handles keyboard events when commit input is disabled
+func (p *Panel) handleDisabledCommitKey(ev *tcell.EventKey) bool {
+	// Only allow navigation when commit is disabled
+	switch ev.Key() {
+	case tcell.KeyUp:
+		p.MoveUp()
+		return true
+	case tcell.KeyDown:
+		p.MoveDown()
+		return true
+	case tcell.KeyTab:
+		p.NextSection()
+		return true
+	case tcell.KeyEsc:
+		p.Section = SectionUnstaged
+		p.Selected = 0
+		return true
+	}
+	// Block all other input including typing
+	return true
+}
+
+// handleBranchDialogKey handles keyboard events for the branch dialog
+func (p *Panel) handleBranchDialogKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyUp:
+		if p.BranchSelected > 0 {
+			p.BranchSelected--
+			p.EnsureBranchVisible()
+		}
+		return true
+
+	case tcell.KeyDown:
+		if p.BranchSelected < len(p.LocalBranches)-1 {
+			p.BranchSelected++
+			p.EnsureBranchVisible()
+		}
+		return true
+
+	case tcell.KeyEnter:
+		p.SwitchToSelectedBranch()
+		return true
+
+	case tcell.KeyEsc:
+		p.HideBranchSwitcher()
+		return true
+
+	default:
+		// Handle j/k for navigation
+		switch ev.Rune() {
+		case 'k':
+			if p.BranchSelected > 0 {
+				p.BranchSelected--
+				p.EnsureBranchVisible()
+			}
+			return true
+		case 'j':
+			if p.BranchSelected < len(p.LocalBranches)-1 {
+				p.BranchSelected++
+				p.EnsureBranchVisible()
+			}
+			return true
+		}
+	}
+
+	// Consume all events when dialog is open
+	return true
 }
 
 // handleEnter handles the Enter key for file sections
@@ -274,14 +405,18 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 
 		// Check if clicking on buttons row
 		if localY == p.buttonsY {
-			// Commit button is roughly at x=2-17, Push button at x=19-28
-			if localX >= 2 && localX < 18 {
+			// Button layout: [c]Commit (x=2-10), [p]Push (x=11-20), [l]Pull (x=21-30)
+			if localX >= 2 && localX < 11 {
 				p.Section = SectionCommitBtn
 				log.Printf("THOCK SourceControl: Clicked commit button")
 				return true
-			} else if localX >= 19 {
+			} else if localX >= 11 && localX < 21 {
 				p.Section = SectionPushBtn
 				log.Printf("THOCK SourceControl: Clicked push button")
+				return true
+			} else if localX >= 21 {
+				p.Section = SectionPullBtn
+				log.Printf("THOCK SourceControl: Clicked pull button")
 				return true
 			}
 		}

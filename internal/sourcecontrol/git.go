@@ -78,8 +78,13 @@ func (p *Panel) RefreshStatus() {
 		}
 	}
 
-	log.Printf("THOCK SourceControl: Loaded %d staged, %d unstaged files",
-		len(p.StagedFiles), len(p.UnstagedFiles))
+	// Update ahead/behind counts
+	ahead, behind := p.GetAheadBehind()
+	p.AheadCount = ahead
+	p.BehindCount = behind
+
+	log.Printf("THOCK SourceControl: Loaded %d staged, %d unstaged files, ahead: %d, behind: %d",
+		len(p.StagedFiles), len(p.UnstagedFiles), ahead, behind)
 }
 
 // StageFile stages a file using git add
@@ -157,6 +162,51 @@ func (p *Panel) Push() error {
 		return err
 	}
 	log.Printf("THOCK SourceControl: Push successful, output: %s", string(output))
+	return nil
+}
+
+// Pull pulls from the remote
+func (p *Panel) Pull() error {
+	cmd := exec.Command("git", "pull")
+	cmd.Dir = p.RepoRoot
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("THOCK SourceControl: git pull failed: %v, output: %s", err, string(output))
+		return err
+	}
+	log.Printf("THOCK SourceControl: Pull successful, output: %s", string(output))
+	return nil
+}
+
+// GetLocalBranches returns a list of local branch names
+func (p *Panel) GetLocalBranches() ([]string, error) {
+	cmd := exec.Command("git", "branch", "--format=%(refname:short)")
+	cmd.Dir = p.RepoRoot
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("THOCK SourceControl: git branch failed: %v", err)
+		return nil, err
+	}
+
+	var branches []string
+	for _, line := range strings.Split(strings.TrimSpace(string(output)), "\n") {
+		if line != "" {
+			branches = append(branches, line)
+		}
+	}
+	return branches, nil
+}
+
+// CheckoutBranch switches to the specified branch
+func (p *Panel) CheckoutBranch(branchName string) error {
+	cmd := exec.Command("git", "checkout", branchName)
+	cmd.Dir = p.RepoRoot
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		log.Printf("THOCK SourceControl: git checkout failed: %v, output: %s", err, string(output))
+		return err
+	}
+	log.Printf("THOCK SourceControl: Checked out branch: %s", branchName)
 	return nil
 }
 

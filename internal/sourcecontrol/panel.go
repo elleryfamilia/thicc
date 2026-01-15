@@ -2,6 +2,7 @@ package sourcecontrol
 
 import (
 	"log"
+	"strings"
 	"sync"
 )
 
@@ -28,6 +29,7 @@ const (
 	SectionCommitInput // Text input for commit message
 	SectionCommitBtn   // Commit button
 	SectionPushBtn     // Push button
+	SectionPullBtn     // Pull button
 )
 
 // Panel is the Source Control panel for git operations
@@ -39,6 +41,8 @@ type Panel struct {
 	// Git state
 	StagedFiles   []FileStatus
 	UnstagedFiles []FileStatus
+	AheadCount    int // Commits ahead of remote
+	BehindCount   int // Commits behind remote
 
 	// UI state
 	Section       Section // Current section
@@ -46,6 +50,12 @@ type Panel struct {
 	TopLine       int     // Scroll position for file list
 	CommitMsg     string  // Commit message being typed
 	CommitCursor  int     // Cursor position in commit message
+
+	// Branch dialog state
+	ShowBranchDialog bool
+	LocalBranches    []string
+	BranchSelected   int
+	BranchTopLine    int
 
 	// Mutex for thread safety
 	mu sync.RWMutex
@@ -156,6 +166,8 @@ func (p *Panel) ensureSelectedVisible() {
 // MoveUp moves selection up
 func (p *Panel) MoveUp() {
 	switch p.Section {
+	case SectionPullBtn:
+		p.Section = SectionPushBtn
 	case SectionPushBtn:
 		p.Section = SectionCommitBtn
 	case SectionCommitBtn:
@@ -205,6 +217,8 @@ func (p *Panel) MoveDown() {
 	case SectionCommitBtn:
 		p.Section = SectionPushBtn
 	case SectionPushBtn:
+		p.Section = SectionPullBtn
+	case SectionPullBtn:
 		// Already at bottom
 	}
 	p.ensureSelectedVisible()
@@ -222,6 +236,8 @@ func (p *Panel) NextSection() {
 	case SectionCommitBtn:
 		p.Section = SectionPushBtn
 	case SectionPushBtn:
+		p.Section = SectionPullBtn
+	case SectionPullBtn:
 		p.Section = SectionUnstaged
 	}
 	p.Selected = 0
@@ -332,5 +348,101 @@ func (p *Panel) MoveCursorLeft() {
 func (p *Panel) MoveCursorRight() {
 	if p.CommitCursor < len(p.CommitMsg) {
 		p.CommitCursor++
+	}
+}
+
+// PasteToCommitMsg pastes text into commit message at cursor position
+func (p *Panel) PasteToCommitMsg(text string) {
+	// Replace newlines with spaces for single-line commit messages
+	text = strings.ReplaceAll(text, "\n", " ")
+	text = strings.ReplaceAll(text, "\r", "")
+	p.CommitMsg = p.CommitMsg[:p.CommitCursor] + text + p.CommitMsg[p.CommitCursor:]
+	p.CommitCursor += len(text)
+}
+
+// CanCommit returns true if commit is possible
+func (p *Panel) CanCommit() bool {
+	return len(p.StagedFiles) > 0
+}
+
+// CanPush returns true if there are commits to push
+func (p *Panel) CanPush() bool {
+	return p.AheadCount > 0
+}
+
+// CanPull returns true if there are commits to pull
+func (p *Panel) CanPull() bool {
+	return p.BehindCount > 0
+}
+
+// DoPull pulls from remote
+func (p *Panel) DoPull() {
+	err := p.Pull()
+	if err != nil {
+		log.Printf("THOCK SourceControl: Pull failed: %v", err)
+	} else {
+		log.Println("THOCK SourceControl: Pull successful")
+		p.RefreshStatus()
+		if p.OnRefresh != nil {
+			p.OnRefresh()
+		}
+	}
+}
+
+// ShowBranchSwitcher opens the branch switching dialog
+func (p *Panel) ShowBranchSwitcher() {
+	branches, err := p.GetLocalBranches()
+	if err != nil {
+		log.Printf("THOCK SourceControl: Failed to get branches: %v", err)
+		return
+	}
+	p.LocalBranches = branches
+	p.BranchSelected = 0
+	p.BranchTopLine = 0
+
+	// Select current branch if found
+	currentBranch := p.GetBranchName()
+	for i, branch := range branches {
+		if branch == currentBranch {
+			p.BranchSelected = i
+			break
+		}
+	}
+
+	p.ShowBranchDialog = true
+}
+
+// HideBranchSwitcher closes the branch dialog
+func (p *Panel) HideBranchSwitcher() {
+	p.ShowBranchDialog = false
+}
+
+// SwitchToSelectedBranch switches to the selected branch
+func (p *Panel) SwitchToSelectedBranch() {
+	if p.BranchSelected < 0 || p.BranchSelected >= len(p.LocalBranches) {
+		return
+	}
+	branchName := p.LocalBranches[p.BranchSelected]
+	err := p.CheckoutBranch(branchName)
+	if err != nil {
+		log.Printf("THOCK SourceControl: Failed to checkout branch: %v", err)
+	} else {
+		log.Printf("THOCK SourceControl: Switched to branch: %s", branchName)
+		p.HideBranchSwitcher()
+		p.RefreshStatus()
+		if p.OnRefresh != nil {
+			p.OnRefresh()
+		}
+	}
+}
+
+// EnsureBranchVisible adjusts scroll to make selected branch visible
+func (p *Panel) EnsureBranchVisible() {
+	maxVisible := 8
+	if p.BranchSelected < p.BranchTopLine {
+		p.BranchTopLine = p.BranchSelected
+	}
+	if p.BranchSelected >= p.BranchTopLine+maxVisible {
+		p.BranchTopLine = p.BranchSelected - maxVisible + 1
 	}
 }
