@@ -27,6 +27,9 @@ func (h *BufPane) ScrollUp(n int) {
 	v := h.GetView()
 	v.StartLine = h.Scroll(v.StartLine, -n)
 	h.SetView(v)
+
+	// Sync scroll peer if linked (for diff view)
+	h.syncScrollPeer()
 }
 
 // ScrollDown is not an action
@@ -34,6 +37,24 @@ func (h *BufPane) ScrollDown(n int) {
 	v := h.GetView()
 	v.StartLine = h.Scroll(v.StartLine, n)
 	h.SetView(v)
+
+	// Sync scroll peer if linked (for diff view)
+	h.syncScrollPeer()
+}
+
+// syncScrollPeer synchronizes the scroll position with the linked peer pane
+func (h *BufPane) syncScrollPeer() {
+	if h.SyncScrollPeer == nil {
+		return
+	}
+
+	// Get our current scroll position
+	v := h.GetView()
+
+	// Set peer's scroll position to match
+	peerV := h.SyncScrollPeer.GetView()
+	peerV.StartLine = v.StartLine
+	h.SyncScrollPeer.SetView(peerV)
 }
 
 // ScrollAdjust can be used to shift the view so that the last line is at the

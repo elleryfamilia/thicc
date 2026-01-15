@@ -338,6 +338,57 @@ func (w *BufWindow) drawDiffGutter(backgroundStyle tcell.Style, softwrapped bool
 	vloc.X++
 }
 
+// drawUnifiedDiffGutter draws +/- indicators for unified diff view buffers
+func (w *BufWindow) drawUnifiedDiffGutter(backgroundStyle tcell.Style, softwrapped bool, vloc *buffer.Loc, bloc *buffer.Loc) {
+	if vloc.X >= w.gutterOffset {
+		return
+	}
+
+	// Check if this buffer has unified diff metadata
+	if w.Buf.UnifiedDiffLines == nil {
+		return
+	}
+
+	lineType, ok := w.Buf.UnifiedDiffLines[bloc.Y]
+	if !ok {
+		lineType = 0
+	}
+
+	symbol := ' '
+	var style tcell.Style
+
+	switch lineType {
+	case 1: // Added
+		symbol = '+'
+		if s, ok := config.Colorscheme["diff-added"]; ok {
+			fg, _, _ := s.Decompose()
+			style = backgroundStyle.Foreground(fg)
+		} else {
+			style = backgroundStyle.Foreground(tcell.ColorGreen)
+		}
+	case 2: // Deleted
+		symbol = '-'
+		if s, ok := config.Colorscheme["diff-deleted"]; ok {
+			fg, _, _ := s.Decompose()
+			style = backgroundStyle.Foreground(fg)
+		} else {
+			style = backgroundStyle.Foreground(tcell.ColorRed)
+		}
+	case 3: // Context
+		symbol = ' '
+		style = backgroundStyle
+	case 4: // Header
+		symbol = ' '
+		style = backgroundStyle
+	default:
+		symbol = ' '
+		style = backgroundStyle
+	}
+
+	screen.SetContent(w.X+vloc.X, w.Y+vloc.Y, symbol, nil, style)
+	vloc.X++
+}
+
 func (w *BufWindow) drawLineNum(lineNumStyle tcell.Style, softwrapped bool, vloc *buffer.Loc, bloc *buffer.Loc) {
 	cursorLine := w.Buf.GetActiveCursor().Loc.Y
 	var lineInt int
@@ -506,17 +557,46 @@ func (w *BufWindow) displayBuffer() {
 			s = curNumStyle
 		}
 
+		// Get diff line type early so we can apply background to gutter too
+		// Values: 0=none, 1=added, 2=deleted, 3=context, 4=header
+		diffLineType := 0
+		if b.UnifiedDiffLines != nil {
+			if lt, ok := b.UnifiedDiffLines[bloc.Y]; ok {
+				diffLineType = int(lt)
+			}
+		}
+
+		// Calculate gutter style with diff foreground and background if applicable
+		// Line numbers get the same color as +/- symbols (green/red)
+		gutterStyle := s
+		if diffLineType == 1 { // Added line
+			if ds, ok := config.Colorscheme["diff-add"]; ok {
+				fg, bg, _ := ds.Decompose()
+				gutterStyle = gutterStyle.Foreground(fg).Background(bg)
+			}
+		} else if diffLineType == 2 { // Deleted line
+			if ds, ok := config.Colorscheme["diff-del"]; ok {
+				fg, bg, _ := ds.Decompose()
+				gutterStyle = gutterStyle.Foreground(fg).Background(bg)
+			}
+		}
+
 		if vloc.Y >= 0 {
 			if w.hasMessage {
 				w.drawGutter(&vloc, &bloc)
 			}
 
 			if b.Settings["diffgutter"].(bool) {
-				w.drawDiffGutter(s, false, &vloc, &bloc)
+				w.drawDiffGutter(gutterStyle, false, &vloc, &bloc)
+			}
+
+			// Draw unified diff gutter (+/-) if this buffer has diff metadata
+			if b.UnifiedDiffLines != nil {
+				w.drawUnifiedDiffGutter(gutterStyle, false, &vloc, &bloc)
 			}
 
 			if b.Settings["ruler"].(bool) {
-				w.drawLineNum(s, false, &vloc, &bloc)
+				w.drawLineNum(gutterStyle, false, &vloc, &bloc)
 			}
 		} else {
 			vloc.X = w.gutterOffset
@@ -674,6 +754,30 @@ func (w *BufWindow) displayBuffer() {
 					}
 				}
 
+				// Apply diff line backgrounds for unified diff view
+				// This applies a tinted background while preserving syntax foreground colors
+				// Values: 1=added, 2=deleted, 3=context, 4=header
+				if diffLineType > 0 && !preservebg {
+					switch diffLineType {
+					case 1: // Added line - green background
+						if s, ok := config.Colorscheme["diff-add"]; ok {
+							_, bg, _ := s.Decompose()
+							style = style.Background(bg)
+						}
+					case 2: // Deleted line - red background
+						if s, ok := config.Colorscheme["diff-del"]; ok {
+							_, bg, _ := s.Decompose()
+							style = style.Background(bg)
+						}
+					// case 3: Context lines - no special background
+					case 4: // Header line - special foreground styling
+						if s, ok := config.Colorscheme["diff-hunk"]; ok {
+							fg, _, _ := s.Decompose()
+							style = style.Foreground(fg)
+						}
+					}
+				}
+
 				for _, m := range b.Messages {
 					if bloc.GreaterEqual(m.Start) && bloc.LessThan(m.End) ||
 						bloc.LessThan(m.End) && bloc.GreaterEqual(m.Start) {
@@ -709,12 +813,17 @@ func (w *BufWindow) displayBuffer() {
 					w.drawGutter(&vloc, &bloc)
 				}
 				if b.Settings["diffgutter"].(bool) {
-					w.drawDiffGutter(lineNumStyle, true, &vloc, &bloc)
+					w.drawDiffGutter(gutterStyle, true, &vloc, &bloc)
+				}
+
+				// Draw unified diff gutter for soft-wrapped lines too
+				if b.UnifiedDiffLines != nil {
+					w.drawUnifiedDiffGutter(gutterStyle, true, &vloc, &bloc)
 				}
 
 				// This will draw an empty line number because the current line is wrapped
 				if b.Settings["ruler"].(bool) {
-					w.drawLineNum(lineNumStyle, true, &vloc, &bloc)
+					w.drawLineNum(gutterStyle, true, &vloc, &bloc)
 				}
 			} else {
 				vloc.X = w.gutterOffset
@@ -820,6 +929,18 @@ func (w *BufWindow) displayBuffer() {
 		}
 
 		style := config.DefStyle
+		// Apply diff background to end-of-line fill
+		if diffLineType == 1 { // Added line
+			if ds, ok := config.Colorscheme["diff-add"]; ok {
+				_, bg, _ := ds.Decompose()
+				style = style.Background(bg)
+			}
+		} else if diffLineType == 2 { // Deleted line
+			if ds, ok := config.Colorscheme["diff-del"]; ok {
+				_, bg, _ := ds.Decompose()
+				style = style.Background(bg)
+			}
+		}
 		for _, c := range cursors {
 			if b.Settings["cursorline"].(bool) && w.active &&
 				!c.HasSelection() && c.Y == bloc.Y {

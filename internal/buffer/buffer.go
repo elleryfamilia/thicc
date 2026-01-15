@@ -125,6 +125,10 @@ type SharedBuffer struct {
 	diffLock          sync.RWMutex
 	diff              map[int]DiffStatus
 
+	// UnifiedDiffLines stores line types for unified diff view buffers
+	// Values: 0=none, 1=added (+), 2=deleted (-), 3=context (space), 4=header/hunk
+	UnifiedDiffLines map[int]byte
+
 	forceKeepBackup bool
 
 	// ReloadDisabled allows the user to disable reloads if they

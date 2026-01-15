@@ -102,6 +102,37 @@ func InitColorscheme() error {
 			Background(tcell.Color24) // Dark blue selection background
 	}
 
+	// Add diff styles with background colors for unified diff view
+	// These use subtle, dark background tints for added/deleted lines
+	var diffAddBg, diffDelBg, diffAddFg, diffDelFg tcell.Color
+	if InTmux {
+		// Use 256-color palette for tmux
+		diffAddBg = tcell.Color236  // Very dark gray
+		diffDelBg = tcell.Color236  // Very dark gray
+		diffAddFg = tcell.Color114  // Light green
+		diffDelFg = tcell.Color210  // Light red/salmon
+	} else {
+		// Use true colors for subtle tints
+		diffAddBg = tcell.GetColor("#0f1a0f") // Very dark green tint
+		diffDelBg = tcell.GetColor("#1a0f0f") // Very dark red tint
+		diffAddFg = tcell.GetColor("#98c379") // Light green
+		diffDelFg = tcell.GetColor("#e06c75") // Light red
+	}
+	Colorscheme["diff-add"] = tcell.StyleDefault.
+		Foreground(diffAddFg).
+		Background(diffAddBg)
+	Colorscheme["diff-del"] = tcell.StyleDefault.
+		Foreground(diffDelFg).
+		Background(diffDelBg)
+	Colorscheme["diff-header"] = tcell.StyleDefault.
+		Foreground(tcell.Color141). // Light purple
+		Background(ThiccBackground).
+		Bold(true)
+	Colorscheme["diff-hunk"] = tcell.StyleDefault.
+		Foreground(tcell.Color45). // Cyan
+		Background(ThiccBackground).
+		Bold(true)
+
 	return err
 }
 

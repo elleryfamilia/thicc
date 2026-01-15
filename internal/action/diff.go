@@ -1,0 +1,292 @@
+package action
+
+import (
+	"log"
+	"os/exec"
+	"path/filepath"
+	"strings"
+
+	"github.com/ellery/thicc/internal/buffer"
+)
+
+// Unified diff line types
+const (
+	DiffLineNone    byte = 0
+	DiffLineAdded   byte = 1
+	DiffLineDeleted byte = 2
+	DiffLineContext byte = 3
+	DiffLineHeader  byte = 4
+)
+
+// ShowUnifiedDiff shows a unified diff for the given file in a read-only buffer
+// The +/- prefixes are stripped and shown in the gutter instead, allowing
+// proper syntax highlighting of the actual code content.
+// Returns the created buffer (for tab bar integration) and success status.
+func ShowUnifiedDiff(filePath string) (*buffer.Buffer, bool) {
+	log.Printf("THICC Diff: ShowUnifiedDiff called for %s", filePath)
+
+	// Get current pane
+	curPane := MainTab().CurPane()
+	if curPane == nil {
+		log.Println("THICC Diff: No current pane")
+		return nil, false
+	}
+
+	// Make path absolute
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		absPath = filePath
+	}
+
+	// Get relative path from git root for display
+	relPath := getRelativeGitPath(absPath)
+	log.Printf("THICC Diff: Relative path: %s", relPath)
+
+	// Run git diff
+	diffOutput, err := getGitDiff(absPath)
+	if err != nil {
+		log.Printf("THICC Diff: git diff failed: %v", err)
+		return nil, false
+	}
+
+	// Handle no changes case
+	if diffOutput == "" {
+		diffOutput = "No changes (file matches HEAD)"
+	}
+	log.Printf("THICC Diff: Got diff output (%d bytes)", len(diffOutput))
+
+	// Parse the diff to extract clean code and line metadata
+	cleanContent, lineTypes := parseDiffContent(diffOutput)
+
+	// Detect file type from extension for syntax highlighting
+	ext := filepath.Ext(relPath)
+	fileType := extToFileType(ext)
+	log.Printf("THICC Diff: Detected filetype '%s' from extension '%s'", fileType, ext)
+
+	// Create read-only buffer with clean content (no +/- prefixes)
+	// Use "[diff]" suffix to indicate this is a diff view
+	baseName := filepath.Base(relPath)
+	bufName := baseName + " [diff]"
+	diffBuf := buffer.NewBufferFromString(cleanContent, bufName, buffer.BTHelp)
+	if diffBuf == nil {
+		log.Println("THICC Diff: Failed to create buffer")
+		return nil, false
+	}
+
+	// Store the diff line metadata for gutter rendering
+	diffBuf.UnifiedDiffLines = lineTypes
+
+	// Set filetype for proper syntax highlighting of the actual code
+	if fileType != "" {
+		diffBuf.SetOptionNative("filetype", fileType)
+	}
+
+	// Open in current pane
+	curPane.OpenBuffer(diffBuf)
+
+	log.Printf("THICC Diff: Successfully opened diff view for %s with %d lines", filePath, len(lineTypes))
+	return diffBuf, true
+}
+
+// parseDiffContent parses git diff output and returns:
+// 1. Clean content with +/- prefixes stripped from code lines
+// 2. Map of line number -> diff line type
+func parseDiffContent(diffOutput string) (string, map[int]byte) {
+	lines := strings.Split(diffOutput, "\n")
+	var cleanLines []string
+	lineTypes := make(map[int]byte)
+
+	lineNum := 0
+	inHunk := false
+
+	for _, line := range lines {
+		if len(line) == 0 {
+			// Empty line - preserve it
+			cleanLines = append(cleanLines, "")
+			lineTypes[lineNum] = DiffLineContext
+			lineNum++
+			continue
+		}
+
+		// Check for diff headers
+		if strings.HasPrefix(line, "diff ") ||
+			strings.HasPrefix(line, "index ") ||
+			strings.HasPrefix(line, "--- ") ||
+			strings.HasPrefix(line, "+++ ") ||
+			strings.HasPrefix(line, "new file") ||
+			strings.HasPrefix(line, "deleted file") {
+			cleanLines = append(cleanLines, line)
+			lineTypes[lineNum] = DiffLineHeader
+			lineNum++
+			inHunk = false
+			continue
+		}
+
+		// Check for hunk header
+		if strings.HasPrefix(line, "@@") {
+			cleanLines = append(cleanLines, line)
+			lineTypes[lineNum] = DiffLineHeader
+			lineNum++
+			inHunk = true
+			continue
+		}
+
+		// Inside a hunk - process content lines
+		if inHunk && len(line) > 0 {
+			prefix := line[0]
+			content := line[1:] // Strip the prefix
+
+			switch prefix {
+			case '+':
+				cleanLines = append(cleanLines, content)
+				lineTypes[lineNum] = DiffLineAdded
+			case '-':
+				cleanLines = append(cleanLines, content)
+				lineTypes[lineNum] = DiffLineDeleted
+			case ' ':
+				cleanLines = append(cleanLines, content)
+				lineTypes[lineNum] = DiffLineContext
+			default:
+				// Unknown prefix, keep the whole line
+				cleanLines = append(cleanLines, line)
+				lineTypes[lineNum] = DiffLineNone
+			}
+			lineNum++
+			continue
+		}
+
+		// Outside hunk - keep line as-is
+		cleanLines = append(cleanLines, line)
+		lineTypes[lineNum] = DiffLineNone
+		lineNum++
+	}
+
+	return strings.Join(cleanLines, "\n"), lineTypes
+}
+
+// extToFileType maps file extensions to syntax highlighting file types
+func extToFileType(ext string) string {
+	ext = strings.ToLower(ext)
+	switch ext {
+	case ".go":
+		return "go"
+	case ".js":
+		return "javascript"
+	case ".ts":
+		return "typescript"
+	case ".tsx":
+		return "typescript"
+	case ".jsx":
+		return "javascript"
+	case ".py":
+		return "python"
+	case ".rb":
+		return "ruby"
+	case ".rs":
+		return "rust"
+	case ".c", ".h":
+		return "c"
+	case ".cpp", ".cc", ".cxx", ".hpp":
+		return "c++"
+	case ".java":
+		return "java"
+	case ".sh", ".bash":
+		return "shell"
+	case ".zsh":
+		return "zsh"
+	case ".md":
+		return "markdown"
+	case ".json":
+		return "json"
+	case ".yaml", ".yml":
+		return "yaml"
+	case ".toml":
+		return "toml"
+	case ".xml":
+		return "xml"
+	case ".html", ".htm":
+		return "html"
+	case ".css":
+		return "css"
+	case ".sql":
+		return "sql"
+	case ".lua":
+		return "lua"
+	case ".vim":
+		return "vim"
+	case ".dockerfile":
+		return "dockerfile"
+	default:
+		return ""
+	}
+}
+
+// getGitDiff runs git diff and returns the output
+func getGitDiff(absPath string) (string, error) {
+	// Get git root
+	gitRoot, err := getGitRoot(absPath)
+	if err != nil {
+		return "", err
+	}
+
+	// Get relative path from git root
+	relPath, err := filepath.Rel(gitRoot, absPath)
+	if err != nil {
+		relPath = filepath.Base(absPath)
+	}
+
+	// Run git diff with color disabled for clean output
+	cmd := exec.Command("git", "diff", "--no-color", "HEAD", "--", relPath)
+	cmd.Dir = gitRoot
+	output, err := cmd.Output()
+	if err != nil {
+		// Check if it's a new file (not in HEAD)
+		if exitErr, ok := err.(*exec.ExitError); ok && exitErr.ExitCode() == 128 {
+			// Try without HEAD for new files
+			cmd = exec.Command("git", "diff", "--no-color", "--", relPath)
+			cmd.Dir = gitRoot
+			output, err = cmd.Output()
+			if err != nil {
+				return "", err
+			}
+		} else {
+			return "", err
+		}
+	}
+	return string(output), nil
+}
+
+// getGitRoot returns the root directory of the git repository
+func getGitRoot(absPath string) (string, error) {
+	dir := filepath.Dir(absPath)
+	cmd := exec.Command("git", "rev-parse", "--show-toplevel")
+	cmd.Dir = dir
+	output, err := cmd.Output()
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(output)), nil
+}
+
+// getRelativeGitPath returns the path relative to git root
+func getRelativeGitPath(absPath string) string {
+	gitRoot, err := getGitRoot(absPath)
+	if err != nil {
+		return filepath.Base(absPath)
+	}
+	relPath, err := filepath.Rel(gitRoot, absPath)
+	if err != nil {
+		return filepath.Base(absPath)
+	}
+	return relPath
+}
+
+// CloseDiffView closes the diff view (for compatibility)
+func (h *BufPane) CloseDiffView() bool {
+	// Clear sync scroll peer if any
+	if h.SyncScrollPeer != nil {
+		h.SyncScrollPeer.SyncScrollPeer = nil
+		h.SyncScrollPeer = nil
+	}
+	return h.Unsplit()
+}

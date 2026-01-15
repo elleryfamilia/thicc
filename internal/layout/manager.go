@@ -15,6 +15,7 @@ import (
 	"github.com/ellery/thicc/internal/dashboard"
 	"github.com/ellery/thicc/internal/filebrowser"
 	"github.com/ellery/thicc/internal/filemanager"
+	"github.com/ellery/thicc/internal/sourcecontrol"
 	"github.com/ellery/thicc/internal/terminal"
 	"github.com/micro-editor/tcell/v2"
 )
@@ -30,10 +31,11 @@ type Region struct {
 // LayoutManager coordinates the 3-panel layout
 type LayoutManager struct {
 	// Panels
-	FileBrowser *filebrowser.Panel
-	Terminal    *terminal.Panel
-	Terminal2   *terminal.Panel
-	Terminal3   *terminal.Panel
+	FileBrowser   *filebrowser.Panel
+	SourceControl *sourcecontrol.Panel
+	Terminal      *terminal.Panel
+	Terminal2     *terminal.Panel
+	Terminal3     *terminal.Panel
 	// Editor uses micro's existing action.Tabs (middle region)
 
 	// Modal dialogs for prompts
@@ -62,11 +64,12 @@ type LayoutManager struct {
 	ScreenH         int // Total screen height
 
 	// Pane visibility state
-	TreeVisible      bool // Whether tree pane is visible (default: true)
-	EditorVisible    bool // Whether editor pane is visible (default: true)
-	TerminalVisible  bool // Whether terminal pane is visible (default: true)
-	Terminal2Visible bool // Whether terminal2 pane is visible (default: false)
-	Terminal3Visible bool // Whether terminal3 pane is visible (default: false)
+	TreeVisible          bool // Whether tree pane is visible (default: true)
+	SourceControlVisible bool // Whether source control pane is visible (default: false)
+	EditorVisible        bool // Whether editor pane is visible (default: true)
+	TerminalVisible      bool // Whether terminal pane is visible (default: true)
+	Terminal2Visible     bool // Whether terminal2 pane is visible (default: false)
+	Terminal3Visible     bool // Whether terminal3 pane is visible (default: false)
 
 	// Track if terminals have been initialized (tool selector shown)
 	TerminalInitialized  bool // Terminal 1 (main terminal)
@@ -473,7 +476,9 @@ const PlaceholderWidth = 20
 
 // getTreeWidth returns the tree width (fixed at 30 when visible, 0 when hidden)
 func (lm *LayoutManager) getTreeWidth() int {
-	if !lm.TreeVisible {
+	// Return width if either file browser OR source control is visible
+	// (they share the same left pane space)
+	if !lm.TreeVisible && !lm.SourceControlVisible {
 		return 0
 	}
 	if lm.shouldExpandTree() {
@@ -936,8 +941,11 @@ func (lm *LayoutManager) RenderFrame(screen tcell.Screen) {
 		lm.PaneNavBar.Render(screen)
 	}
 
-	// 1. Render file browser (left) - only if visible
-	if lm.FileBrowser != nil && lm.TreeVisible {
+	// 1. Render file browser or source control (left) - mutually exclusive
+	if lm.SourceControlVisible && lm.SourceControl != nil {
+		lm.SourceControl.Focus = (lm.ActivePanel == 0)
+		lm.SourceControl.Render(screen)
+	} else if lm.FileBrowser != nil && lm.TreeVisible {
 		lm.FileBrowser.Focus = (lm.ActivePanel == 0)
 		lm.FileBrowser.Render(screen)
 	}
@@ -1112,6 +1120,10 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 			log.Println("THICC: ESC+5 raw sequence detected, toggling terminal3")
 			lm.ToggleTerminal3()
 			return true
+		case "\x1ba":
+			log.Println("THICC: ESC+a raw sequence detected, toggling source control")
+			lm.ToggleSourceControl()
+			return true
 		}
 	}
 
@@ -1138,6 +1150,10 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		case '∞': // Option+5 on macOS
 			log.Println("THICC: macOS Option+5 detected, toggling terminal3")
 			lm.ToggleTerminal3()
+			return true
+		case 'å': // Option+a on macOS
+			log.Println("THICC: macOS Option+a detected, toggling source control")
+			lm.ToggleSourceControl()
 			return true
 		}
 	}
@@ -1204,6 +1220,7 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 				(ev.Rune() == '3' && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == '4' && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == '5' && ev.Modifiers()&tcell.ModAlt != 0) ||
+				(ev.Rune() == 'a' && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == '/' && ev.Modifiers()&tcell.ModCtrl != 0) ||
 				ev.Key() == tcell.KeyCtrlUnderscore // Ctrl+/ often sends this
 
@@ -1238,6 +1255,8 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 						lm.ToggleTerminal2()
 					case 5:
 						lm.ToggleTerminal3()
+					case 6:
+						lm.ToggleSourceControl()
 					}
 					lm.triggerRedraw()
 					return true
@@ -1397,6 +1416,10 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 				log.Println("THICC: Alt+5 detected, toggling terminal3")
 				lm.ToggleTerminal3()
 				return true
+			case 'a':
+				log.Println("THICC: Alt+a detected, toggling source control")
+				lm.ToggleSourceControl()
+				return true
 			}
 		}
 
@@ -1426,8 +1449,10 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 
 	// Route to active panel
 	switch lm.ActivePanel {
-	case 0: // File browser
-		if lm.FileBrowser != nil {
+	case 0: // File browser or Source Control (left pane)
+		if lm.SourceControlVisible && lm.SourceControl != nil {
+			return lm.SourceControl.HandleEvent(event)
+		} else if lm.FileBrowser != nil {
 			return lm.FileBrowser.HandleEvent(event)
 		}
 
@@ -1511,9 +1536,12 @@ func (lm *LayoutManager) panelAtX(x int) int {
 	term2X := lm.getTerm2X()
 	term3X := lm.getTerm3X()
 
-	// Tree region
-	if x < treeWidth && lm.TreeVisible {
-		if lm.FileBrowser != nil {
+	// Left panel region (file browser or source control)
+	if x < treeWidth {
+		if lm.SourceControlVisible && lm.SourceControl != nil {
+			return 0
+		}
+		if lm.TreeVisible && lm.FileBrowser != nil {
 			return 0
 		}
 	}
@@ -2203,12 +2231,21 @@ func (lm *LayoutManager) FocusTerminal() {
 
 // ToggleTree toggles the visibility of the tree pane
 func (lm *LayoutManager) ToggleTree() {
-	lm.TreeVisible = !lm.TreeVisible
-	log.Printf("THICC: Tree visibility toggled to %v", lm.TreeVisible)
+	if !lm.TreeVisible {
+		// Show tree, hide source control (mutually exclusive)
+		lm.TreeVisible = true
+		lm.SourceControlVisible = false
+		log.Printf("THICC: Tree visibility toggled to %v (hiding Source Control)", lm.TreeVisible)
+		lm.setActivePanel(0)
+	} else {
+		// Hide tree
+		lm.TreeVisible = false
+		log.Printf("THICC: Tree visibility toggled to %v", lm.TreeVisible)
 
-	// If we just hid the focused pane, move focus to next visible pane
-	if !lm.TreeVisible && lm.ActivePanel == 0 {
-		lm.focusNextVisiblePane()
+		// If we just hid the focused pane, move focus to next visible pane
+		if lm.ActivePanel == 0 {
+			lm.focusNextVisiblePane()
+		}
 	}
 
 	// Update panel regions
@@ -2328,6 +2365,101 @@ func (lm *LayoutManager) ToggleTerminal3() {
 		lm.updatePanelRegions()
 		lm.triggerRedraw()
 	}
+}
+
+// ToggleSourceControl toggles the visibility of the source control pane
+// Source Control and File Browser are mutually exclusive - showing one hides the other
+func (lm *LayoutManager) ToggleSourceControl() {
+	if !lm.SourceControlVisible {
+		// Show Source Control, hide File Browser
+		lm.SourceControlVisible = true
+		lm.TreeVisible = false
+		log.Printf("THICC: Source Control visibility toggled to %v (hiding File Browser)", lm.SourceControlVisible)
+
+		// Initialize source control if needed
+		if lm.SourceControl == nil {
+			lm.initSourceControl()
+		} else {
+			// Refresh git status
+			lm.SourceControl.RefreshStatus()
+		}
+
+		// Focus source control
+		lm.setActivePanel(0)
+		lm.updatePanelRegions()
+		lm.triggerRedraw()
+	} else {
+		// Hide Source Control
+		lm.SourceControlVisible = false
+		log.Printf("THICC: Source Control visibility toggled to %v", lm.SourceControlVisible)
+
+		// If we just hid the focused pane, move focus to next visible pane
+		if lm.ActivePanel == 0 {
+			lm.focusNextVisiblePane()
+		}
+
+		// Update panel regions
+		lm.updatePanelRegions()
+		lm.triggerRedraw()
+	}
+}
+
+// initSourceControl initializes the source control panel
+func (lm *LayoutManager) initSourceControl() {
+	contentH := lm.ScreenH - 1
+	treeW := lm.getTreeWidth()
+	lm.SourceControl = sourcecontrol.NewPanel(
+		0, 1,
+		treeW, contentH,
+		lm.Root,
+	)
+
+	// Set up callbacks
+	lm.SourceControl.OnFileSelect = func(path string, isStaged bool) {
+		log.Printf("THICC: Source Control file selected: %s (staged=%v)", path, isStaged)
+		// Open the file in the editor for diff view
+		lm.openFileForDiff(path)
+	}
+
+	lm.SourceControl.OnRefresh = func() {
+		lm.triggerRedraw()
+	}
+}
+
+// openFileForDiff opens a file in the editor and shows unified diff
+func (lm *LayoutManager) openFileForDiff(path string) {
+	log.Printf("THICC: openFileForDiff called with path: %s", path)
+
+	// Make path absolute
+	absPath := path
+	if !filepath.IsAbs(path) {
+		absPath = filepath.Join(lm.Root, path)
+	}
+	log.Printf("THICC: Absolute path for diff: %s", absPath)
+
+	// Hide terminal for cleaner diff view (only SC + editor visible)
+	lm.TerminalVisible = false
+
+	// Show editor if hidden
+	lm.EditorVisible = true
+	lm.updatePanelRegions()
+
+	// Show unified diff in editor
+	diffBuf, success := action.ShowUnifiedDiff(absPath)
+	log.Printf("THICC: ShowUnifiedDiff returned: %v", success)
+
+	// Update the tab bar with the diff buffer
+	if success && diffBuf != nil && lm.TabBar != nil {
+		// Update the current tab's buffer reference and name
+		if lm.TabBar.ActiveIndex >= 0 && lm.TabBar.ActiveIndex < len(lm.TabBar.Tabs) {
+			lm.TabBar.Tabs[lm.TabBar.ActiveIndex].Buffer = diffBuf
+			lm.TabBar.Tabs[lm.TabBar.ActiveIndex].Name = truncateName(diffBuf.GetName())
+			lm.TabBar.Tabs[lm.TabBar.ActiveIndex].Loaded = true
+		}
+	}
+
+	// Keep focus on SC so user can navigate through files
+	lm.triggerRedraw()
 }
 
 // showToolSelectorFor shows the tool selector for the specified terminal panel
@@ -2586,13 +2718,25 @@ func (lm *LayoutManager) updatePanelRegions() {
 
 	// Update file browser region
 	if lm.FileBrowser != nil {
-		if lm.TreeVisible {
+		if lm.TreeVisible && !lm.SourceControlVisible {
 			lm.FileBrowser.Region.X = 0
 			lm.FileBrowser.Region.Y = 1
 			lm.FileBrowser.Region.Width = lm.getTreeWidth()
 			lm.FileBrowser.Region.Height = contentH
 		} else {
 			lm.FileBrowser.Region.Width = 0
+		}
+	}
+
+	// Update source control region (uses same space as file browser)
+	if lm.SourceControl != nil {
+		if lm.SourceControlVisible {
+			lm.SourceControl.Region.X = 0
+			lm.SourceControl.Region.Y = 1
+			lm.SourceControl.Region.Width = lm.getTreeWidth()
+			lm.SourceControl.Region.Height = contentH
+		} else {
+			lm.SourceControl.Region.Width = 0
 		}
 	}
 

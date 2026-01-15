@@ -254,6 +254,9 @@ type BufPane struct {
 	// since we may not know the window geometry yet. In such case we finish
 	// its initialization a bit later, after the initial resize.
 	initialized bool
+
+	// SyncScrollPeer is a linked pane for synchronized scrolling (used in diff view)
+	SyncScrollPeer *BufPane
 }
 
 func newBufPane(buf *buffer.Buffer, win display.BWindow, tab *Tab) *BufPane {

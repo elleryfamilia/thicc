@@ -5,10 +5,12 @@ detect:
     header: "^diff"
 
 rules:
-    - brightgreen: "^\\+.*"
-    - green: "^\\+\\+\\+.*"
-    - brightblue: "^ .*"
-    - brightred: "^-.*"
-    - red: "^---.*"
-    - brightyellow: "^@@.*"
-    - magenta: "^diff.*"
+    # Hunk headers (@@ ... @@) - cyan
+    - diff-hunk: "^@@.*"
+    # Diff header lines (diff --git, index, ---, +++)
+    - diff-header: "^diff .*"
+    - diff-header: "^index .*"
+    - diff-header: "^---.*"
+    - diff-header: "^\\+\\+\\+.*"
+    # Note: +/- content lines are NOT styled here
+    # The display code applies background colors while preserving foreground

@@ -6,14 +6,15 @@ import (
 
 // Pane icons (larger Nerd Font glyphs)
 const (
-	PaneIconFolder   = '\uf07b' // nf-fa-folder
-	PaneIconCode     = '\uf121' // nf-fa-code
-	PaneIconTerminal = '\uf489' // nf-oct-terminal
+	PaneIconFolder        = '\uf07b' // nf-fa-folder
+	PaneIconSourceControl = '\ue725' // nf-dev-git_branch
+	PaneIconCode          = '\uf121' // nf-fa-code
+	PaneIconTerminal      = '\uf489' // nf-oct-terminal
 )
 
 // PaneInfo describes a single pane for the nav bar
 type PaneInfo struct {
-	Number    int    // Display number (1-5)
+	Key       string // Display key (1-5 or 'a')
 	Name      string // Display name
 	Icon      rune   // Nerd Font icon
 	IsVisible bool   // Current visibility state
@@ -23,7 +24,7 @@ type PaneInfo struct {
 type paneClickRegion struct {
 	StartX int
 	EndX   int
-	Number int // The pane number (1-5)
+	Key    string // The pane key (1-5 or 'a')
 }
 
 // PaneNavBar renders the pane navigation bar at the top of the screen
@@ -85,9 +86,11 @@ func (n *PaneNavBar) Render(screen tcell.Screen) {
 				Foreground(tcell.Color240) // Dark grey
 		}
 
-		// Draw number
-		screen.SetContent(x, n.Region.Y, rune('0'+pane.Number), nil, style)
-		x++
+		// Draw key (number or letter)
+		for _, r := range pane.Key {
+			screen.SetContent(x, n.Region.Y, r, nil, style)
+			x++
+		}
 
 		// Space
 		screen.SetContent(x, n.Region.Y, ' ', nil, bgStyle)
@@ -111,7 +114,7 @@ func (n *PaneNavBar) Render(screen tcell.Screen) {
 		n.clickRegions = append(n.clickRegions, paneClickRegion{
 			StartX: startX,
 			EndX:   x,
-			Number: pane.Number,
+			Key:    pane.Key,
 		})
 
 		// Add more spacing between panes
@@ -128,13 +131,27 @@ func (n *PaneNavBar) IsInNavBar(x, y int) bool {
 }
 
 // GetClickedPane returns the pane number (1-5) if a pane was clicked, or 0 if not
+// Returns 6 for source control (key "a")
 func (n *PaneNavBar) GetClickedPane(x, y int) int {
 	if y != n.Region.Y {
 		return 0
 	}
 	for _, region := range n.clickRegions {
 		if x >= region.StartX && x < region.EndX {
-			return region.Number
+			switch region.Key {
+			case "1":
+				return 1
+			case "2":
+				return 2
+			case "3":
+				return 3
+			case "4":
+				return 4
+			case "5":
+				return 5
+			case "a":
+				return 6 // Source Control
+			}
 		}
 	}
 	return 0
@@ -143,10 +160,11 @@ func (n *PaneNavBar) GetClickedPane(x, y int) int {
 // getPanes returns the current state of all panes
 func (n *PaneNavBar) getPanes() []PaneInfo {
 	return []PaneInfo{
-		{1, "Files", PaneIconFolder, n.Manager.TreeVisible},
-		{2, "Editor", PaneIconCode, n.Manager.EditorVisible},
-		{3, "Term", PaneIconTerminal, n.Manager.TerminalVisible},
-		{4, "Term", PaneIconTerminal, n.Manager.Terminal2Visible},
-		{5, "Term", PaneIconTerminal, n.Manager.Terminal3Visible},
+		{"1", "Files", PaneIconFolder, n.Manager.TreeVisible},
+		{"a", "Git", PaneIconSourceControl, n.Manager.SourceControlVisible},
+		{"2", "Editor", PaneIconCode, n.Manager.EditorVisible},
+		{"3", "Term", PaneIconTerminal, n.Manager.TerminalVisible},
+		{"4", "Term", PaneIconTerminal, n.Manager.Terminal2Visible},
+		{"5", "Term", PaneIconTerminal, n.Manager.Terminal3Visible},
 	}
 }
