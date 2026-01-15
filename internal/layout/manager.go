@@ -50,6 +50,9 @@ type LayoutManager struct {
 	// Tab bar for showing open files
 	TabBar *TabBar
 
+	// Pane navigation bar at top of screen
+	PaneNavBar *PaneNavBar
+
 	// Layout configuration
 	TreeWidth         int // Left panel width (fixed at 30)
 	TreeWidthExpanded int // Expanded tree width when focused with single pane
@@ -124,6 +127,7 @@ func NewLayoutManager(root string) *LayoutManager {
 		ShortcutsModal:  NewShortcutsModal(),
 		ProjectPicker:   nil, // Initialized when screen is available
 		TabBar:          NewTabBar(),
+		PaneNavBar:      NewPaneNavBar(),
 		InMultiplexer:   inMux,
 	}
 }
@@ -162,7 +166,7 @@ func (lm *LayoutManager) PreloadTerminal(screenW, screenH int) {
 		if cmdArgs != nil && len(cmdArgs) > 0 {
 			log.Printf("THICC: Auto-launching AI tool: %v", cmdArgs)
 		}
-		term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, cmdArgs)
+		term, err := terminal.NewPanel(termX, 1, termW, lm.ScreenH-1, cmdArgs)
 		if err != nil {
 			log.Printf("THICC: Failed to preload terminal: %v", err)
 			return
@@ -634,12 +638,12 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 
 	log.Printf("THICC: Initializing layout (screen: %dx%d)", lm.ScreenW, lm.ScreenH)
 
-	// Calculate regions
+	// Calculate regions (Y=1 to leave room for pane nav bar at Y=0)
 	treeRegion := Region{
 		X:      0,
-		Y:      0,
+		Y:      1,
 		Width:  lm.getTreeWidth(),
-		Height: lm.ScreenH,
+		Height: lm.ScreenH - 1,
 	}
 
 	// editorW := lm.ScreenW - lm.TreeWidth - lm.TermWidth
@@ -841,7 +845,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 			if cmdArgs != nil && len(cmdArgs) > 0 {
 				log.Printf("THICC: Auto-launching AI tool: %v", cmdArgs)
 			}
-			term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, cmdArgs)
+			term, err := terminal.NewPanel(termX, 1, termW, lm.ScreenH-1, cmdArgs)
 			if err != nil {
 				log.Printf("THICC: Failed to create terminal: %v", err)
 				return
@@ -920,6 +924,18 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 
 // RenderFrame draws all 3 panels (called BEFORE editor renders)
 func (lm *LayoutManager) RenderFrame(screen tcell.Screen) {
+	// 0. Render pane navigation bar at the very top
+	if lm.PaneNavBar != nil {
+		lm.PaneNavBar.Region = Region{
+			X:      0,
+			Y:      0,
+			Width:  lm.ScreenW,
+			Height: 1,
+		}
+		lm.PaneNavBar.Manager = lm
+		lm.PaneNavBar.Render(screen)
+	}
+
 	// 1. Render file browser (left) - only if visible
 	if lm.FileBrowser != nil && lm.TreeVisible {
 		lm.FileBrowser.Focus = (lm.ActivePanel == 0)
@@ -974,11 +990,11 @@ func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 		// Draw editor border (bright when focused, dim when not)
 		lm.drawEditorBorder(screen, lm.ActivePanel == 1)
 
-		// Draw tab bar below top border
+		// Draw tab bar below top border (Y=2 since pane nav bar is at Y=0, editor border starts at Y=1)
 		if lm.TabBar != nil {
 			lm.TabBar.Region = Region{
 				X:      lm.getTreeWidth() + 1,
-				Y:      1, // Below top border
+				Y:      2, // Below top border (which is now at Y=1)
 				Width:  lm.getEditorWidth() - 2,
 				Height: 1,
 			}
@@ -1825,9 +1841,10 @@ func (lm *LayoutManager) drawDividers(screen tcell.Screen) {
 
 	// Only draw divider after tree if tree is visible and there's an editor or placeholder
 	// (don't draw if terminal is directly adjacent - it draws its own left border)
+	// Start at Y=1 to avoid overwriting pane nav bar at Y=0
 	if lm.TreeVisible && (lm.EditorVisible || lm.needsPlaceholders()) {
 		treeW := lm.getTreeWidth()
-		for y := 0; y < lm.ScreenH; y++ {
+		for y := 1; y < lm.ScreenH; y++ {
 			screen.SetContent(treeW, y, PowerlineArrowRight, nil, powerlineStyle)
 		}
 	}
@@ -1842,7 +1859,7 @@ func (lm *LayoutManager) drawDividers(screen tcell.Screen) {
 
 	if !hasTerminal && lm.TerminalVisible {
 		termX := lm.getTermX()
-		for y := 0; y < lm.ScreenH; y++ {
+		for y := 1; y < lm.ScreenH; y++ {
 			screen.SetContent(termX, y, PowerlineArrowRight, nil, powerlineStyle)
 		}
 	}
@@ -1850,7 +1867,7 @@ func (lm *LayoutManager) drawDividers(screen tcell.Screen) {
 	// Draw divider between Terminal and Terminal2 if both are visible but Terminal2 not yet created
 	if lm.TerminalVisible && lm.Terminal2Visible && hasTerminal && !hasTerminal2 {
 		term2X := lm.getTerm2X()
-		for y := 0; y < lm.ScreenH; y++ {
+		for y := 1; y < lm.ScreenH; y++ {
 			screen.SetContent(term2X, y, PowerlineArrowRight, nil, powerlineStyle)
 		}
 	}
@@ -1858,7 +1875,7 @@ func (lm *LayoutManager) drawDividers(screen tcell.Screen) {
 	// Draw divider between Terminal2 and Terminal3 if both are visible but Terminal3 not yet created
 	if lm.Terminal2Visible && lm.Terminal3Visible && hasTerminal2 && !hasTerminal3 {
 		term3X := lm.getTerm3X()
-		for y := 0; y < lm.ScreenH; y++ {
+		for y := 1; y < lm.ScreenH; y++ {
 			screen.SetContent(term3X, y, PowerlineArrowRight, nil, powerlineStyle)
 		}
 	}
@@ -1866,10 +1883,10 @@ func (lm *LayoutManager) drawDividers(screen tcell.Screen) {
 
 // drawPlaceholders draws placeholder boxes when both editor and terminal are hidden
 func (lm *LayoutManager) drawPlaceholders(screen tcell.Screen) {
-	// Calculate positions
+	// Calculate positions (content starts at Y=1 due to pane nav bar)
 	startX := lm.getTreeWidth()
 	availableWidth := lm.ScreenW - startX
-	centerY := lm.ScreenH / 2
+	centerY := 1 + (lm.ScreenH-1)/2 // Center in content area below nav bar
 
 	// Each placeholder is a small box
 	boxWidth := PlaceholderWidth
@@ -1949,54 +1966,56 @@ func (lm *LayoutManager) drawEditorBorder(screen tcell.Screen, focused bool) {
 
 	editorX := lm.getTreeWidth()
 	editorW := lm.getEditorWidth()
+	// Editor starts at Y=1 (below pane nav bar) and goes to bottom
+	startY := 1
 	h := lm.ScreenH
 
 	// Clear the border areas first (in case editor rendered there)
 	clearStyle := config.DefStyle
 	// Top row
 	for x := editorX; x < editorX+editorW; x++ {
-		screen.SetContent(x, 0, ' ', nil, clearStyle)
+		screen.SetContent(x, startY, ' ', nil, clearStyle)
 	}
 	// Bottom row
 	for x := editorX; x < editorX+editorW; x++ {
 		screen.SetContent(x, h-1, ' ', nil, clearStyle)
 	}
 	// Left column
-	for y := 0; y < h; y++ {
+	for y := startY; y < h; y++ {
 		screen.SetContent(editorX, y, ' ', nil, clearStyle)
 	}
 	// Right column
-	for y := 0; y < h; y++ {
+	for y := startY; y < h; y++ {
 		screen.SetContent(editorX+editorW-1, y, ' ', nil, clearStyle)
 	}
 
 	// Draw vertical lines on left and right (double-line when focused, single when not)
 	if focused {
-		for y := 1; y < h-1; y++ {
+		for y := startY + 1; y < h-1; y++ {
 			screen.SetContent(editorX, y, '║', nil, style)
 			screen.SetContent(editorX+editorW-1, y, '║', nil, style)
 		}
 		for x := 1; x < editorW-1; x++ {
-			screen.SetContent(editorX+x, 0, '═', nil, style)
+			screen.SetContent(editorX+x, startY, '═', nil, style)
 			screen.SetContent(editorX+x, h-1, '═', nil, style)
 		}
 		// Double-line corners
-		screen.SetContent(editorX, 0, '╔', nil, style)
-		screen.SetContent(editorX+editorW-1, 0, '╗', nil, style)
+		screen.SetContent(editorX, startY, '╔', nil, style)
+		screen.SetContent(editorX+editorW-1, startY, '╗', nil, style)
 		screen.SetContent(editorX, h-1, '╚', nil, style)
 		screen.SetContent(editorX+editorW-1, h-1, '╝', nil, style)
 	} else {
-		for y := 1; y < h-1; y++ {
+		for y := startY + 1; y < h-1; y++ {
 			screen.SetContent(editorX, y, '│', nil, style)
 			screen.SetContent(editorX+editorW-1, y, '│', nil, style)
 		}
 		for x := 1; x < editorW-1; x++ {
-			screen.SetContent(editorX+x, 0, '─', nil, style)
+			screen.SetContent(editorX+x, startY, '─', nil, style)
 			screen.SetContent(editorX+x, h-1, '─', nil, style)
 		}
 		// Single-line corners
-		screen.SetContent(editorX, 0, '┌', nil, style)
-		screen.SetContent(editorX+editorW-1, 0, '┐', nil, style)
+		screen.SetContent(editorX, startY, '┌', nil, style)
+		screen.SetContent(editorX+editorW-1, startY, '┐', nil, style)
 		screen.SetContent(editorX, h-1, '└', nil, style)
 		screen.SetContent(editorX+editorW-1, h-1, '┘', nil, style)
 	}
@@ -2042,10 +2061,14 @@ func (lm *LayoutManager) Resize(w, h int) {
 	lm.ScreenW = w
 	lm.ScreenH = h
 
+	// Content height (screen height minus pane nav bar)
+	contentH := h - 1
+
 	// Resize file browser
 	if lm.FileBrowser != nil {
+		lm.FileBrowser.Region.Y = 1
 		lm.FileBrowser.Region.Width = lm.getTreeWidth()
-		lm.FileBrowser.Region.Height = h
+		lm.FileBrowser.Region.Height = contentH
 	}
 
 	// Resize terminals
@@ -2058,25 +2081,28 @@ func (lm *LayoutManager) Resize(w, h int) {
 	if term != nil {
 		termW := lm.getTermWidth()
 		term.Region.X = lm.getTermX()
+		term.Region.Y = 1
 		term.Region.Width = termW
-		term.Region.Height = h
-		_ = term.Resize(termW, h)
+		term.Region.Height = contentH
+		_ = term.Resize(termW, contentH)
 	}
 
 	if term2 != nil {
 		term2W := lm.getTerm2Width()
 		term2.Region.X = lm.getTerm2X()
+		term2.Region.Y = 1
 		term2.Region.Width = term2W
-		term2.Region.Height = h
-		_ = term2.Resize(term2W, h)
+		term2.Region.Height = contentH
+		_ = term2.Resize(term2W, contentH)
 	}
 
 	if term3 != nil {
 		term3W := lm.getTerm3Width()
 		term3.Region.X = lm.getTerm3X()
+		term3.Region.Y = 1
 		term3.Region.Width = term3W
-		term3.Region.Height = h
-		_ = term3.Resize(term3W, h)
+		term3.Region.Height = contentH
+		_ = term3.Resize(term3W, contentH)
 	}
 
 	log.Printf("THICC: Layout resized to %dx%d (tree=%d, editor=%d, term=%d, term2=%d, term3=%d)",
@@ -2329,7 +2355,7 @@ func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
 	lm.ShowingToolSelector = false
 
 	go func() {
-		term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, cmdArgs)
+		term, err := terminal.NewPanel(termX, 1, termW, lm.ScreenH-1, cmdArgs)
 		if err != nil {
 			log.Printf("THICC: Failed to create terminal for panel %d: %v", panel, err)
 			return
@@ -2386,7 +2412,7 @@ func (lm *LayoutManager) createTerminalWithInstallCommand(panel int, installCmd 
 
 	go func() {
 		// Create a shell terminal (nil cmdArgs = default shell)
-		term, err := terminal.NewPanel(termX, 0, termW, lm.ScreenH, nil)
+		term, err := terminal.NewPanel(termX, 1, termW, lm.ScreenH-1, nil)
 		if err != nil {
 			log.Printf("THICC: Failed to create terminal for panel %d: %v", panel, err)
 			return
@@ -2528,12 +2554,16 @@ func (lm *LayoutManager) focusNextVisiblePane() {
 
 // updatePanelRegions recalculates and updates all panel regions based on visibility
 func (lm *LayoutManager) updatePanelRegions() {
+	// Content height (screen height minus pane nav bar)
+	contentH := lm.ScreenH - 1
+
 	// Update file browser region
 	if lm.FileBrowser != nil {
 		if lm.TreeVisible {
 			lm.FileBrowser.Region.X = 0
+			lm.FileBrowser.Region.Y = 1
 			lm.FileBrowser.Region.Width = lm.getTreeWidth()
-			lm.FileBrowser.Region.Height = lm.ScreenH
+			lm.FileBrowser.Region.Height = contentH
 		} else {
 			lm.FileBrowser.Region.Width = 0
 		}
@@ -2549,8 +2579,9 @@ func (lm *LayoutManager) updatePanelRegions() {
 	if term != nil {
 		if lm.TerminalVisible {
 			term.Region.X = lm.getTermX()
+			term.Region.Y = 1
 			term.Region.Width = lm.getTermWidth()
-			term.Region.Height = lm.ScreenH
+			term.Region.Height = contentH
 			_ = term.Resize(term.Region.Width, term.Region.Height)
 		} else {
 			term.Region.Width = 0
@@ -2560,8 +2591,9 @@ func (lm *LayoutManager) updatePanelRegions() {
 	if term2 != nil {
 		if lm.Terminal2Visible {
 			term2.Region.X = lm.getTerm2X()
+			term2.Region.Y = 1
 			term2.Region.Width = lm.getTerm2Width()
-			term2.Region.Height = lm.ScreenH
+			term2.Region.Height = contentH
 			_ = term2.Resize(term2.Region.Width, term2.Region.Height)
 		} else {
 			term2.Region.Width = 0
@@ -2571,8 +2603,9 @@ func (lm *LayoutManager) updatePanelRegions() {
 	if term3 != nil {
 		if lm.Terminal3Visible {
 			term3.Region.X = lm.getTerm3X()
+			term3.Region.Y = 1
 			term3.Region.Width = lm.getTerm3Width()
-			term3.Region.Height = lm.ScreenH
+			term3.Region.Height = contentH
 			_ = term3.Resize(term3.Region.Width, term3.Region.Height)
 		} else {
 			term3.Region.Width = 0
@@ -3043,12 +3076,12 @@ func (lm *LayoutManager) navigateToProject(newRoot string) {
 	// Update root
 	lm.Root = newRoot
 
-	// Recreate file browser with new root
+	// Recreate file browser with new root (Y=1 for pane nav bar at Y=0)
 	treeRegion := Region{
 		X:      0,
-		Y:      0,
+		Y:      1,
 		Width:  lm.getTreeWidth(),
-		Height: lm.ScreenH,
+		Height: lm.ScreenH - 1,
 	}
 
 	lm.FileBrowser = filebrowser.NewPanel(
