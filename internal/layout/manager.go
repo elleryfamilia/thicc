@@ -2088,6 +2088,11 @@ func (lm *LayoutManager) updateLayout() {
 		lm.FileBrowser.Region.Width = lm.getTreeWidth()
 	}
 
+	// Update source control region (uses same space as file browser)
+	if lm.SourceControl != nil {
+		lm.SourceControl.Region.Width = lm.getTreeWidth()
+	}
+
 	// Update terminal regions
 	lm.mu.RLock()
 	term := lm.Terminal
@@ -2124,6 +2129,13 @@ func (lm *LayoutManager) Resize(w, h int) {
 		lm.FileBrowser.Region.Y = 1
 		lm.FileBrowser.Region.Width = lm.getTreeWidth()
 		lm.FileBrowser.Region.Height = contentH
+	}
+
+	// Resize source control (uses same space as file browser)
+	if lm.SourceControl != nil {
+		lm.SourceControl.Region.Y = 1
+		lm.SourceControl.Region.Width = lm.getTreeWidth()
+		lm.SourceControl.Region.Height = contentH
 	}
 
 	// Resize terminals
