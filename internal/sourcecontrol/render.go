@@ -97,7 +97,7 @@ func (p *Panel) drawHeader(screen tcell.Screen) int {
 	style := config.DefStyle.Foreground(colorHeader).Bold(true)
 	p.drawText(screen, 1, y, header, style)
 
-	return y + 1
+	return y + 2 // Extra space after branch name
 }
 
 // drawUnstagedSection draws the unstaged changes section

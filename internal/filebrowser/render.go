@@ -177,14 +177,16 @@ func (p *Panel) drawText(screen tcell.Screen, x, y int, text string, style tcell
 	screenX := p.Region.X + x
 	screenY := p.Region.Y + y
 
-	for i, r := range text {
-		if screenX+i >= p.Region.X+p.Region.Width {
+	count := 0
+	for _, r := range text {
+		if screenX+count >= p.Region.X+p.Region.Width {
 			break
 		}
-		screen.SetContent(screenX+i, screenY, r, nil, style)
+		screen.SetContent(screenX+count, screenY, r, nil, style)
+		count++
 	}
 
-	return len(text)
+	return count
 }
 
 // GetBorderStyle returns the style for focus borders (pink/magenta for Spider-Verse vibe)
