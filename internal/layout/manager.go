@@ -2101,18 +2101,39 @@ func (lm *LayoutManager) updateLayout() {
 	lm.mu.RUnlock()
 
 	if term != nil {
-		term.Region.X = lm.getTermX()
-		term.Region.Width = lm.getTermWidth()
+		newX := lm.getTermX()
+		newWidth := lm.getTermWidth()
+		if term.Region.Width != newWidth {
+			term.Region.X = newX
+			term.Region.Width = newWidth
+			_ = term.Resize(newWidth, term.Region.Height)
+		} else {
+			term.Region.X = newX
+		}
 	}
 
 	if term2 != nil {
-		term2.Region.X = lm.getTerm2X()
-		term2.Region.Width = lm.getTerm2Width()
+		newX := lm.getTerm2X()
+		newWidth := lm.getTerm2Width()
+		if term2.Region.Width != newWidth {
+			term2.Region.X = newX
+			term2.Region.Width = newWidth
+			_ = term2.Resize(newWidth, term2.Region.Height)
+		} else {
+			term2.Region.X = newX
+		}
 	}
 
 	if term3 != nil {
-		term3.Region.X = lm.getTerm3X()
-		term3.Region.Width = lm.getTerm3Width()
+		newX := lm.getTerm3X()
+		newWidth := lm.getTerm3Width()
+		if term3.Region.Width != newWidth {
+			term3.Region.X = newX
+			term3.Region.Width = newWidth
+			_ = term3.Resize(newWidth, term3.Region.Height)
+		} else {
+			term3.Region.X = newX
+		}
 	}
 }
 

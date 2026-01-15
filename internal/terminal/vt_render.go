@@ -120,22 +120,29 @@ func (p *Panel) renderLoadingIndicator(screen tcell.Screen, contentX, contentY, 
 
 // renderLiveView renders the current terminal content (not scrolled)
 func (p *Panel) renderLiveView(screen tcell.Screen, contentX, contentY, contentW, contentH, cols, rows int, useAltScreen bool) {
-	for y := 0; y < contentH && y < rows; y++ {
-		for x := 0; x < contentW && x < cols; x++ {
-			var glyph vt10x.Glyph
+	// Always fill the ENTIRE content area to prevent artifacts from previous renders
+	for y := 0; y < contentH; y++ {
+		for x := 0; x < contentW; x++ {
+			var r rune = ' '
+			style := config.DefStyle
 
-			if useAltScreen {
-				glyph = p.getAltCell(x, y)
-			} else {
-				glyph = p.VT.Cell(x, y)
+			// Only read from VT if within its bounds
+			if y < rows && x < cols {
+				var glyph vt10x.Glyph
+
+				if useAltScreen {
+					glyph = p.getAltCell(x, y)
+				} else {
+					glyph = p.VT.Cell(x, y)
+				}
+
+				r = glyph.Char
+				if r == 0 {
+					r = ' '
+				}
+
+				style = glyphToTcellStyle(glyph)
 			}
-
-			r := glyph.Char
-			if r == 0 {
-				r = ' '
-			}
-
-			style := glyphToTcellStyle(glyph)
 
 			if p.isSelected(x, y) {
 				style = style.Reverse(true)
@@ -253,36 +260,50 @@ func (p *Panel) drawScrollIndicator(screen tcell.Screen) {
 	}
 }
 
-// getAltCell retrieves a cell from the alternate screen buffer using reflection
+// getAltCell retrieves a cell from the alternate screen buffer using reflection.
+// Note: vt10x's altLines field is unexported, so we must use reflect.Index()
+// directly rather than Interface() which doesn't work for unexported fields.
 func (p *Panel) getAltCell(x, y int) vt10x.Glyph {
-	// Try to access altLines via reflection (vt10x doesn't expose it publicly)
+	// Get the concrete State struct from the Terminal interface
 	v := reflect.ValueOf(p.VT)
-	if v.Kind() == reflect.Ptr {
+	if v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
 		v = v.Elem()
 	}
 
-	// Get altLines field
+	// Get altLines field (unexported []line where line = []Glyph)
 	altLinesField := v.FieldByName("altLines")
-	if !altLinesField.IsValid() || !altLinesField.CanInterface() {
-		// Fallback to primary buffer if reflection fails
+	if !altLinesField.IsValid() {
+		// Fallback to primary buffer if field doesn't exist
 		return p.VT.Cell(x, y)
 	}
 
-	// Access altLines as [][]Glyph
-	altLines := altLinesField.Interface()
-	linesVal := reflect.ValueOf(altLines)
-
-	if y >= linesVal.Len() {
+	// Access the slice directly using Index() - works for unexported fields
+	if y >= altLinesField.Len() {
 		return vt10x.Glyph{}
 	}
 
-	lineVal := linesVal.Index(y)
+	lineVal := altLinesField.Index(y)
 	if x >= lineVal.Len() {
 		return vt10x.Glyph{}
 	}
 
+	// Get the Glyph struct fields directly via reflection
 	glyphVal := lineVal.Index(x)
-	glyph := glyphVal.Interface().(vt10x.Glyph)
+
+	// Extract Glyph fields: Char (rune), Mode (int16), FG (Color), BG (Color)
+	var glyph vt10x.Glyph
+	if charField := glyphVal.FieldByName("Char"); charField.IsValid() {
+		glyph.Char = rune(charField.Int())
+	}
+	if modeField := glyphVal.FieldByName("Mode"); modeField.IsValid() {
+		glyph.Mode = int16(modeField.Int())
+	}
+	if fgField := glyphVal.FieldByName("FG"); fgField.IsValid() {
+		glyph.FG = vt10x.Color(fgField.Uint())
+	}
+	if bgField := glyphVal.FieldByName("BG"); bgField.IsValid() {
+		glyph.BG = vt10x.Color(bgField.Uint())
+	}
 
 	return glyph
 }

@@ -701,16 +701,15 @@ func (p *Panel) Resize(w, h int) error {
 		contentH = 5
 	}
 
-	// Resize PTY to content area
+	// Resize VT emulator first, then PTY (which sends SIGWINCH to app)
+	p.VT.Resize(contentW, contentH)
+
 	if p.PTY != nil {
 		_ = pty.Setsize(p.PTY, &pty.Winsize{
 			Rows: uint16(contentH),
 			Cols: uint16(contentW),
 		})
 	}
-
-	// Resize VT emulator to content area
-	p.VT.Resize(contentW, contentH)
 
 	return nil
 }
