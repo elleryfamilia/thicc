@@ -104,6 +104,10 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 	default:
 		// Handle character keys
 		switch ev.Rune() {
+		case ' ':
+			// Space: toggle stage/unstage based on current section
+			p.ToggleStageSelected()
+			return true
 		case 'k':
 			p.MoveUp()
 			return true

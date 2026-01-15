@@ -117,9 +117,10 @@ func (p *Panel) drawUnstagedSection(screen tcell.Screen, startY int) int {
 
 	// Draw shortcut hints if there's space
 	hintStyle := config.DefStyle.Foreground(tcell.ColorGray)
-	hintX := len(header) + 3
-	if hintX+10 < p.Region.Width-2 {
-		p.drawText(screen, hintX, y, "s:stage", hintStyle)
+	hintX := len(header) + 2
+	hint := "[space] stage"
+	if hintX+len(hint) < p.Region.Width-2 {
+		p.drawText(screen, hintX, y, hint, hintStyle)
 	}
 	y++
 
@@ -176,9 +177,10 @@ func (p *Panel) drawStagedSection(screen tcell.Screen, startY int) int {
 
 	// Draw shortcut hints if there's space
 	hintStyle := config.DefStyle.Foreground(tcell.ColorGray)
-	hintX := len(header) + 3
-	if hintX+10 < p.Region.Width-2 {
-		p.drawText(screen, hintX, y, "u:unstage", hintStyle)
+	hintX := len(header) + 2
+	hint := "[space] unstage"
+	if hintX+len(hint) < p.Region.Width-2 {
+		p.drawText(screen, hintX, y, hint, hintStyle)
 	}
 	y++
 
@@ -398,7 +400,7 @@ func (p *Panel) drawButtons(screen tcell.Screen, y int) {
 	} else if commitEnabled {
 		commitStyle = config.DefStyle.Foreground(colorAdded).Bold(true)
 	}
-	commitBtn := "[c]Commit"
+	commitBtn := "[⌥C]Commit"
 	p.drawText(screen, x, y, commitBtn, commitStyle)
 	x += len(commitBtn) + 1
 
@@ -411,9 +413,9 @@ func (p *Panel) drawButtons(screen tcell.Screen, y int) {
 	} else if pushEnabled {
 		pushStyle = config.DefStyle.Foreground(colorButton).Bold(true)
 	}
-	pushBtn := "[p]Push"
+	pushBtn := "[⌥P]Push"
 	if pushEnabled {
-		pushBtn = fmt.Sprintf("[p]Push(%d)", p.AheadCount)
+		pushBtn = fmt.Sprintf("[⌥P]Push(%d)", p.AheadCount)
 	}
 	p.drawText(screen, x, y, pushBtn, pushStyle)
 	x += len(pushBtn) + 1
@@ -427,9 +429,9 @@ func (p *Panel) drawButtons(screen tcell.Screen, y int) {
 	} else if pullEnabled {
 		pullStyle = config.DefStyle.Foreground(colorModified).Bold(true) // Yellow for pull
 	}
-	pullBtn := "[l]Pull"
+	pullBtn := "[⌥L]Pull"
 	if pullEnabled {
-		pullBtn = fmt.Sprintf("[l]Pull(%d)", p.BehindCount)
+		pullBtn = fmt.Sprintf("[⌥L]Pull(%d)", p.BehindCount)
 	}
 	p.drawText(screen, x, y, pullBtn, pullStyle)
 }
