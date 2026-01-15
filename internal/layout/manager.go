@@ -1219,6 +1219,33 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 		}
 	}
 
+	// Handle pane nav bar mouse clicks
+	if ev, ok := event.(*tcell.EventMouse); ok {
+		if ev.Buttons() == tcell.Button1 {
+			x, y := ev.Position()
+			if lm.PaneNavBar != nil && lm.PaneNavBar.IsInNavBar(x, y) {
+				paneNum := lm.PaneNavBar.GetClickedPane(x, y)
+				if paneNum > 0 {
+					log.Printf("THICC: Pane %d clicked in nav bar", paneNum)
+					switch paneNum {
+					case 1:
+						lm.ToggleTree()
+					case 2:
+						lm.ToggleEditor()
+					case 3:
+						lm.ToggleTerminal()
+					case 4:
+						lm.ToggleTerminal2()
+					case 5:
+						lm.ToggleTerminal3()
+					}
+					lm.triggerRedraw()
+					return true
+				}
+			}
+		}
+	}
+
 	// Handle tab bar mouse clicks
 	if ev, ok := event.(*tcell.EventMouse); ok {
 		if ev.Buttons() == tcell.Button1 {

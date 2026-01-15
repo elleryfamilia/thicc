@@ -19,10 +19,18 @@ type PaneInfo struct {
 	IsVisible bool   // Current visibility state
 }
 
+// paneClickRegion tracks the clickable area for a pane
+type paneClickRegion struct {
+	StartX int
+	EndX   int
+	Number int // The pane number (1-5)
+}
+
 // PaneNavBar renders the pane navigation bar at the top of the screen
 type PaneNavBar struct {
-	Region  Region
-	Manager *LayoutManager
+	Region       Region
+	Manager      *LayoutManager
+	clickRegions []paneClickRegion // Populated during Render
 }
 
 // NewPaneNavBar creates a new pane navigation bar
@@ -58,14 +66,19 @@ func (n *PaneNavBar) Render(screen tcell.Screen) {
 	// Add spacing after ALT+
 	x++
 
+	// Reset click regions
+	n.clickRegions = nil
+
 	// Draw each pane entry
 	panes := n.getPanes()
 	for _, pane := range panes {
+		startX := x // Track start of this pane's clickable region
+
 		var style tcell.Style
 		if pane.IsVisible {
 			style = tcell.StyleDefault.
 				Background(tcell.ColorBlack).
-				Foreground(tcell.ColorWhite)
+				Foreground(tcell.Color226) // Spider-Verse yellow
 		} else {
 			style = tcell.StyleDefault.
 				Background(tcell.ColorBlack).
@@ -94,12 +107,37 @@ func (n *PaneNavBar) Render(screen tcell.Screen) {
 			x++
 		}
 
+		// Record clickable region (before spacing)
+		n.clickRegions = append(n.clickRegions, paneClickRegion{
+			StartX: startX,
+			EndX:   x,
+			Number: pane.Number,
+		})
+
 		// Add more spacing between panes
 		for i := 0; i < 4; i++ {
 			screen.SetContent(x, n.Region.Y, ' ', nil, bgStyle)
 			x++
 		}
 	}
+}
+
+// IsInNavBar returns true if the coordinates are within the nav bar
+func (n *PaneNavBar) IsInNavBar(x, y int) bool {
+	return y == n.Region.Y && x >= n.Region.X && x < n.Region.X+n.Region.Width
+}
+
+// GetClickedPane returns the pane number (1-5) if a pane was clicked, or 0 if not
+func (n *PaneNavBar) GetClickedPane(x, y int) int {
+	if y != n.Region.Y {
+		return 0
+	}
+	for _, region := range n.clickRegions {
+		if x >= region.StartX && x < region.EndX {
+			return region.Number
+		}
+	}
+	return 0
 }
 
 // getPanes returns the current state of all panes
