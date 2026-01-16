@@ -1,6 +1,7 @@
 package sourcecontrol
 
 import (
+	"fmt"
 	"log"
 	"os/exec"
 	"path/filepath"
@@ -278,4 +279,199 @@ func parseInt(s string) (int, error) {
 		}
 	}
 	return n, nil
+}
+
+// RefreshCommitGraph loads the commit history for the graph display
+func (p *Panel) RefreshCommitGraph() {
+	if p.RepoRoot == "" {
+		return
+	}
+
+	// Get commit log with format: hash|short_hash|subject|author|parents
+	// --name-status gives us the files changed per commit
+	cmd := exec.Command("git", "log", "--format=%H|%h|%s|%an|%P", "--name-status", "-n", "50")
+	cmd.Dir = p.RepoRoot
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("THOCK SourceControl: git log failed: %v", err)
+		return
+	}
+
+	// Parse the output
+	commits := parseCommitLog(string(output))
+
+	p.mu.Lock()
+	// Preserve expanded state from existing commits
+	expandedMap := make(map[string]bool)
+	for _, c := range p.CommitGraph {
+		if c.Expanded {
+			expandedMap[c.Hash] = true
+		}
+	}
+
+	p.CommitGraph = commits
+	p.GraphHasMore = len(commits) >= 50
+
+	// Restore expanded state
+	for i := range p.CommitGraph {
+		if expandedMap[p.CommitGraph[i].Hash] {
+			p.CommitGraph[i].Expanded = true
+		}
+	}
+
+	// Compute ancestry to mark commits from merged branches
+	p.computeAncestry()
+	p.mu.Unlock()
+
+	log.Printf("THOCK SourceControl: Loaded %d commits for graph", len(commits))
+}
+
+// parseCommitLog parses git log output into CommitEntry slice
+func parseCommitLog(output string) []CommitEntry {
+	var commits []CommitEntry
+	lines := strings.Split(output, "\n")
+
+	var currentCommit *CommitEntry
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		// Check if this is a commit header line (contains |)
+		if strings.Contains(line, "|") && !strings.HasPrefix(line, "M\t") && !strings.HasPrefix(line, "A\t") && !strings.HasPrefix(line, "D\t") && !strings.HasPrefix(line, "R") {
+			// Save previous commit
+			if currentCommit != nil {
+				commits = append(commits, *currentCommit)
+			}
+
+			// Parse new commit header: hash|short_hash|subject|author|parents
+			parts := strings.SplitN(line, "|", 5)
+			if len(parts) < 4 {
+				continue
+			}
+
+			currentCommit = &CommitEntry{
+				Hash:      parts[0],
+				ShortHash: parts[1],
+				Subject:   parts[2],
+				Author:    parts[3],
+			}
+
+			// Parse parents (space-separated)
+			if len(parts) >= 5 && parts[4] != "" {
+				currentCommit.Parents = strings.Fields(parts[4])
+				currentCommit.IsMerge = len(currentCommit.Parents) >= 2
+			}
+		} else if currentCommit != nil {
+			// This is a file status line: M\tpath, A\tpath, D\tpath, R###\told\tnew
+			if len(line) < 2 {
+				continue
+			}
+			status := string(line[0])
+			var path string
+
+			if strings.HasPrefix(line, "R") {
+				// Rename: R###\told\tnew
+				parts := strings.Split(line, "\t")
+				if len(parts) >= 3 {
+					path = strings.TrimSpace(parts[2]) // Use new name
+					status = "R"
+				}
+			} else if line[1] == '\t' {
+				path = strings.TrimSpace(line[2:])
+			}
+
+			if path != "" {
+				currentCommit.Files = append(currentCommit.Files, FileStatus{
+					Path:   path,
+					Status: status,
+				})
+			}
+		}
+	}
+
+	// Don't forget the last commit
+	if currentCommit != nil {
+		commits = append(commits, *currentCommit)
+	}
+
+	return commits
+}
+
+// computeAncestry marks commits that came from merged branches
+func (p *Panel) computeAncestry() {
+	// Build hash → index map
+	hashToIdx := make(map[string]int)
+	for i, c := range p.CommitGraph {
+		hashToIdx[c.Hash] = i
+	}
+
+	// For each merge commit, mark second parent's lineage as FromBranch
+	for i, c := range p.CommitGraph {
+		if len(c.Parents) >= 2 {
+			p.CommitGraph[i].IsMerge = true
+			// Trace back from second parent (the merged branch)
+			secondParent := c.Parents[1]
+			p.markBranchAncestry(secondParent, hashToIdx)
+		}
+	}
+}
+
+// markBranchAncestry marks all commits reachable from the given hash as FromBranch
+func (p *Panel) markBranchAncestry(hash string, hashToIdx map[string]int) {
+	visited := make(map[string]bool)
+	queue := []string{hash}
+
+	for len(queue) > 0 {
+		h := queue[0]
+		queue = queue[1:]
+
+		if visited[h] {
+			continue
+		}
+		visited[h] = true
+
+		if idx, ok := hashToIdx[h]; ok {
+			// Stop if we hit another merge (that's a different branch point)
+			if p.CommitGraph[idx].IsMerge {
+				continue
+			}
+			p.CommitGraph[idx].FromBranch = true
+			// Continue to parents
+			for _, parent := range p.CommitGraph[idx].Parents {
+				queue = append(queue, parent)
+			}
+		}
+	}
+}
+
+// LoadMoreCommits loads additional commits beyond what's already loaded
+func (p *Panel) LoadMoreCommits() {
+	if p.RepoRoot == "" || !p.GraphHasMore {
+		return
+	}
+
+	p.mu.RLock()
+	currentCount := len(p.CommitGraph)
+	p.mu.RUnlock()
+
+	// Get more commits, skipping what we already have
+	cmd := exec.Command("git", "log", "--format=%H|%h|%s|%an|%P", "--name-status",
+		"-n", "50", "--skip", fmt.Sprintf("%d", currentCount))
+	cmd.Dir = p.RepoRoot
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("THOCK SourceControl: git log (more) failed: %v", err)
+		return
+	}
+
+	newCommits := parseCommitLog(string(output))
+
+	p.mu.Lock()
+	p.CommitGraph = append(p.CommitGraph, newCommits...)
+	p.GraphHasMore = len(newCommits) >= 50
+	p.computeAncestry() // Recompute ancestry with new commits
+	p.mu.Unlock()
+
+	log.Printf("THOCK SourceControl: Loaded %d more commits, total: %d", len(newCommits), len(p.CommitGraph)+len(newCommits))
 }

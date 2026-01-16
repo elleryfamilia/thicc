@@ -2,6 +2,7 @@ package sourcecontrol
 
 import (
 	"fmt"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -34,6 +35,12 @@ var (
 	colorHeader     = tcell.Color33  // Blue for headers
 	colorButton     = tcell.Color45  // Cyan for buttons
 	colorButtonText = tcell.ColorBlack
+
+	// Commit graph colors
+	colorGraphMain   = tcell.Color45  // Cyan - commits on main line
+	colorGraphMerge  = tcell.Color205 // Pink/Magenta - merge commits
+	colorGraphBranch = tcell.Color214 // Yellow/Orange - commits from merged branches
+	colorGraphLine   = tcell.Color243 // Gray - vertical lines
 )
 
 // Spinner animation frames (braille dots)
@@ -52,12 +59,21 @@ func (p *Panel) Render(screen tcell.Screen) {
 	// Clear the region
 	p.clearRegion(screen)
 
-	// Draw content
+	// Calculate graph section height (30% of panel)
+	graphHeight := p.Region.Height * 30 / 100
+	if graphHeight < 5 {
+		graphHeight = 5
+	}
+
+	// Draw content (in top 60%)
 	y := p.drawHeader(screen)
 	y = p.drawUnstagedSection(screen, y)
 	y = p.drawStagedSection(screen, y)
 	y = p.drawCommitSection(screen, y)
 	_ = y // silence unused warning
+
+	// Draw commit graph (bottom 40%)
+	p.drawCommitGraph(screen, graphHeight)
 
 	// Draw border
 	p.drawBorder(screen)
@@ -130,9 +146,14 @@ func (p *Panel) drawUnstagedSection(screen tcell.Screen, startY int) int {
 	// Calculate bottom limit based on whether commit section is shown
 	// When staged files exist: need 9 rows for commit section (4 rows + borders + header + buttons)
 	// When no staged files: need 2 rows for buttons only
-	bottomLimit := p.Region.Height - 2
+	// Also reserve 40% at bottom for graph
+	graphHeight := p.Region.Height * 40 / 100
+	if graphHeight < 5 {
+		graphHeight = 5
+	}
+	bottomLimit := p.Region.Height - graphHeight - 2
 	if len(p.StagedFiles) > 0 {
-		bottomLimit = p.Region.Height - 9
+		bottomLimit = p.Region.Height - graphHeight - 9
 	}
 
 	// Files
@@ -190,9 +211,14 @@ func (p *Panel) drawStagedSection(screen tcell.Screen, startY int) int {
 	// Calculate bottom limit based on whether commit section is shown
 	// When staged files exist: need 9 rows for commit section (4 rows + borders + header + buttons)
 	// When no staged files: need 2 rows for buttons only
-	bottomLimit := p.Region.Height - 2
+	// Also reserve 40% at bottom for graph
+	graphHeight := p.Region.Height * 40 / 100
+	if graphHeight < 5 {
+		graphHeight = 5
+	}
+	bottomLimit := p.Region.Height - graphHeight - 2
 	if len(p.StagedFiles) > 0 {
-		bottomLimit = p.Region.Height - 9
+		bottomLimit = p.Region.Height - graphHeight - 9
 	}
 
 	// Files
@@ -246,16 +272,34 @@ func (p *Panel) drawFileEntry(screen tcell.Screen, y int, file FileStatus, isSel
 	p.drawTextAt(screen, x, y, statusTag, tagStyle)
 	x += len(statusTag) + 1
 
-	// Filename
-	name := file.Path
+	// Filename - show right-to-left so filename is visible, with filename bolded
 	maxWidth := p.Region.Width - x - 2
-	if len(name) > maxWidth && maxWidth > 3 {
-		name = name[:maxWidth-3] + "..."
+	path := file.Path
+
+	// Split into directory and filename
+	dir, filename := filepath.Split(path)
+
+	if len(path) > maxWidth && maxWidth > 3 {
+		// Truncate from the left (beginning), keeping the filename visible
+		path = "..." + path[len(path)-maxWidth+3:]
+		// Recalculate dir/filename for truncated path
+		dir, filename = filepath.Split(path)
 	}
+
 	if isSelected && p.Focus {
-		p.drawTextAt(screen, x, y, name, style)
+		// Selected: use selection style for both
+		if dir != "" {
+			p.drawTextAt(screen, x, y, dir, style)
+			x += len(dir)
+		}
+		p.drawTextAt(screen, x, y, filename, style.Bold(true))
 	} else {
-		p.drawTextAt(screen, x, y, name, config.DefStyle.Foreground(tcell.Color252))
+		// Not selected: dim dir, bold filename
+		if dir != "" {
+			p.drawTextAt(screen, x, y, dir, config.DefStyle.Foreground(tcell.Color243))
+			x += len(dir)
+		}
+		p.drawTextAt(screen, x, y, filename, config.DefStyle.Foreground(tcell.Color252).Bold(true))
 	}
 }
 
@@ -284,25 +328,31 @@ func (p *Panel) drawCommitSection(screen tcell.Screen, startY int) int {
 	// Check if commit section should be shown (has staged files)
 	commitEnabled := len(p.StagedFiles) > 0
 
+	// Calculate graph height to position commit section above it
+	graphHeight := p.Region.Height * 30 / 100
+	if graphHeight < 5 {
+		graphHeight = 5
+	}
+
 	// If no staged files, don't draw commit section at all
 	if !commitEnabled {
-		// Just draw buttons at bottom
-		y := p.Region.Height - 2
+		// Just draw buttons above graph section
+		y := p.Region.Height - graphHeight - 2
 		p.buttonsY = y
 		p.commitSectionY = -1 // Mark as not visible
 		p.drawButtons(screen, y)
 		return y + 1
 	}
 
-	// Position commit section at bottom of panel (4 rows + borders + header + buttons = 9)
-	y := p.Region.Height - 9
+	// Position commit section above graph (4 rows + borders + header + buttons = 9)
+	y := p.Region.Height - graphHeight - 9
 
 	// Track commit section Y for click detection
 	p.commitSectionY = y
 
 	// Section header with (c) hint
 	headerStyle := config.DefStyle.Foreground(colorHeader).Bold(true)
-	header := fmt.Sprintf(" %s Commit (c):", IconCommit)
+	header := fmt.Sprintf(" %s Commit:", IconCommit)
 	if p.Section == SectionCommitInput || p.Section == SectionCommitBtn || p.Section == SectionPushBtn || p.Section == SectionPullBtn {
 		header = "▸" + header[1:] // Active section indicator
 		headerStyle = headerStyle.Foreground(colorBorder) // Hot pink when active
@@ -420,17 +470,14 @@ func (p *Panel) drawButtons(screen tcell.Screen, y int) {
 	p.drawText(screen, x, y, pushBtn, pushStyle)
 	x += len(pushBtn) + 1
 
-	// Pull button - enabled when behind remote
-	pullEnabled := p.BehindCount > 0
-	pullStyle := config.DefStyle.Foreground(tcell.ColorGray)
+	// Pull button - always enabled (can pull anytime)
+	pullStyle := config.DefStyle.Foreground(colorModified).Bold(true) // Yellow for pull
 	if p.Section == SectionPullBtn && p.Focus {
 		// Focused button - hot pink background
 		pullStyle = config.DefStyle.Foreground(tcell.ColorBlack).Background(colorBorder)
-	} else if pullEnabled {
-		pullStyle = config.DefStyle.Foreground(colorModified).Bold(true) // Yellow for pull
 	}
 	pullBtn := "[⌥L]Pull"
-	if pullEnabled {
+	if p.BehindCount > 0 {
 		pullBtn = fmt.Sprintf("[⌥L]Pull(%d)", p.BehindCount)
 	}
 	p.drawText(screen, x, y, pullBtn, pullStyle)
@@ -719,4 +766,321 @@ func (p *Panel) drawSpinner(screen tcell.Screen) {
 	for i, r := range p.OperationInProgress + "..." {
 		screen.SetContent(x+2+i, y, r, nil, textStyle)
 	}
+}
+
+// drawCommitGraph draws the commit history graph at the bottom of the panel
+func (p *Panel) drawCommitGraph(screen tcell.Screen, graphHeight int) {
+	// Calculate starting Y position (bottom of panel minus graph height)
+	startY := p.Region.Height - graphHeight
+
+	// Track graph section Y for click detection
+	p.graphSectionY = startY
+	p.graphRowYs = make([]int, 0)
+	p.graphYToRow = make(map[int]int)
+
+	y := startY
+
+	// Draw "History" label left-aligned with divider line
+	dividerStyle := config.DefStyle.Foreground(tcell.ColorGray)
+	labelStyle := config.DefStyle.Foreground(colorHeader).Bold(true)
+
+	// Draw "History" label
+	p.drawText(screen, 1, y, " History ", labelStyle)
+
+	// Draw divider line after label
+	labelWidth := 9 // len(" History ")
+	dividerWidth := p.Region.Width - labelWidth - 3
+	if dividerWidth > 0 {
+		divider := strings.Repeat("─", dividerWidth)
+		p.drawText(screen, 1+labelWidth, y, divider, dividerStyle)
+	}
+	y++
+
+	// Empty state
+	if len(p.CommitGraph) == 0 {
+		emptyStyle := config.DefStyle.Foreground(tcell.ColorGray)
+		p.drawText(screen, 3, y, "No commits yet", emptyStyle)
+		return
+	}
+
+	// Build flattened list of rows (commits + expanded files)
+	// For expanded commits, message can take up to 3 lines
+	type graphRow struct {
+		isCommit    bool
+		commitIdx   int
+		fileIdx     int // Only valid if !isCommit
+		commitEntry *CommitEntry
+		file        *FileStatus
+	}
+	var rows []graphRow
+	for i := range p.CommitGraph {
+		commit := &p.CommitGraph[i]
+		rows = append(rows, graphRow{isCommit: true, commitIdx: i, commitEntry: commit})
+		if commit.Expanded {
+			for j := range commit.Files {
+				rows = append(rows, graphRow{isCommit: false, commitIdx: i, fileIdx: j, commitEntry: commit, file: &commit.Files[j]})
+			}
+		}
+	}
+
+	// Calculate how many screen lines each row takes
+	getRowHeight := func(row graphRow) int {
+		if row.isCommit && row.commitEntry.Expanded {
+			// Calculate wrapped lines for expanded commit
+			prefixWidth := 5
+			textWidth := p.Region.Width - prefixWidth - 2
+			if textWidth < 10 {
+				textWidth = 10
+			}
+			subject := row.commitEntry.Subject
+			lines := 1
+			for len(subject) > textWidth && lines < 3 {
+				lines++
+				subject = subject[textWidth:]
+			}
+			return lines
+		}
+		return 1
+	}
+
+	// Calculate visible area
+	visibleScreenLines := graphHeight - 2 // Minus divider and bottom border
+
+	// Clamp selection
+	if p.GraphSelected >= len(rows) {
+		p.GraphSelected = len(rows) - 1
+	}
+	if p.GraphSelected < 0 {
+		p.GraphSelected = 0
+	}
+	// Adjust scroll to keep selected visible
+	// Calculate screen line of selected row from top
+	selectedScreenLine := 0
+	for i := p.GraphTopLine; i < p.GraphSelected && i < len(rows); i++ {
+		selectedScreenLine += getRowHeight(rows[i])
+	}
+	selectedHeight := getRowHeight(rows[p.GraphSelected])
+
+	// Scroll up if selected is above view
+	for p.GraphSelected < p.GraphTopLine {
+		p.GraphTopLine--
+	}
+
+	// Scroll down if selected is below view
+	for selectedScreenLine+selectedHeight > visibleScreenLines && p.GraphTopLine < p.GraphSelected {
+		p.GraphTopLine++
+		selectedScreenLine -= getRowHeight(rows[p.GraphTopLine-1])
+	}
+
+	// Draw visible rows
+	for i := p.GraphTopLine; i < len(rows) && y < p.Region.Height-1; i++ {
+		row := rows[i]
+		isSelected := i == p.GraphSelected
+
+		// Track Y position for click detection (first line of this row)
+		p.graphRowYs = append(p.graphRowYs, y)
+
+		if row.isCommit {
+			linesUsed := p.drawGraphCommitRow(screen, y, row.commitEntry, isSelected)
+			// Map all Y positions used by this commit to this row index
+			for line := 0; line < linesUsed; line++ {
+				p.graphYToRow[y+line] = i
+			}
+			y += linesUsed
+		} else {
+			p.graphYToRow[y] = i
+			p.drawGraphFileRow(screen, y, row.file, isSelected)
+			y++
+		}
+	}
+}
+
+// drawGraphCommitRow draws a commit row in the graph
+// Returns the number of lines used (1 when collapsed, up to 3 when expanded)
+func (p *Panel) drawGraphCommitRow(screen tcell.Screen, y int, commit *CommitEntry, isSelected bool) int {
+	// Determine how many lines we'll use
+	maxLines := 1
+	if commit.Expanded {
+		maxLines = 3
+	}
+
+	// Calculate text area width (after graph prefix)
+	prefixWidth := 4 // "● ▾ " = 4 chars
+	textWidth := p.Region.Width - prefixWidth - 2
+
+	// Wrap the subject to multiple lines if expanded
+	var subjectLines []string
+	if commit.Expanded && len(commit.Subject) > textWidth {
+		// Wrap to multiple lines
+		remaining := commit.Subject
+		for len(remaining) > 0 && len(subjectLines) < maxLines {
+			if len(remaining) <= textWidth {
+				subjectLines = append(subjectLines, remaining)
+				break
+			}
+			// Find a good break point (prefer space)
+			breakAt := textWidth
+			for i := textWidth - 1; i > textWidth/2; i-- {
+				if remaining[i] == ' ' {
+					breakAt = i
+					break
+				}
+			}
+			subjectLines = append(subjectLines, remaining[:breakAt])
+			remaining = strings.TrimLeft(remaining[breakAt:], " ")
+		}
+		// If there's still more text, add ellipsis to last line
+		if len(remaining) > 0 && len(subjectLines) == maxLines {
+			lastIdx := len(subjectLines) - 1
+			if len(subjectLines[lastIdx]) > textWidth-3 {
+				subjectLines[lastIdx] = subjectLines[lastIdx][:textWidth-3] + "..."
+			} else {
+				subjectLines[lastIdx] = subjectLines[lastIdx] + "..."
+			}
+		}
+	} else {
+		// Single line, truncate if needed
+		subject := commit.Subject
+		if len(subject) > textWidth && textWidth > 3 {
+			subject = subject[:textWidth-3] + "..."
+		}
+		subjectLines = []string{subject}
+	}
+
+	linesUsed := len(subjectLines)
+
+	// Draw each line
+	for lineNum, lineText := range subjectLines {
+		currentY := y + lineNum
+
+		// Selection background for this line
+		style := config.DefStyle
+		if isSelected {
+			if p.Focus && p.Section == SectionCommitGraph {
+				style = config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite)
+			} else {
+				style = config.DefStyle.Background(tcell.Color236) // Dark gray
+			}
+			// Fill line with selection background
+			for x := 1; x < p.Region.Width-1; x++ {
+				screen.SetContent(p.Region.X+x, p.Region.Y+currentY, ' ', nil, style)
+			}
+		}
+
+		x := 1
+
+		// Commit dot (only on first line)
+		if lineNum == 0 {
+			// Commit dot with color based on type
+			var dotStyle tcell.Style
+			var dot string
+			if commit.IsMerge {
+				dotStyle = config.DefStyle.Foreground(colorGraphMerge)
+				dot = "◆"
+			} else if commit.FromBranch {
+				dotStyle = config.DefStyle.Foreground(colorGraphBranch)
+				dot = "●"
+			} else {
+				dotStyle = config.DefStyle.Foreground(colorGraphMain)
+				dot = "●"
+			}
+			if isSelected && p.Focus && p.Section == SectionCommitGraph {
+				dotStyle = style
+			}
+			p.drawTextAt(screen, x, currentY, dot, dotStyle)
+			x += 2 // dot + space
+
+			// Expansion indicator if has files
+			if len(commit.Files) > 0 {
+				indicator := "▸"
+				if commit.Expanded {
+					indicator = "▾"
+				}
+				indicatorStyle := config.DefStyle.Foreground(tcell.ColorGray)
+				if isSelected && p.Focus && p.Section == SectionCommitGraph {
+					indicatorStyle = style
+				}
+				p.drawTextAt(screen, x, currentY, indicator, indicatorStyle)
+				x += 2
+			}
+		} else {
+			// Continuation lines: just indent to align with first line's text
+			x = prefixWidth
+		}
+
+		// Draw the text for this line
+		subjectStyle := config.DefStyle.Foreground(tcell.Color252) // Light gray
+		if isSelected && p.Focus && p.Section == SectionCommitGraph {
+			subjectStyle = style
+		}
+		p.drawTextAt(screen, x, currentY, lineText, subjectStyle)
+	}
+
+	return linesUsed
+}
+
+// drawGraphFileRow draws a single file row under an expanded commit
+func (p *Panel) drawGraphFileRow(screen tcell.Screen, y int, file *FileStatus, isSelected bool) {
+	// Selection background
+	style := config.DefStyle
+	if isSelected {
+		if p.Focus && p.Section == SectionCommitGraph {
+			style = config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite)
+		} else {
+			style = config.DefStyle.Background(tcell.Color236) // Dark gray
+		}
+		// Fill line with selection background
+		for x := 1; x < p.Region.Width-1; x++ {
+			screen.SetContent(p.Region.X+x, p.Region.Y+y, ' ', nil, style)
+		}
+	}
+
+	x := 1
+
+	// Tree branch character
+	lineStyle := config.DefStyle.Foreground(colorGraphLine)
+	if isSelected && p.Focus && p.Section == SectionCommitGraph {
+		lineStyle = style
+	}
+	p.drawTextAt(screen, x, y, "└", lineStyle)
+	x += 2
+
+	// Status tag
+	statusTag, tagStyle := p.getStatusTag(file.Status)
+	if isSelected && p.Focus && p.Section == SectionCommitGraph {
+		tagStyle = style
+	}
+	p.drawTextAt(screen, x, y, statusTag, tagStyle)
+	x += len(statusTag) + 1
+
+	// File path - show right-to-left so filename is visible, with filename bolded
+	maxPath := p.Region.Width - x - 2
+	path := file.Path
+
+	// Split into directory and filename
+	dir, filename := filepath.Split(path)
+
+	if len(path) > maxPath && maxPath > 3 {
+		// Truncate from the left (beginning), keeping the filename visible
+		path = "..." + path[len(path)-maxPath+3:]
+		// Recalculate dir/filename for truncated path
+		dir, filename = filepath.Split(path)
+	}
+
+	// Draw directory part (not bold)
+	dirStyle := config.DefStyle.Foreground(tcell.Color243) // Dimmer gray for dir
+	if isSelected && p.Focus && p.Section == SectionCommitGraph {
+		dirStyle = style
+	}
+	if dir != "" {
+		p.drawTextAt(screen, x, y, dir, dirStyle)
+		x += len(dir)
+	}
+
+	// Draw filename part (bold)
+	filenameStyle := config.DefStyle.Foreground(tcell.Color252).Bold(true)
+	if isSelected && p.Focus && p.Section == SectionCommitGraph {
+		filenameStyle = style.Bold(true)
+	}
+	p.drawTextAt(screen, x, y, filename, filenameStyle)
 }

@@ -433,11 +433,20 @@ func TestMoveDown_FromPushBtn_ToPullBtn(t *testing.T) {
 	assert.Equal(t, SectionPullBtn, p.Section)
 }
 
-func TestMoveDown_AtPullBtn_StaysAtPullBtn(t *testing.T) {
+func TestMoveDown_AtPullBtn_MovesToCommitGraph(t *testing.T) {
 	p := &Panel{Section: SectionPullBtn}
 
 	p.MoveDown()
-	assert.Equal(t, SectionPullBtn, p.Section) // Can't go lower
+	assert.Equal(t, SectionCommitGraph, p.Section) // Moves to commit graph
+	assert.Equal(t, 0, p.GraphSelected)
+	assert.Equal(t, 0, p.GraphTopLine)
+}
+
+func TestMoveDown_AtCommitGraph_StaysAtCommitGraph(t *testing.T) {
+	p := &Panel{Section: SectionCommitGraph}
+
+	p.MoveDown()
+	assert.Equal(t, SectionCommitGraph, p.Section) // Can't go lower
 }
 
 // =============================================================================
@@ -469,7 +478,11 @@ func TestNextSection_CyclesThroughAllSections(t *testing.T) {
 	p.NextSection()
 	assert.Equal(t, SectionPullBtn, p.Section)
 
-	// PullBtn -> Unstaged (wraps around)
+	// PullBtn -> CommitGraph
+	p.NextSection()
+	assert.Equal(t, SectionCommitGraph, p.Section)
+
+	// CommitGraph -> Unstaged (wraps around)
 	p.NextSection()
 	assert.Equal(t, SectionUnstaged, p.Section)
 }

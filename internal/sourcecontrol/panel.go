@@ -21,6 +21,19 @@ type FileStatus struct {
 	Status string // M=modified, A=added, D=deleted, R=renamed, ?=untracked, U=conflict
 }
 
+// CommitEntry represents a commit in the graph
+type CommitEntry struct {
+	Hash       string
+	ShortHash  string
+	Subject    string
+	Author     string
+	Files      []FileStatus // Modified files in this commit
+	Expanded   bool         // Whether file list is shown
+	IsMerge    bool         // True if merge commit (has 2+ parents)
+	FromBranch bool         // True if commit came from a merged branch
+	Parents    []string     // Parent hashes for ancestry tracking
+}
+
 // Section represents which section of the panel is active
 type Section int
 
@@ -31,6 +44,7 @@ const (
 	SectionCommitBtn   // Commit button
 	SectionPushBtn     // Push button
 	SectionPullBtn     // Pull button
+	SectionCommitGraph // Commit history graph
 )
 
 // Panel is the Source Control panel for git operations
@@ -58,6 +72,12 @@ type Panel struct {
 	BranchSelected   int
 	BranchTopLine    int
 
+	// Commit graph state
+	CommitGraph   []CommitEntry
+	GraphSelected int  // Index of selected row in graph view (can be commit or file)
+	GraphTopLine  int  // Scroll offset for graph
+	GraphHasMore  bool // True if more commits available to load
+
 	// Operation progress state
 	OperationInProgress string // "Committing", "Pushing", "Pulling", or ""
 
@@ -76,10 +96,14 @@ type Panel struct {
 	buttonsY        int   // Y position of buttons row
 	unstagedFileYs  []int // Y positions of unstaged files
 	stagedFileYs    []int // Y positions of staged files
+	graphSectionY   int         // Y position of graph section
+	graphRowYs      []int       // Y positions of graph rows (first line of each)
+	graphYToRow     map[int]int // Maps Y position to logical row index (for multi-line commits)
 
 	// Callbacks
-	OnFileSelect func(path string, isStaged bool) // Called when user selects a file (for diff view)
-	OnRefresh    func()                           // Called when UI needs refresh
+	OnFileSelect   func(path string, isStaged bool)   // Called when user selects a file (for diff view)
+	OnCommitSelect func(commitHash string, path string) // Called when user selects a file in a commit
+	OnRefresh      func()                             // Called when UI needs refresh
 }
 
 // NewPanel creates a new Source Control panel
@@ -97,6 +121,7 @@ func NewPanel(x, y, w, h int, repoRoot string) *Panel {
 	go func() {
 		log.Println("THOCK SourceControl: Loading initial git status")
 		p.RefreshStatus()
+		p.RefreshCommitGraph()
 		if p.OnRefresh != nil {
 			p.OnRefresh()
 		}
@@ -159,6 +184,7 @@ func (p *Panel) StartPolling() {
 				return
 			case <-p.pollTicker.C:
 				p.RefreshStatus()
+				p.RefreshCommitGraph()
 				if p.OnRefresh != nil {
 					p.OnRefresh()
 				}
@@ -223,6 +249,9 @@ func (p *Panel) ensureSelectedVisible() {
 // MoveUp moves selection up
 func (p *Panel) MoveUp() {
 	switch p.Section {
+	case SectionCommitGraph:
+		// Move from graph to pull button
+		p.Section = SectionPullBtn
 	case SectionPullBtn:
 		p.Section = SectionPushBtn
 	case SectionPushBtn:
@@ -276,6 +305,11 @@ func (p *Panel) MoveDown() {
 	case SectionPushBtn:
 		p.Section = SectionPullBtn
 	case SectionPullBtn:
+		// Move to commit graph
+		p.Section = SectionCommitGraph
+		p.GraphSelected = 0
+		p.GraphTopLine = 0
+	case SectionCommitGraph:
 		// Already at bottom
 	}
 	p.ensureSelectedVisible()
@@ -295,10 +329,147 @@ func (p *Panel) NextSection() {
 	case SectionPushBtn:
 		p.Section = SectionPullBtn
 	case SectionPullBtn:
+		p.Section = SectionCommitGraph
+		p.GraphSelected = 0
+		p.GraphTopLine = 0
+	case SectionCommitGraph:
 		p.Section = SectionUnstaged
 	}
 	p.Selected = 0
 	p.TopLine = 0
+}
+
+// GraphMoveUp moves selection up within the graph section
+func (p *Panel) GraphMoveUp() {
+	if p.GraphSelected > 0 {
+		p.GraphSelected--
+	}
+}
+
+// GraphMoveDown moves selection down within the graph section
+func (p *Panel) GraphMoveDown() {
+	totalRows := p.getGraphTotalRows()
+	if p.GraphSelected < totalRows-1 {
+		p.GraphSelected++
+		// Check if we need to load more commits
+		if p.GraphSelected >= totalRows-5 && p.GraphHasMore {
+			go func() {
+				p.LoadMoreCommits()
+				if p.OnRefresh != nil {
+					p.OnRefresh()
+				}
+			}()
+		}
+	}
+}
+
+// getGraphTotalRows returns the total number of rows in the graph (commits + expanded files)
+func (p *Panel) getGraphTotalRows() int {
+	total := 0
+	for _, commit := range p.CommitGraph {
+		total++ // Commit row
+		if commit.Expanded {
+			total += len(commit.Files)
+		}
+	}
+	return total
+}
+
+// getGraphRowInfo returns info about what's at the given row index
+// Returns (isCommit, commitIdx, fileIdx) - fileIdx is -1 for commit rows
+func (p *Panel) getGraphRowInfo(rowIdx int) (isCommit bool, commitIdx int, fileIdx int) {
+	currentRow := 0
+	for i, commit := range p.CommitGraph {
+		if currentRow == rowIdx {
+			return true, i, -1
+		}
+		currentRow++
+		if commit.Expanded {
+			for j := range commit.Files {
+				if currentRow == rowIdx {
+					return false, i, j
+				}
+				currentRow++
+			}
+		}
+	}
+	return false, -1, -1
+}
+
+// handleGraphEnter handles Enter key in the graph section
+func (p *Panel) handleGraphEnter() {
+	isCommit, commitIdx, fileIdx := p.getGraphRowInfo(p.GraphSelected)
+	log.Printf("THOCK SourceControl: handleGraphEnter - isCommit=%v, commitIdx=%d, fileIdx=%d, GraphSelected=%d",
+		isCommit, commitIdx, fileIdx, p.GraphSelected)
+
+	if isCommit && commitIdx >= 0 && commitIdx < len(p.CommitGraph) {
+		// Toggle expanded state for commits
+		p.CommitGraph[commitIdx].Expanded = !p.CommitGraph[commitIdx].Expanded
+		log.Printf("THOCK SourceControl: Toggled expand for commit %d, now expanded=%v",
+			commitIdx, p.CommitGraph[commitIdx].Expanded)
+		// Trigger refresh so Y-to-row map gets updated
+		if p.OnRefresh != nil {
+			p.OnRefresh()
+		}
+	} else if !isCommit && commitIdx >= 0 && fileIdx >= 0 {
+		// Trigger diff view for this file in this commit
+		commit := &p.CommitGraph[commitIdx]
+		if fileIdx < len(commit.Files) {
+			file := &commit.Files[fileIdx]
+			log.Printf("THOCK SourceControl: File selected - hash=%s, path=%s", commit.Hash, file.Path)
+			if p.OnCommitSelect != nil {
+				p.OnCommitSelect(commit.Hash, file.Path)
+			} else {
+				log.Printf("THOCK SourceControl: OnCommitSelect callback is nil!")
+			}
+		}
+	}
+}
+
+// handleGraphExpand expands the selected commit (right arrow)
+func (p *Panel) handleGraphExpand() {
+	isCommit, commitIdx, _ := p.getGraphRowInfo(p.GraphSelected)
+
+	if isCommit && commitIdx >= 0 && commitIdx < len(p.CommitGraph) {
+		if !p.CommitGraph[commitIdx].Expanded {
+			p.CommitGraph[commitIdx].Expanded = true
+			// Trigger refresh so Y-to-row map gets updated
+			if p.OnRefresh != nil {
+				p.OnRefresh()
+			}
+		}
+	}
+}
+
+// handleGraphCollapse collapses the selected commit (left arrow)
+func (p *Panel) handleGraphCollapse() {
+	isCommit, commitIdx, _ := p.getGraphRowInfo(p.GraphSelected)
+
+	if isCommit && commitIdx >= 0 && commitIdx < len(p.CommitGraph) {
+		if p.CommitGraph[commitIdx].Expanded {
+			p.CommitGraph[commitIdx].Expanded = false
+			// Trigger refresh so Y-to-row map gets updated
+			if p.OnRefresh != nil {
+				p.OnRefresh()
+			}
+		}
+	} else if !isCommit && commitIdx >= 0 {
+		// If on a file row, collapse the parent commit and move selection to it
+		p.CommitGraph[commitIdx].Expanded = false
+		// Find the row index of the parent commit
+		newRowIdx := 0
+		for i := 0; i < commitIdx; i++ {
+			newRowIdx++ // commit row
+			if p.CommitGraph[i].Expanded {
+				newRowIdx += len(p.CommitGraph[i].Files)
+			}
+		}
+		p.GraphSelected = newRowIdx
+		// Trigger refresh so Y-to-row map gets updated
+		if p.OnRefresh != nil {
+			p.OnRefresh()
+		}
+	}
 }
 
 // TriggerFileSelect triggers the OnFileSelect callback for the selected file
@@ -370,6 +541,7 @@ func (p *Panel) DoCommit() {
 		p.mu.Unlock()
 
 		p.RefreshStatus()
+		p.RefreshCommitGraph()
 		if p.OnRefresh != nil {
 			p.OnRefresh()
 		}
@@ -399,6 +571,7 @@ func (p *Panel) DoPush() {
 		p.mu.Unlock()
 
 		p.RefreshStatus()
+		p.RefreshCommitGraph()
 		if p.OnRefresh != nil {
 			p.OnRefresh()
 		}
@@ -553,6 +726,7 @@ func (p *Panel) DoPull() {
 		p.mu.Unlock()
 
 		p.RefreshStatus()
+		p.RefreshCommitGraph()
 		if p.OnRefresh != nil {
 			p.OnRefresh()
 		}
@@ -600,6 +774,7 @@ func (p *Panel) SwitchToSelectedBranch() {
 		log.Printf("THOCK SourceControl: Switched to branch: %s", branchName)
 		p.HideBranchSwitcher()
 		p.RefreshStatus()
+		p.RefreshCommitGraph()
 		if p.OnRefresh != nil {
 			p.OnRefresh()
 		}

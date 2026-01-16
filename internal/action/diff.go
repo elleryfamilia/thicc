@@ -281,6 +281,89 @@ func getRelativeGitPath(absPath string) string {
 	return relPath
 }
 
+// ShowCommitDiff shows the diff for a file in a specific commit
+// The commit hash and file path are used to get the diff for that specific change.
+// If filePath is empty, shows the full commit diff (all files).
+// repoRoot is the path to the git repository root.
+func ShowCommitDiff(commitHash, filePath, repoRoot string) (*buffer.Buffer, bool) {
+	log.Printf("THICC Diff: ShowCommitDiff called for '%s' in commit %s (repo: %s)", filePath, commitHash, repoRoot)
+
+	// Get current pane
+	curPane := MainTab().CurPane()
+	if curPane == nil {
+		log.Println("THICC Diff: No current pane")
+		return nil, false
+	}
+
+	// Use provided repo root
+	gitRoot := repoRoot
+
+	// Run git show to get the diff
+	var cmd *exec.Cmd
+	if filePath == "" {
+		// Show full commit diff (all files)
+		cmd = exec.Command("git", "show", "--no-color", "--stat", "--patch", commitHash)
+	} else {
+		// Show diff for specific file
+		cmd = exec.Command("git", "show", "--no-color", commitHash, "--", filePath)
+	}
+	cmd.Dir = gitRoot
+	output, err := cmd.Output()
+	if err != nil {
+		log.Printf("THICC Diff: git show failed: %v", err)
+		return nil, false
+	}
+
+	diffOutput := string(output)
+	if diffOutput == "" {
+		diffOutput = "No diff available for this commit"
+	}
+	log.Printf("THICC Diff: Got commit diff output (%d bytes)", len(diffOutput))
+
+	// Parse the diff to extract clean code and line metadata
+	cleanContent, lineTypes := parseDiffContent(diffOutput)
+
+	// Detect file type from extension for syntax highlighting
+	var fileType string
+	if filePath != "" {
+		ext := filepath.Ext(filePath)
+		fileType = extToFileType(ext)
+		log.Printf("THICC Diff: Detected filetype '%s' from extension '%s'", fileType, ext)
+	}
+
+	// Create read-only buffer with clean content
+	shortHash := commitHash
+	if len(shortHash) > 7 {
+		shortHash = shortHash[:7]
+	}
+	var bufName string
+	if filePath == "" {
+		bufName = "commit " + shortHash
+	} else {
+		baseName := filepath.Base(filePath)
+		bufName = baseName + " [" + shortHash + "]"
+	}
+	diffBuf := buffer.NewBufferFromString(cleanContent, bufName, buffer.BTHelp)
+	if diffBuf == nil {
+		log.Println("THICC Diff: Failed to create buffer")
+		return nil, false
+	}
+
+	// Store the diff line metadata for gutter rendering
+	diffBuf.UnifiedDiffLines = lineTypes
+
+	// Set filetype for proper syntax highlighting of the actual code
+	if fileType != "" {
+		diffBuf.SetOptionNative("filetype", fileType)
+	}
+
+	// Open in current pane
+	curPane.OpenBuffer(diffBuf)
+
+	log.Printf("THICC Diff: Successfully opened commit diff view for '%s' at %s", filePath, shortHash)
+	return diffBuf, true
+}
+
 // CloseDiffView closes the diff view (for compatibility)
 func (h *BufPane) CloseDiffView() bool {
 	// Clear sync scroll peer if any

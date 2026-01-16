@@ -2463,6 +2463,12 @@ func (lm *LayoutManager) initSourceControl() {
 		lm.openFileForDiff(path)
 	}
 
+	lm.SourceControl.OnCommitSelect = func(commitHash string, path string) {
+		log.Printf("THICC: Source Control commit file selected: %s in commit %s", path, commitHash)
+		// Open the commit diff in the editor
+		lm.openCommitDiff(commitHash, path)
+	}
+
 	lm.SourceControl.OnRefresh = func() {
 		lm.triggerRedraw()
 	}
@@ -2501,6 +2507,35 @@ func (lm *LayoutManager) openFileForDiff(path string) {
 	}
 
 	// Keep focus on SC so user can navigate through files
+	lm.triggerRedraw()
+}
+
+// openCommitDiff opens the diff for a file in a specific commit
+func (lm *LayoutManager) openCommitDiff(commitHash string, path string) {
+	log.Printf("THICC: openCommitDiff called with commit: %s, path: %s", commitHash, path)
+
+	// Hide terminal for cleaner diff view (only SC + editor visible)
+	lm.TerminalVisible = false
+
+	// Show editor if hidden
+	lm.EditorVisible = true
+	lm.updatePanelRegions()
+
+	// Show commit diff in editor
+	diffBuf, success := action.ShowCommitDiff(commitHash, path, lm.Root)
+	log.Printf("THICC: ShowCommitDiff returned: %v", success)
+
+	// Update the tab bar with the diff buffer
+	if success && diffBuf != nil && lm.TabBar != nil {
+		// Update the current tab's buffer reference and name
+		if lm.TabBar.ActiveIndex >= 0 && lm.TabBar.ActiveIndex < len(lm.TabBar.Tabs) {
+			lm.TabBar.Tabs[lm.TabBar.ActiveIndex].Buffer = diffBuf
+			lm.TabBar.Tabs[lm.TabBar.ActiveIndex].Name = truncateName(diffBuf.GetName())
+			lm.TabBar.Tabs[lm.TabBar.ActiveIndex].Loaded = true
+		}
+	}
+
+	// Keep focus on SC so user can navigate through commits
 	lm.triggerRedraw()
 }
 

@@ -51,9 +51,7 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 			}
 			return true
 		case 'l', 'L':
-			if p.CanPull() {
-				p.DoPull()
-			}
+			p.DoPull()
 			return true
 		}
 	}
@@ -77,6 +75,11 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 	}
 	if p.Section == SectionPullBtn {
 		return p.handlePullBtnKey(ev)
+	}
+
+	// Handle commit graph section
+	if p.Section == SectionCommitGraph {
+		return p.handleGraphKey(ev)
 	}
 
 	switch ev.Key() {
@@ -122,10 +125,6 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 			// Unstage selected file
 			p.unstageSelected()
 			return true
-		case 'c':
-			// Focus commit message input
-			p.Section = SectionCommitInput
-			return true
 		case 'p':
 			// Push (only if enabled)
 			if p.CanPush() {
@@ -133,10 +132,8 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 			}
 			return true
 		case 'l':
-			// Pull (only if enabled)
-			if p.CanPull() {
-				p.DoPull()
-			}
+			// Pull
+			p.DoPull()
 			return true
 		case 'b':
 			// Open branch switcher
@@ -145,6 +142,7 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 		case 'r':
 			// Refresh
 			p.RefreshStatus()
+			p.RefreshCommitGraph()
 			if p.OnRefresh != nil {
 				p.OnRefresh()
 			}
@@ -301,15 +299,57 @@ func (p *Panel) handlePullBtnKey(ev *tcell.EventKey) bool {
 		p.NextSection()
 		return true
 	case tcell.KeyEnter:
-		// Pull (only if enabled)
-		if p.CanPull() {
-			p.DoPull()
-		}
+		// Pull
+		p.DoPull()
 		return true
 	case tcell.KeyEsc:
 		p.Section = SectionUnstaged
 		p.Selected = 0
 		return true
+	}
+	return false
+}
+
+// handleGraphKey handles keyboard events when commit graph section is focused
+func (p *Panel) handleGraphKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyUp:
+		p.GraphMoveUp()
+		return true
+	case tcell.KeyDown:
+		p.GraphMoveDown()
+		return true
+	case tcell.KeyRight:
+		p.handleGraphExpand()
+		return true
+	case tcell.KeyLeft:
+		p.handleGraphCollapse()
+		return true
+	case tcell.KeyTab:
+		p.NextSection()
+		return true
+	case tcell.KeyEnter:
+		p.handleGraphEnter()
+		return true
+	case tcell.KeyEsc:
+		p.Section = SectionUnstaged
+		p.Selected = 0
+		return true
+	default:
+		switch ev.Rune() {
+		case 'k':
+			p.GraphMoveUp()
+			return true
+		case 'j':
+			p.GraphMoveDown()
+			return true
+		case 'l':
+			p.handleGraphExpand()
+			return true
+		case 'h':
+			p.handleGraphCollapse()
+			return true
+		}
 	}
 	return false
 }
@@ -420,23 +460,44 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 	}
 
 	// Handle mouse wheel scrolling
+	localY := y - p.Region.Y
+
 	if ev.Buttons() == tcell.WheelUp {
-		p.MoveUp()
-		p.MoveUp()
-		p.MoveUp()
+		// Check if scrolling in graph section
+		if localY >= p.graphSectionY {
+			p.GraphMoveUp()
+			p.GraphMoveUp()
+			p.GraphMoveUp()
+		} else {
+			p.MoveUp()
+			p.MoveUp()
+			p.MoveUp()
+		}
+		if p.OnRefresh != nil {
+			p.OnRefresh()
+		}
 		return true
 	}
 
 	if ev.Buttons() == tcell.WheelDown {
-		p.MoveDown()
-		p.MoveDown()
-		p.MoveDown()
+		// Check if scrolling in graph section
+		if localY >= p.graphSectionY {
+			p.GraphMoveDown()
+			p.GraphMoveDown()
+			p.GraphMoveDown()
+		} else {
+			p.MoveDown()
+			p.MoveDown()
+			p.MoveDown()
+		}
+		if p.OnRefresh != nil {
+			p.OnRefresh()
+		}
 		return true
 	}
 
 	// Handle left click
 	if ev.Buttons() == tcell.Button1 {
-		localY := y - p.Region.Y
 		localX := x - p.Region.X
 
 		// Check if clicking on buttons row
@@ -505,6 +566,21 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 			p.Section = SectionStaged
 			p.Selected = 0
 			log.Printf("THOCK SourceControl: Focused staged section")
+			return true
+		}
+
+		// Check if clicking in graph section
+		if localY >= p.graphSectionY {
+			p.Section = SectionCommitGraph
+			// Find which row was clicked using the Y-to-row map
+			if rowIdx, ok := p.graphYToRow[localY]; ok {
+				p.GraphSelected = rowIdx
+				log.Printf("THOCK SourceControl: Selected graph row %d", p.GraphSelected)
+				// Trigger enter action (expand commit or show diff)
+				p.handleGraphEnter()
+				return true
+			}
+			log.Printf("THOCK SourceControl: Focused graph section")
 			return true
 		}
 
