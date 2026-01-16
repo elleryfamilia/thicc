@@ -1306,7 +1306,7 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 
 	// Log all key events for debugging
 	if ev, ok := event.(*tcell.EventKey); ok {
-		log.Printf("THOCK HandleEvent: Key=%v, Rune=%q (0x%x), Mod=%v, ActivePanel=%d",
+		log.Printf("THICC HandleEvent: Key=%v, Rune=%q (0x%x), Mod=%v, ActivePanel=%d",
 			ev.Key(), ev.Rune(), ev.Rune(), ev.Modifiers(), lm.ActivePanel)
 
 		// Ctrl+Q should always quit, regardless of which panel is focused
@@ -1645,23 +1645,29 @@ func (lm *LayoutManager) setActivePanel(panel int) {
 
 // cycleFocus cycles to the next panel
 func (lm *LayoutManager) cycleFocus() {
-	log.Printf("THOCK cycleFocus: Starting from panel %d", lm.ActivePanel)
+	log.Printf("THICC cycleFocus: Starting from panel %d", lm.ActivePanel)
 	// Cycle through available panels (0-4: tree, editor, term, term2, term3)
 	for i := 0; i < 5; i++ {
 		nextPanel := (lm.ActivePanel + 1) % 5
-		log.Printf("THOCK cycleFocus: Trying panel %d (iteration %d)", nextPanel, i)
+		log.Printf("THICC cycleFocus: Trying panel %d (iteration %d)", nextPanel, i)
 
 		// Check if this panel exists and is visible
 		switch nextPanel {
 		case 0:
+			// Panel 0 is either file browser OR source control (mutually exclusive)
+			if lm.SourceControlVisible && lm.SourceControl != nil {
+				log.Println("THICC cycleFocus: SourceControl visible, setting active")
+				lm.setActivePanel(nextPanel)
+				return
+			}
 			if lm.TreeVisible && lm.FileBrowser != nil {
-				log.Println("THOCK cycleFocus: FileBrowser exists, setting active")
+				log.Println("THICC cycleFocus: FileBrowser exists, setting active")
 				lm.setActivePanel(nextPanel)
 				return
 			}
 		case 1:
 			if lm.EditorVisible {
-				log.Println("THOCK cycleFocus: Editor visible, setting active")
+				log.Println("THICC cycleFocus: Editor visible, setting active")
 				lm.setActivePanel(nextPanel)
 				return
 			}
@@ -1671,7 +1677,7 @@ func (lm *LayoutManager) cycleFocus() {
 				hasTerminal := lm.Terminal != nil
 				lm.mu.RUnlock()
 				if hasTerminal {
-					log.Println("THOCK cycleFocus: Terminal exists, setting active")
+					log.Println("THICC cycleFocus: Terminal exists, setting active")
 					lm.setActivePanel(nextPanel)
 					return
 				}
@@ -1682,7 +1688,7 @@ func (lm *LayoutManager) cycleFocus() {
 				hasTerminal2 := lm.Terminal2 != nil
 				lm.mu.RUnlock()
 				if hasTerminal2 {
-					log.Println("THOCK cycleFocus: Terminal2 exists, setting active")
+					log.Println("THICC cycleFocus: Terminal2 exists, setting active")
 					lm.setActivePanel(nextPanel)
 					return
 				}
@@ -1693,7 +1699,7 @@ func (lm *LayoutManager) cycleFocus() {
 				hasTerminal3 := lm.Terminal3 != nil
 				lm.mu.RUnlock()
 				if hasTerminal3 {
-					log.Println("THOCK cycleFocus: Terminal3 exists, setting active")
+					log.Println("THICC cycleFocus: Terminal3 exists, setting active")
 					lm.setActivePanel(nextPanel)
 					return
 				}
@@ -1702,7 +1708,7 @@ func (lm *LayoutManager) cycleFocus() {
 		// Panel doesn't exist or isn't visible, update ActivePanel to continue cycling
 		lm.ActivePanel = nextPanel
 	}
-	log.Println("THOCK cycleFocus: Completed loop without finding panel")
+	log.Println("THICC cycleFocus: Completed loop without finding panel")
 }
 
 // previewFileInEditor opens a file in the editor panel WITHOUT switching focus
@@ -3070,8 +3076,9 @@ func (lm *LayoutManager) ConstrainEditorRegion() {
 	editorWidth := lm.getEditorWidth()
 
 	// Always leave room for border on all sides (prevents content "jumping" on focus change)
-	const borderOffset = 1
-	const tabBarHeight = 2 // Space for tab bar (1) + separator line (1)
+	const paneNavBarHeight = 1 // Pane nav bar at Y=0
+	const borderOffset = 1     // Top border at Y=1
+	const tabBarHeight = 2     // Tab bar (1) + separator line (1) at Y=2-3
 
 	// Adjust all BufPanes in the tab to use middle region
 	for _, pane := range tab.Panes {
@@ -3082,8 +3089,8 @@ func (lm *LayoutManager) ConstrainEditorRegion() {
 				// Constrain to middle region (always with border space)
 				view.X = editorX + borderOffset
 				view.Width = editorWidth - (borderOffset * 2)
-				view.Y = borderOffset + tabBarHeight // Leave room for tab bar
-				view.Height = lm.ScreenH - (borderOffset * 2) - tabBarHeight
+				view.Y = paneNavBarHeight + borderOffset + tabBarHeight // Leave room for pane nav bar, border, tab bar
+				view.Height = lm.ScreenH - view.Y - borderOffset        // Subtract top offset and bottom border
 			}
 		}
 	}

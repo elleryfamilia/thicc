@@ -78,7 +78,7 @@ func NewTree(root string) *Tree {
 
 // Scan recursively scans a directory and builds the tree
 func (t *Tree) Scan(dir string) error {
-	log.Printf("THOCK Tree: Scan() called for root: %s", dir)
+	log.Printf("THICC Tree: Scan() called for root: %s", dir)
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -86,10 +86,10 @@ func (t *Tree) Scan(dir string) error {
 	t.Nodes = make([]*TreeNode, 0)
 	t.Index = make(map[string]*TreeNode)
 
-	log.Printf("THOCK Tree: Starting scanDir from root")
+	log.Printf("THICC Tree: Starting scanDir from root")
 	// Scan from root
 	err := t.scanDir(dir, 0, -1)
-	log.Printf("THOCK Tree: Scan() complete, err=%v, total nodes=%d", err, len(t.Nodes))
+	log.Printf("THICC Tree: Scan() complete, err=%v, total nodes=%d", err, len(t.Nodes))
 	return err
 }
 
@@ -281,20 +281,20 @@ var SkipDirs = map[string]bool{
 
 // scanDir recursively scans a directory (must be called with lock held)
 func (t *Tree) scanDir(dir string, indent int, parentIdx int) error {
-	// THOCK: Reduce max depth to 2 for safety
+	// THICC: Reduce max depth to 2 for safety
 	if indent > 2 {
 		return nil
 	}
 
-	log.Printf("THOCK Tree: Scanning dir=%s indent=%d", dir, indent)
+	log.Printf("THICC Tree: Scanning dir=%s indent=%d", dir, indent)
 
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		log.Printf("THOCK Tree: ReadDir failed for %s: %v", dir, err)
+		log.Printf("THICC Tree: ReadDir failed for %s: %v", dir, err)
 		return err
 	}
 
-	log.Printf("THOCK Tree: ReadDir succeeded for %s, found %d entries", dir, len(entries))
+	log.Printf("THICC Tree: ReadDir succeeded for %s, found %d entries", dir, len(entries))
 
 	// Filter and sort entries
 	var nodes []*TreeNode
@@ -309,19 +309,19 @@ func (t *Tree) scanDir(dir string, indent int, parentIdx int) error {
 
 		// Skip common problematic directories
 		if entry.IsDir() && SkipDirs[name] {
-			log.Printf("THOCK Tree: Skipping skipDir: %s", name)
+			log.Printf("THICC Tree: Skipping skipDir: %s", name)
 			continue
 		}
 
-		// THOCK: Safety limit - max 100 files per directory
+		// THICC: Safety limit - max 100 files per directory
 		if i > 100 {
-			log.Printf("THOCK Tree: Hit 100 file limit in %s, stopping", dir)
+			log.Printf("THICC Tree: Hit 100 file limit in %s, stopping", dir)
 			break
 		}
 
 		path := filepath.Join(dir, name)
 
-		// THOCK: Skip git ignore checking for now (can be slow)
+		// THICC: Skip git ignore checking for now (can be slow)
 		isHidden := false
 
 		// Get file info
@@ -345,7 +345,7 @@ func (t *Tree) scanDir(dir string, indent int, parentIdx int) error {
 		nodes = append(nodes, node)
 	}
 
-	log.Printf("THOCK Tree: Sorting %d nodes from %s", len(nodes), dir)
+	log.Printf("THICC Tree: Sorting %d nodes from %s", len(nodes), dir)
 	// Sort nodes
 	t.sortNodes(nodes)
 
@@ -357,12 +357,12 @@ func (t *Tree) scanDir(dir string, indent int, parentIdx int) error {
 
 		// If directory is expanded, scan children
 		if node.IsDir && node.Expanded {
-			log.Printf("THOCK Tree: Recursing into expanded dir: %s", node.Path)
+			log.Printf("THICC Tree: Recursing into expanded dir: %s", node.Path)
 			t.scanDir(node.Path, indent+1, idx)
 		}
 	}
 
-	log.Printf("THOCK Tree: Completed scanning dir=%s, total nodes now=%d", dir, len(t.Nodes))
+	log.Printf("THICC Tree: Completed scanning dir=%s, total nodes now=%d", dir, len(t.Nodes))
 	return nil
 }
 
@@ -380,7 +380,7 @@ func (t *Tree) Expand(node *TreeNode) error {
 		return nil
 	}
 
-	log.Printf("THOCK Tree: Expanding directory: %s", node.Path)
+	log.Printf("THICC Tree: Expanding directory: %s", node.Path)
 
 	// Mark path as expanded in persistent state
 	t.ExpandedPaths[node.Path] = true
@@ -405,7 +405,7 @@ func (t *Tree) Collapse(node *TreeNode) {
 		return
 	}
 
-	log.Printf("THOCK Tree: Collapsing directory: %s", node.Path)
+	log.Printf("THICC Tree: Collapsing directory: %s", node.Path)
 
 	// Remove from expanded paths
 	delete(t.ExpandedPaths, node.Path)
@@ -433,7 +433,7 @@ func (t *Tree) Toggle(node *TreeNode) error {
 
 // Refresh rescans the tree preserving state
 func (t *Tree) Refresh() error {
-	log.Println("THOCK Tree: Refresh() starting")
+	log.Println("THICC Tree: Refresh() starting")
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
@@ -447,14 +447,14 @@ func (t *Tree) Refresh() error {
 	t.Nodes = make([]*TreeNode, 0)
 	t.Index = make(map[string]*TreeNode)
 
-	log.Println("THOCK Tree: Refresh() calling scanDir")
+	log.Println("THICC Tree: Refresh() calling scanDir")
 	err := t.scanDir(t.Root, 0, -1)
 	if err != nil {
-		log.Printf("THOCK Tree: Refresh() scanDir failed: %v", err)
+		log.Printf("THICC Tree: Refresh() scanDir failed: %v", err)
 		return err
 	}
 
-	log.Printf("THOCK Tree: Refresh() complete, %d nodes loaded", len(t.Nodes))
+	log.Printf("THICC Tree: Refresh() complete, %d nodes loaded", len(t.Nodes))
 
 	// Restore selection
 	if selectedPath != "" {

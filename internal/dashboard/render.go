@@ -163,7 +163,7 @@ func (d *Dashboard) drawMarshmallow(screen tcell.Screen) {
 	}
 }
 
-// drawLogo renders the THOCK title banner above the menu
+// drawLogo renders the THICC title banner above the menu
 func (d *Dashboard) drawLogo(screen tcell.Screen) {
 	// Center logo above menu panel
 	logoX := d.menuRegion.X + (d.menuRegion.Width-ThiccLogoWidth)/2

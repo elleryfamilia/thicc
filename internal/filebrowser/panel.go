@@ -42,13 +42,13 @@ func NewPanel(x, y, w, h int, root string) *Panel {
 
 	// Initial scan in background with safeguards (depth limit, skip list)
 	go func() {
-		log.Println("THOCK FileBrowser: Starting tree refresh with safeguards")
+		log.Println("THICC FileBrowser: Starting tree refresh with safeguards")
 		err := p.Tree.Refresh()
 		if err != nil {
-			log.Printf("THOCK FileBrowser: Refresh failed: %v", err)
+			log.Printf("THICC FileBrowser: Refresh failed: %v", err)
 		} else {
 			atomic.StoreInt32(&p.ready, 1)
-			log.Printf("THOCK FileBrowser: Tree refresh complete, loaded %d nodes", len(p.Tree.GetNodes()))
+			log.Printf("THICC FileBrowser: Tree refresh complete, loaded %d nodes", len(p.Tree.GetNodes()))
 
 			// Enable file system watching
 			p.Tree.SetOnRefresh(func() {
@@ -58,12 +58,12 @@ func NewPanel(x, y, w, h int, root string) *Panel {
 				}
 			})
 			if err := p.Tree.EnableWatching(); err != nil {
-				log.Printf("THOCK FileBrowser: Failed to enable watching: %v", err)
+				log.Printf("THICC FileBrowser: Failed to enable watching: %v", err)
 			}
 
 			// Trigger screen refresh if callback is set
 			if p.OnTreeReady != nil {
-				log.Println("THOCK FileBrowser: Calling OnTreeReady callback")
+				log.Println("THICC FileBrowser: Calling OnTreeReady callback")
 				p.OnTreeReady()
 			}
 		}
@@ -132,35 +132,35 @@ func (p *Panel) Close() {
 
 // SelectFile refreshes the tree and selects the given file
 func (p *Panel) SelectFile(path string) {
-	log.Printf("THOCK FileBrowser: SelectFile called for: %s", path)
+	log.Printf("THICC FileBrowser: SelectFile called for: %s", path)
 
 	// Make path absolute if it isn't already
 	absPath, err := filepath.Abs(path)
 	if err != nil {
-		log.Printf("THOCK FileBrowser: Error getting absolute path: %v", err)
+		log.Printf("THICC FileBrowser: Error getting absolute path: %v", err)
 		absPath = path
 	}
 
 	// Expand parent directory to make sure file is visible
 	dir := filepath.Dir(absPath)
 	if dir != p.Tree.Root {
-		log.Printf("THOCK FileBrowser: Expanding parent dir: %s", dir)
+		log.Printf("THICC FileBrowser: Expanding parent dir: %s", dir)
 		p.Tree.ExpandedPaths[dir] = true
 	}
 
 	// Refresh to pick up new file
-	log.Println("THOCK FileBrowser: Refreshing tree")
+	log.Println("THICC FileBrowser: Refreshing tree")
 	p.Tree.Refresh()
 
 	// Select the file
 	if p.Tree.SelectPath(absPath) {
-		log.Printf("THOCK FileBrowser: Selected file at index %d", p.Tree.SelectedIdx)
+		log.Printf("THICC FileBrowser: Selected file at index %d", p.Tree.SelectedIdx)
 		// Update panel's Selected to match tree's SelectedIdx
 		p.Selected = p.Tree.SelectedIdx
 		// Ensure visible
 		p.ensureSelectedVisible()
 	} else {
-		log.Printf("THOCK FileBrowser: Could not select file: %s", absPath)
+		log.Printf("THICC FileBrowser: Could not select file: %s", absPath)
 	}
 }
 
@@ -196,22 +196,22 @@ func (p *Panel) GetSelectedNode() *filemanager.TreeNode {
 func (p *Panel) DeleteSelected() {
 	node := p.GetSelectedNode()
 	if node == nil {
-		log.Println("THOCK FileBrowser: DeleteSelected - no node selected")
+		log.Println("THICC FileBrowser: DeleteSelected - no node selected")
 		return
 	}
 
 	// Don't allow deleting the root
 	if node.Path == p.Tree.Root {
-		log.Println("THOCK FileBrowser: DeleteSelected - cannot delete root")
+		log.Println("THICC FileBrowser: DeleteSelected - cannot delete root")
 		return
 	}
 
-	log.Printf("THOCK FileBrowser: DeleteSelected - requesting delete for: %s (isDir=%v)", node.Path, node.IsDir)
+	log.Printf("THICC FileBrowser: DeleteSelected - requesting delete for: %s (isDir=%v)", node.Path, node.IsDir)
 
 	if p.OnDeleteRequest != nil {
 		p.OnDeleteRequest(node.Path, node.IsDir, func(confirmed bool) {
 			if confirmed {
-				log.Printf("THOCK FileBrowser: Delete confirmed for: %s", node.Path)
+				log.Printf("THICC FileBrowser: Delete confirmed for: %s", node.Path)
 				// Adjust selection before refresh (move up if we're at the last item)
 				nodes := p.Tree.GetNodes()
 				if p.Selected >= len(nodes)-1 && p.Selected > 0 {
@@ -219,7 +219,7 @@ func (p *Panel) DeleteSelected() {
 				}
 				p.Tree.Refresh()
 			} else {
-				log.Println("THOCK FileBrowser: Delete canceled")
+				log.Println("THICC FileBrowser: Delete canceled")
 			}
 		})
 	}
@@ -229,33 +229,33 @@ func (p *Panel) DeleteSelected() {
 func (p *Panel) RenameSelected() {
 	node := p.GetSelectedNode()
 	if node == nil {
-		log.Println("THOCK FileBrowser: RenameSelected - no node selected")
+		log.Println("THICC FileBrowser: RenameSelected - no node selected")
 		return
 	}
 
 	// Don't allow renaming the root
 	if node.Path == p.Tree.Root {
-		log.Println("THOCK FileBrowser: RenameSelected - cannot rename root")
+		log.Println("THICC FileBrowser: RenameSelected - cannot rename root")
 		return
 	}
 
-	log.Printf("THOCK FileBrowser: RenameSelected - requesting rename for: %s", node.Path)
+	log.Printf("THICC FileBrowser: RenameSelected - requesting rename for: %s", node.Path)
 
 	if p.OnRenameRequest != nil {
 		oldPath := node.Path
 		p.OnRenameRequest(oldPath, func(newName string) {
 			if newName == "" {
-				log.Println("THOCK FileBrowser: Rename canceled (empty name)")
+				log.Println("THICC FileBrowser: Rename canceled (empty name)")
 				return
 			}
 
 			currentName := filepath.Base(oldPath)
 			if newName == currentName {
-				log.Println("THOCK FileBrowser: Rename canceled (same name)")
+				log.Println("THICC FileBrowser: Rename canceled (same name)")
 				return
 			}
 
-			log.Printf("THOCK FileBrowser: Rename confirmed: %s -> %s", currentName, newName)
+			log.Printf("THICC FileBrowser: Rename confirmed: %s -> %s", currentName, newName)
 			// The actual rename and tree refresh will be handled by the callback setter
 		})
 	}
@@ -277,15 +277,15 @@ func (p *Panel) getTargetDir() string {
 // NewFileSelected initiates creation of a new file
 func (p *Panel) NewFileSelected() {
 	targetDir := p.getTargetDir()
-	log.Printf("THOCK FileBrowser: NewFileSelected - requesting new file in: %s", targetDir)
+	log.Printf("THICC FileBrowser: NewFileSelected - requesting new file in: %s", targetDir)
 
 	if p.OnNewFileRequest != nil {
 		p.OnNewFileRequest(targetDir, func(fileName string) {
 			if fileName == "" {
-				log.Println("THOCK FileBrowser: New file canceled (empty name)")
+				log.Println("THICC FileBrowser: New file canceled (empty name)")
 				return
 			}
-			log.Printf("THOCK FileBrowser: New file confirmed: %s", fileName)
+			log.Printf("THICC FileBrowser: New file confirmed: %s", fileName)
 			// The actual file creation will be handled by the callback setter
 		})
 	}
@@ -294,15 +294,15 @@ func (p *Panel) NewFileSelected() {
 // NewFolderSelected initiates creation of a new folder
 func (p *Panel) NewFolderSelected() {
 	targetDir := p.getTargetDir()
-	log.Printf("THOCK FileBrowser: NewFolderSelected - requesting new folder in: %s", targetDir)
+	log.Printf("THICC FileBrowser: NewFolderSelected - requesting new folder in: %s", targetDir)
 
 	if p.OnNewFolderRequest != nil {
 		p.OnNewFolderRequest(targetDir, func(folderName string) {
 			if folderName == "" {
-				log.Println("THOCK FileBrowser: New folder canceled (empty name)")
+				log.Println("THICC FileBrowser: New folder canceled (empty name)")
 				return
 			}
-			log.Printf("THOCK FileBrowser: New folder confirmed: %s", folderName)
+			log.Printf("THICC FileBrowser: New folder confirmed: %s", folderName)
 			// The actual folder creation will be handled by the callback setter
 		})
 	}

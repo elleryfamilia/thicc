@@ -1,0 +1,53 @@
+filetype: slint
+
+detect:
+    filename: "\\.slint$"
+
+rules:
+    # Keywords
+    - statement: "\\b(import|export|from|component|inherits|callback|property|in|out|in-out|if|else|for|animate|states|transitions|when|pure|public|private|function|return|global|struct|enum)\\b"
+
+    # Built-in types
+    - type: "\\b(int|float|string|bool|color|brush|length|duration|angle|image|physical-length|relative-font-size|percent|easing)\\b"
+
+    # Built-in elements
+    - type: "\\b(Rectangle|Text|Image|TouchArea|FocusScope|Flickable|GridLayout|HorizontalLayout|VerticalLayout|Path|Clip|Rotate|Dialog|Window|PopupWindow|Timer|TextInput|LineEdit|TextEdit|SpinBox|Slider|ProgressIndicator|Switch|CheckBox|ComboBox|Button|StandardButton|ListView|ScrollView|GroupBox|TabWidget|Spinner|AboutSlint)\\b"
+
+    # Element IDs and property bindings
+    - special: "[a-z][a-z0-9_-]*\\s*:="
+
+    # Constants and colors
+    - constant: "\\b(true|false|transparent|black|white|red|green|blue|yellow|cyan|magenta|gray|orange|pink|purple)\\b"
+    - constant: "#[0-9a-fA-F]+"
+
+    # Numbers with units
+    - constant.number: "\\b[0-9]+(\\.[0-9]+)?(px|pt|mm|cm|in|%|ms|s|deg|rad|turn|phx)?\\b"
+
+    # Strings
+    - constant.string:
+        start: "\""
+        end: "\""
+        skip: "\\\\."
+        rules:
+            - constant.specialChar: "\\\\."
+            - special: "\\{[^}]*\\}"
+
+    # Single-line comments
+    - comment:
+        start: "//"
+        end: "$"
+        rules:
+            - todo: "(TODO|XXX|FIXME):?"
+
+    # Multi-line comments
+    - comment:
+        start: "/\\*"
+        end: "\\*/"
+        rules:
+            - todo: "(TODO|XXX|FIXME):?"
+
+    # Callbacks and bindings
+    - special: "<=?>|:="
+
+    # Operators
+    - symbol.operator: "[+\\-*/%!=<>&|?:]"

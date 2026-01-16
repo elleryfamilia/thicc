@@ -114,7 +114,7 @@ func InitColorscheme() error {
 		}
 	}
 
-	// Ensure DefStyle uses the Thock background color
+	// Ensure DefStyle uses the Thicc background color
 	fg, _, _ := DefStyle.Decompose()
 	DefStyle = DefStyle.Foreground(fg).Background(ThiccBackground)
 

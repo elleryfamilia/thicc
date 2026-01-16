@@ -295,7 +295,7 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	// Set up environment
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
-	cmd.Env = append(cmd.Env, "THOCK_TERM=1") // Marker so users can customize prompt in their shell config
+	cmd.Env = append(cmd.Env, "THICC_TERM=1") // Marker so users can customize prompt in their shell config
 
 	// Start command with PTY
 	ptmx, err := pty.Start(cmd)
@@ -604,7 +604,7 @@ func (p *Panel) RespawnShell() error {
 	cmd := exec.Command(shell)
 	cmd.Env = os.Environ()
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
-	cmd.Env = append(cmd.Env, "THOCK_TERM=1")
+	cmd.Env = append(cmd.Env, "THICC_TERM=1")
 
 	// Start with new PTY
 	ptmx, err := pty.Start(cmd)

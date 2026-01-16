@@ -341,7 +341,7 @@ func NewBufferFromFileWithCommand(path string, btype BufType, cmd Command) (*Buf
 		if isBinaryFile(file) {
 			message := fmt.Sprintf(
 				"\n  Binary file: %s\n\n"+
-					"  This file cannot be displayed in THOCK.\n"+
+					"  This file cannot be displayed in THICC.\n"+
 					"  Binary files (executables, images, etc.) are not editable.\n",
 				filepath.Base(filename))
 			b := NewBufferFromString(message, filename, BTBinary)

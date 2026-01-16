@@ -10,15 +10,15 @@ import (
 
 // HandleEvent processes keyboard and mouse events
 func (p *Panel) HandleEvent(event tcell.Event) bool {
-	log.Printf("THOCK Terminal.HandleEvent: Focus=%v", p.Focus)
+	log.Printf("THICC Terminal.HandleEvent: Focus=%v", p.Focus)
 	if !p.Focus {
-		log.Println("THOCK Terminal: Not focused, returning false")
+		log.Println("THICC Terminal: Not focused, returning false")
 		return false
 	}
 
 	switch ev := event.(type) {
 	case *tcell.EventKey:
-		log.Printf("THOCK Terminal: Key event, Key=%v, Rune=%c", ev.Key(), ev.Rune())
+		log.Printf("THICC Terminal: Key event, Key=%v, Rune=%c", ev.Key(), ev.Rune())
 
 		// Handle quick command mode first
 		if p.QuickCommandMode {
@@ -32,7 +32,7 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 			if p.OnShowMessage != nil {
 				p.OnShowMessage("  q: Quit  |  w: Next Pane  |  Esc: Cancel")
 			}
-			log.Println("THOCK Terminal: Entered quick command mode")
+			log.Println("THICC Terminal: Entered quick command mode")
 			return true
 		}
 
@@ -53,7 +53,7 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 			if p.HasSelection() {
 				text := p.GetSelection()
 				clipboard.Write(text, clipboard.ClipboardReg)
-				log.Printf("THOCK Terminal: Copied %d chars to clipboard", len(text))
+				log.Printf("THICC Terminal: Copied %d chars to clipboard", len(text))
 				p.ClearSelection()
 				// Trigger redraw to clear selection highlight
 				if p.OnRedraw != nil {
@@ -92,11 +92,11 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 		}
 
 		result := p.handleKey(ev)
-		log.Printf("THOCK Terminal: handleKey returned %v", result)
+		log.Printf("THICC Terminal: handleKey returned %v", result)
 		return result
 	case *tcell.EventPaste:
 		// Handle paste events directly (backup if layout manager doesn't catch it)
-		log.Printf("THOCK Terminal: Paste event, len=%d", len(ev.Text()))
+		log.Printf("THICC Terminal: Paste event, len=%d", len(ev.Text()))
 		_, err := p.Write([]byte(ev.Text()))
 		return err == nil
 	case *tcell.EventMouse:
@@ -170,11 +170,11 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 			// New click - start selection
 			p.Selection[0] = Loc{X: x, Y: lineIndex}
 			p.Selection[1] = Loc{X: x, Y: lineIndex}
-			log.Printf("THOCK Terminal: Selection start at (%d, %d) lineIndex", x, lineIndex)
+			log.Printf("THICC Terminal: Selection start at (%d, %d) lineIndex", x, lineIndex)
 		} else {
 			// Drag - extend selection
 			p.Selection[1] = Loc{X: x, Y: lineIndex}
-			log.Printf("THOCK Terminal: Selection drag to (%d, %d) lineIndex", x, lineIndex)
+			log.Printf("THICC Terminal: Selection drag to (%d, %d) lineIndex", x, lineIndex)
 		}
 		p.mouseReleased = false
 
@@ -190,7 +190,7 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 			lineIndex := scrollbackCount - p.scrollOffset + y
 			p.Selection[1] = Loc{X: x, Y: lineIndex}
 			p.mouseReleased = true
-			log.Printf("THOCK Terminal: Selection end at (%d, %d) lineIndex", x, lineIndex)
+			log.Printf("THICC Terminal: Selection end at (%d, %d) lineIndex", x, lineIndex)
 
 			// Trigger redraw
 			if p.OnRedraw != nil {
@@ -230,7 +230,7 @@ func (p *Panel) handleShiftArrow(ev *tcell.EventKey) bool {
 		p.OnRedraw()
 	}
 
-	log.Printf("THOCK Terminal: Shift+Arrow selection, Key=%v", ev.Key())
+	log.Printf("THICC Terminal: Shift+Arrow selection, Key=%v", ev.Key())
 	return true // Consume event, don't send to PTY
 }
 
@@ -453,18 +453,18 @@ func (p *Panel) handleQuickCommand(ev *tcell.EventKey) {
 
 	switch ev.Key() {
 	case tcell.KeyEscape:
-		log.Println("THOCK Terminal: Quick command cancelled")
+		log.Println("THICC Terminal: Quick command cancelled")
 		return
 	case tcell.KeyRune:
 		switch ev.Rune() {
 		case 'q', 'Q':
-			log.Println("THOCK Terminal: Quick command - Quit")
+			log.Println("THICC Terminal: Quick command - Quit")
 			if p.OnQuit != nil {
 				p.OnQuit()
 			}
 			return
 		case 'w', 'W':
-			log.Println("THOCK Terminal: Quick command - Next Pane")
+			log.Println("THICC Terminal: Quick command - Next Pane")
 			if p.OnNextPane != nil {
 				p.OnNextPane()
 			}
@@ -472,5 +472,5 @@ func (p *Panel) handleQuickCommand(ev *tcell.EventKey) {
 		}
 	}
 	// Any other key just cancels
-	log.Printf("THOCK Terminal: Quick command - unknown key, cancelled")
+	log.Printf("THICC Terminal: Quick command - unknown key, cancelled")
 }

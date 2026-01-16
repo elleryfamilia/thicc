@@ -119,7 +119,7 @@ func NewPanel(x, y, w, h int, repoRoot string) *Panel {
 
 	// Initial status load in background
 	go func() {
-		log.Println("THOCK SourceControl: Loading initial git status")
+		log.Println("THICC SourceControl: Loading initial git status")
 		p.RefreshStatus()
 		p.RefreshCommitGraph()
 		if p.OnRefresh != nil {
@@ -399,13 +399,13 @@ func (p *Panel) getGraphRowInfo(rowIdx int) (isCommit bool, commitIdx int, fileI
 // handleGraphEnter handles Enter key in the graph section
 func (p *Panel) handleGraphEnter() {
 	isCommit, commitIdx, fileIdx := p.getGraphRowInfo(p.GraphSelected)
-	log.Printf("THOCK SourceControl: handleGraphEnter - isCommit=%v, commitIdx=%d, fileIdx=%d, GraphSelected=%d",
+	log.Printf("THICC SourceControl: handleGraphEnter - isCommit=%v, commitIdx=%d, fileIdx=%d, GraphSelected=%d",
 		isCommit, commitIdx, fileIdx, p.GraphSelected)
 
 	if isCommit && commitIdx >= 0 && commitIdx < len(p.CommitGraph) {
 		// Toggle expanded state for commits
 		p.CommitGraph[commitIdx].Expanded = !p.CommitGraph[commitIdx].Expanded
-		log.Printf("THOCK SourceControl: Toggled expand for commit %d, now expanded=%v",
+		log.Printf("THICC SourceControl: Toggled expand for commit %d, now expanded=%v",
 			commitIdx, p.CommitGraph[commitIdx].Expanded)
 		// Trigger refresh so Y-to-row map gets updated
 		if p.OnRefresh != nil {
@@ -416,11 +416,11 @@ func (p *Panel) handleGraphEnter() {
 		commit := &p.CommitGraph[commitIdx]
 		if fileIdx < len(commit.Files) {
 			file := &commit.Files[fileIdx]
-			log.Printf("THOCK SourceControl: File selected - hash=%s, path=%s", commit.Hash, file.Path)
+			log.Printf("THICC SourceControl: File selected - hash=%s, path=%s", commit.Hash, file.Path)
 			if p.OnCommitSelect != nil {
 				p.OnCommitSelect(commit.Hash, file.Path)
 			} else {
-				log.Printf("THOCK SourceControl: OnCommitSelect callback is nil!")
+				log.Printf("THICC SourceControl: OnCommitSelect callback is nil!")
 			}
 		}
 	}
@@ -496,7 +496,7 @@ func (p *Panel) ToggleStageSelected() {
 	}
 
 	if err != nil {
-		log.Printf("THOCK SourceControl: Failed to toggle stage: %v", err)
+		log.Printf("THICC SourceControl: Failed to toggle stage: %v", err)
 	} else {
 		p.RefreshStatus()
 		if p.OnRefresh != nil {
@@ -508,12 +508,12 @@ func (p *Panel) ToggleStageSelected() {
 // DoCommit commits staged changes with the current message
 func (p *Panel) DoCommit() {
 	if p.CommitMsg == "" {
-		log.Println("THOCK SourceControl: Cannot commit with empty message")
+		log.Println("THICC SourceControl: Cannot commit with empty message")
 		return
 	}
 
 	if len(p.StagedFiles) == 0 {
-		log.Println("THOCK SourceControl: Nothing staged to commit")
+		log.Println("THICC SourceControl: Nothing staged to commit")
 		return
 	}
 
@@ -532,9 +532,9 @@ func (p *Panel) DoCommit() {
 		p.mu.Lock()
 		p.OperationInProgress = ""
 		if err != nil {
-			log.Printf("THOCK SourceControl: Commit failed: %v", err)
+			log.Printf("THICC SourceControl: Commit failed: %v", err)
 		} else {
-			log.Println("THOCK SourceControl: Commit successful")
+			log.Println("THICC SourceControl: Commit successful")
 			p.CommitMsg = ""
 			p.CommitCursor = 0
 		}
@@ -564,9 +564,9 @@ func (p *Panel) DoPush() {
 		p.mu.Lock()
 		p.OperationInProgress = ""
 		if err != nil {
-			log.Printf("THOCK SourceControl: Push failed: %v", err)
+			log.Printf("THICC SourceControl: Push failed: %v", err)
 		} else {
-			log.Println("THOCK SourceControl: Push successful")
+			log.Println("THICC SourceControl: Push successful")
 		}
 		p.mu.Unlock()
 
@@ -719,9 +719,9 @@ func (p *Panel) DoPull() {
 		p.mu.Lock()
 		p.OperationInProgress = ""
 		if err != nil {
-			log.Printf("THOCK SourceControl: Pull failed: %v", err)
+			log.Printf("THICC SourceControl: Pull failed: %v", err)
 		} else {
-			log.Println("THOCK SourceControl: Pull successful")
+			log.Println("THICC SourceControl: Pull successful")
 		}
 		p.mu.Unlock()
 
@@ -737,7 +737,7 @@ func (p *Panel) DoPull() {
 func (p *Panel) ShowBranchSwitcher() {
 	branches, err := p.GetLocalBranches()
 	if err != nil {
-		log.Printf("THOCK SourceControl: Failed to get branches: %v", err)
+		log.Printf("THICC SourceControl: Failed to get branches: %v", err)
 		return
 	}
 	p.LocalBranches = branches
@@ -769,9 +769,9 @@ func (p *Panel) SwitchToSelectedBranch() {
 	branchName := p.LocalBranches[p.BranchSelected]
 	err := p.CheckoutBranch(branchName)
 	if err != nil {
-		log.Printf("THOCK SourceControl: Failed to checkout branch: %v", err)
+		log.Printf("THICC SourceControl: Failed to checkout branch: %v", err)
 	} else {
-		log.Printf("THOCK SourceControl: Switched to branch: %s", branchName)
+		log.Printf("THICC SourceControl: Switched to branch: %s", branchName)
 		p.HideBranchSwitcher()
 		p.RefreshStatus()
 		p.RefreshCommitGraph()

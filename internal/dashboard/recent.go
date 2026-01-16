@@ -18,7 +18,7 @@ const (
 	// RecentFileName is the name of the recent projects file
 	RecentFileName = "recent.json"
 
-	// ThiccConfigSubdir is the subdirectory for thock-specific config
+	// ThiccConfigSubdir is the subdirectory for thicc-specific config
 	ThiccConfigSubdir = "thicc"
 )
 
@@ -42,7 +42,7 @@ func NewRecentStore() *RecentStore {
 	}
 }
 
-// GetConfigDir returns the thock-specific config directory
+// GetConfigDir returns the thicc-specific config directory
 func GetConfigDir() string {
 	return filepath.Join(config.ConfigDir, ThiccConfigSubdir)
 }
@@ -52,7 +52,7 @@ func GetRecentFilePath() string {
 	return filepath.Join(GetConfigDir(), RecentFileName)
 }
 
-// EnsureConfigDir creates the thock config directory if it doesn't exist
+// EnsureConfigDir creates the thicc config directory if it doesn't exist
 func EnsureConfigDir() error {
 	dir := GetConfigDir()
 	return os.MkdirAll(dir, 0755)
@@ -68,12 +68,12 @@ func (rs *RecentStore) Load() error {
 			// No recent file yet, that's fine
 			return nil
 		}
-		log.Printf("THOCK Dashboard: Failed to read recent.json: %v", err)
+		log.Printf("THICC Dashboard: Failed to read recent.json: %v", err)
 		return err
 	}
 
 	if err := json.Unmarshal(data, rs); err != nil {
-		log.Printf("THOCK Dashboard: Failed to parse recent.json: %v", err)
+		log.Printf("THICC Dashboard: Failed to parse recent.json: %v", err)
 		return err
 	}
 
@@ -86,19 +86,19 @@ func (rs *RecentStore) Load() error {
 // Save writes recent projects to disk
 func (rs *RecentStore) Save() error {
 	if err := EnsureConfigDir(); err != nil {
-		log.Printf("THOCK Dashboard: Failed to create config dir: %v", err)
+		log.Printf("THICC Dashboard: Failed to create config dir: %v", err)
 		return err
 	}
 
 	data, err := json.MarshalIndent(rs, "", "  ")
 	if err != nil {
-		log.Printf("THOCK Dashboard: Failed to marshal recent.json: %v", err)
+		log.Printf("THICC Dashboard: Failed to marshal recent.json: %v", err)
 		return err
 	}
 
 	filePath := GetRecentFilePath()
 	if err := os.WriteFile(filePath, data, 0644); err != nil {
-		log.Printf("THOCK Dashboard: Failed to write recent.json: %v", err)
+		log.Printf("THICC Dashboard: Failed to write recent.json: %v", err)
 		return err
 	}
 

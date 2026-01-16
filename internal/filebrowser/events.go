@@ -127,7 +127,7 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 	if ev.Buttons() == tcell.Button1 {
 		// Check if click is on header (line 1 - line 0 is for border)
 		if localY == 1 {
-			log.Println("THOCK FileBrowser: Header clicked, opening project picker")
+			log.Println("THICC FileBrowser: Header clicked, opening project picker")
 			if p.OnProjectPathClick != nil {
 				p.OnProjectPathClick()
 				return true

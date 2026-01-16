@@ -505,15 +505,15 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 			// Button layout: [c]Commit (x=2-10), [p]Push (x=11-20), [l]Pull (x=21-30)
 			if localX >= 2 && localX < 11 {
 				p.Section = SectionCommitBtn
-				log.Printf("THOCK SourceControl: Clicked commit button")
+				log.Printf("THICC SourceControl: Clicked commit button")
 				return true
 			} else if localX >= 11 && localX < 21 {
 				p.Section = SectionPushBtn
-				log.Printf("THOCK SourceControl: Clicked push button")
+				log.Printf("THICC SourceControl: Clicked push button")
 				return true
 			} else if localX >= 21 {
 				p.Section = SectionPullBtn
-				log.Printf("THOCK SourceControl: Clicked pull button")
+				log.Printf("THICC SourceControl: Clicked pull button")
 				return true
 			}
 		}
@@ -525,7 +525,7 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 			if localY == fileY {
 				p.Section = SectionUnstaged
 				p.Selected = i
-				log.Printf("THOCK SourceControl: Selected unstaged file %d at Y=%d", i, fileY)
+				log.Printf("THICC SourceControl: Selected unstaged file %d at Y=%d", i, fileY)
 				// Trigger diff view for the clicked file
 				if i < len(p.UnstagedFiles) && p.OnFileSelect != nil {
 					p.OnFileSelect(p.UnstagedFiles[i].Path, false)
@@ -538,7 +538,7 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 		if localY == p.unstagedHeaderY {
 			p.Section = SectionUnstaged
 			p.Selected = 0
-			log.Printf("THOCK SourceControl: Focused unstaged section")
+			log.Printf("THICC SourceControl: Focused unstaged section")
 			return true
 		}
 
@@ -547,7 +547,7 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 			if localY == fileY {
 				p.Section = SectionStaged
 				p.Selected = i
-				log.Printf("THOCK SourceControl: Selected staged file %d at Y=%d", i, fileY)
+				log.Printf("THICC SourceControl: Selected staged file %d at Y=%d", i, fileY)
 				// Trigger diff view for the clicked file
 				if i < len(p.StagedFiles) && p.OnFileSelect != nil {
 					p.OnFileSelect(p.StagedFiles[i].Path, true)
@@ -560,14 +560,14 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 		if localY == p.stagedHeaderY {
 			p.Section = SectionStaged
 			p.Selected = 0
-			log.Printf("THOCK SourceControl: Focused staged section")
+			log.Printf("THICC SourceControl: Focused staged section")
 			return true
 		}
 
 		// Check if clicking in commit section (input box area) - AFTER file checks
 		if localY >= p.commitSectionY && localY < p.buttonsY {
 			p.Section = SectionCommitInput
-			log.Printf("THOCK SourceControl: Focused commit input")
+			log.Printf("THICC SourceControl: Focused commit input")
 			return true
 		}
 
@@ -577,17 +577,17 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 			// Find which row was clicked using the Y-to-row map
 			if rowIdx, ok := p.graphYToRow[localY]; ok {
 				p.GraphSelected = rowIdx
-				log.Printf("THOCK SourceControl: Selected graph row %d", p.GraphSelected)
+				log.Printf("THICC SourceControl: Selected graph row %d", p.GraphSelected)
 				// Trigger enter action (expand commit or show diff)
 				p.handleGraphEnter()
 				return true
 			}
-			log.Printf("THOCK SourceControl: Focused graph section")
+			log.Printf("THICC SourceControl: Focused graph section")
 			return true
 		}
 
 		// Click somewhere else in panel - ignore but consume event
-		log.Printf("THOCK SourceControl: Click at local y=%d (no target)", localY)
+		log.Printf("THICC SourceControl: Click at local y=%d (no target)", localY)
 		return true
 	}
 
@@ -643,7 +643,7 @@ func (p *Panel) stageSelected() {
 
 	err := p.StageFile(file.Path)
 	if err != nil {
-		log.Printf("THOCK SourceControl: Failed to stage file: %v", err)
+		log.Printf("THICC SourceControl: Failed to stage file: %v", err)
 		return
 	}
 
@@ -666,7 +666,7 @@ func (p *Panel) unstageSelected() {
 
 	err := p.UnstageFile(file.Path)
 	if err != nil {
-		log.Printf("THOCK SourceControl: Failed to unstage file: %v", err)
+		log.Printf("THICC SourceControl: Failed to unstage file: %v", err)
 		return
 	}
 
@@ -680,7 +680,7 @@ func (p *Panel) unstageSelected() {
 func (p *Panel) stageAll() {
 	err := p.StageAll()
 	if err != nil {
-		log.Printf("THOCK SourceControl: Failed to stage all: %v", err)
+		log.Printf("THICC SourceControl: Failed to stage all: %v", err)
 		return
 	}
 
@@ -694,7 +694,7 @@ func (p *Panel) stageAll() {
 func (p *Panel) unstageAll() {
 	err := p.UnstageAll()
 	if err != nil {
-		log.Printf("THOCK SourceControl: Failed to unstage all: %v", err)
+		log.Printf("THICC SourceControl: Failed to unstage all: %v", err)
 		return
 	}
 

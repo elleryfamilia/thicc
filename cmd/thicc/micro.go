@@ -56,10 +56,10 @@ var (
 
 	timerChan chan func()
 
-	// THOCK: Global layout manager
+	// THICC: Global layout manager
 	thiccLayout *layout.LayoutManager
 
-	// THOCK: Dashboard state
+	// THICC: Dashboard state
 	thiccDashboard       *dashboard.Dashboard
 	showDashboard        bool
 	pendingInstallCmd    string // Install command to run after dashboard exits
@@ -758,7 +758,7 @@ func main() {
 	args := flag.Args()
 	log.Println("THICC: Before LoadInput, args:", args)
 
-	// THOCK: Check if we should show the dashboard (no args and interactive terminal)
+	// THICC: Check if we should show the dashboard (no args and interactive terminal)
 	if len(args) == 0 && isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd()) {
 		log.Println("THICC: No args provided, showing dashboard")
 		showDashboard = true
@@ -771,7 +771,7 @@ func main() {
 		b, firstFilePath, fileCount = LoadInput(args)
 		log.Println("THICC: After LoadInput, buffers:", len(b), "firstFilePath:", firstFilePath, "fileCount:", fileCount)
 
-		// THOCK: Always open at least an empty buffer
+		// THICC: Always open at least an empty buffer
 		if len(b) == 0 {
 			log.Println("THICC: No buffers, creating empty buffer")
 			b = append(b, buffer.NewBufferFromString("", "", buffer.BTDefault))
@@ -783,7 +783,7 @@ func main() {
 		log.Println("THICC: InitTabs completed")
 	}
 
-	// THOCK: Create layout manager (panels will be initialized later after screen size is known)
+	// THICC: Create layout manager (panels will be initialized later after screen size is known)
 	// Only create now if NOT showing dashboard - dashboard will create it after user selects a project
 	if !showDashboard {
 		log.Println("THICC: About to call InitThiccLayout")
@@ -852,14 +852,14 @@ func main() {
 		// time out after 10ms
 	}
 
-	// THOCK: Show dashboard if no files were specified
+	// THICC: Show dashboard if no files were specified
 	dashboardWasShown := false
 	if showDashboard {
 		log.Println("THICC: Starting dashboard")
 		dashboardWasShown = true
 		InitDashboard()
 
-		// THOCK: Preload terminal in background while dashboard is showing
+		// THICC: Preload terminal in background while dashboard is showing
 		// Only preload for default shell - AI tools don't need it (no prompt injection delay)
 		// If user changes selection while on dashboard, we'll handle it in TransitionToEditor
 		if thiccLayout != nil && thiccDashboard != nil {
@@ -883,30 +883,29 @@ func main() {
 		// TransitionToEditor already initialized the layout, so skip below
 	}
 
-	// THOCK: Initialize layout panels now that screen size is known
+	// THICC: Initialize layout panels now that screen size is known
 	// Skip if we just came from dashboard (TransitionToEditor already did this)
 	if thiccLayout != nil && !dashboardWasShown {
 		if fileCount > 0 {
-			// File(s) opened directly - hide terminal, show tool selector when first toggled
-			log.Println("THICC: Files opened directly - hiding terminal, will show tool selector on toggle")
+			// File(s) opened directly - show only editor (hide file browser and terminal)
+			log.Printf("THICC: File(s) opened directly (%d files) - showing editor only", fileCount)
+			thiccLayout.TreeVisible = false
 			thiccLayout.TerminalVisible = false
 			thiccLayout.TerminalInitialized = false
 
-			// Set file browser root to the first file's directory
+			// Change working directory to the first file's directory
+			// This ensures file browser and terminal start in the right place
 			if firstFilePath != "" {
 				fileDir := filepath.Dir(firstFilePath)
-				log.Printf("THICC: Setting file browser root to: %s", fileDir)
+				log.Printf("THICC: Changing to file's directory: %s", fileDir)
+				if err := os.Chdir(fileDir); err != nil {
+					log.Printf("THICC: Failed to chdir to %s: %v", fileDir, err)
+				}
 				thiccLayout.Root = fileDir
 			}
 
-			// Hide file browser when multiple files are opened
-			if fileCount > 1 {
-				log.Printf("THICC: Multiple files (%d) opened - hiding file browser", fileCount)
-				thiccLayout.TreeVisible = false
-			}
-
-			// Initialize layout without terminal
-			log.Println("THICC: Initializing layout panels (file mode - no terminal)")
+			// Initialize layout with editor only
+			log.Println("THICC: Initializing layout panels (file mode - editor only)")
 			if err := thiccLayout.Initialize(screen.Screen); err != nil {
 				log.Printf("THICC: Failed to initialize layout: %v", err)
 				thiccLayout = nil // Fallback to standard micro
@@ -977,7 +976,7 @@ func DoEvent() {
 	screen.Screen.HideCursor()
 
 	if thiccLayout != nil {
-		// THOCK 3-pane layout
+		// THICC 3-pane layout
 		thiccLayout.RenderFrame(screen.Screen) // File browser + terminal
 
 		// Constrain editor to middle region
@@ -1014,7 +1013,7 @@ func DoEvent() {
 		}
 	}
 
-	// THOCK: Control cursor visibility based on which panel has focus
+	// THICC: Control cursor visibility based on which panel has focus
 	// Editor always shows its cursor during Display(), so we need to override after rendering
 	if thiccLayout != nil && thiccLayout.ActivePanel != 1 {
 		if thiccLayout.ActivePanel >= 2 && thiccLayout.ActivePanel <= 4 {
@@ -1068,7 +1067,7 @@ func DoEvent() {
 			action.InfoBar.HandleEvent(event)
 			action.Tabs.HandleEvent(event)
 
-			// THOCK: Resize layout panels
+			// THICC: Resize layout panels
 			if thiccLayout != nil {
 				w, h := resize.Size()
 				thiccLayout.Resize(w, h)
@@ -1078,7 +1077,7 @@ func DoEvent() {
 		} else if action.InfoBar.HasPrompt {
 			action.InfoBar.HandleEvent(event)
 		} else if thiccLayout != nil {
-			// THOCK: Try layout manager first
+			// THICC: Try layout manager first
 			if !thiccLayout.HandleEvent(event) {
 				// Layout didn't consume event - pass to tabs for global actions (quit, etc.)
 				// Always pass through for editor, and for global keys like Ctrl+Q from any panel
@@ -1097,7 +1096,7 @@ func DoEvent() {
 	}
 }
 
-// InitThiccLayout initializes the THOCK 3-pane layout (tree + editor + terminal)
+// InitThiccLayout initializes the THICC 3-pane layout (tree + editor + terminal)
 func InitThiccLayout() {
 	log.Println("THICC: InitThiccLayout started")
 
@@ -1124,7 +1123,7 @@ func InitThiccLayout() {
 	// after confirming the basic editor loads properly
 }
 
-// registerThiccActions registers keybindings for THOCK layout
+// registerThiccActions registers keybindings for THICC layout
 func registerThiccActions() {
 	// Register focus commands for new layout
 	action.MakeCommand("treefocus", func(bp *action.BufPane, args []string) {
@@ -1159,17 +1158,17 @@ func InitDashboard() {
 
 	// Set up callbacks
 	thiccDashboard.OnNewFile = func() {
-		log.Println("THOCK Dashboard: New File selected")
+		log.Println("THICC Dashboard: New File selected")
 		showDashboard = false
 		TransitionToEditor(nil, "", true) // Show editor for new file
 	}
 
 	thiccDashboard.OnOpenProject = func(path string) {
-		log.Println("THOCK Dashboard: Opening project:", path)
+		log.Println("THICC Dashboard: Opening project:", path)
 		showDashboard = false
 		// Change to the project folder
 		if err := os.Chdir(path); err != nil {
-			log.Printf("THOCK Dashboard: Failed to chdir to %s: %v", path, err)
+			log.Printf("THICC Dashboard: Failed to chdir to %s: %v", path, err)
 		}
 		// Reset layout so it gets recreated with the new working directory
 		thiccLayout = nil
@@ -1179,7 +1178,7 @@ func InitDashboard() {
 	}
 
 	thiccDashboard.OnOpenFile = func(path string) {
-		log.Println("THOCK Dashboard: Opening file:", path)
+		log.Println("THICC Dashboard: Opening file:", path)
 		showDashboard = false
 		TransitionToEditor(nil, path, true) // Show editor with file
 		// Add to recent projects
@@ -1187,11 +1186,11 @@ func InitDashboard() {
 	}
 
 	thiccDashboard.OnOpenFolder = func(path string) {
-		log.Println("THOCK Dashboard: Opening folder:", path)
+		log.Println("THICC Dashboard: Opening folder:", path)
 		showDashboard = false
 		// Change to the folder
 		if err := os.Chdir(path); err != nil {
-			log.Printf("THOCK Dashboard: Failed to chdir to %s: %v", path, err)
+			log.Printf("THICC Dashboard: Failed to chdir to %s: %v", path, err)
 		}
 		// Reset layout so it gets recreated with the new working directory
 		thiccLayout = nil
@@ -1201,11 +1200,11 @@ func InitDashboard() {
 	}
 
 	thiccDashboard.OnNewFolder = func(path string) {
-		log.Println("THOCK Dashboard: New folder created, opening:", path)
+		log.Println("THICC Dashboard: New folder created, opening:", path)
 		showDashboard = false
 		// Change to the new folder
 		if err := os.Chdir(path); err != nil {
-			log.Printf("THOCK Dashboard: Failed to chdir to %s: %v", path, err)
+			log.Printf("THICC Dashboard: Failed to chdir to %s: %v", path, err)
 		}
 		// Reset layout so it gets recreated with the new working directory
 		thiccLayout = nil
@@ -1215,7 +1214,7 @@ func InitDashboard() {
 	}
 
 	thiccDashboard.OnInstallTool = func(cmd string) {
-		log.Printf("THOCK Dashboard: Install tool selected: %s", cmd)
+		log.Printf("THICC Dashboard: Install tool selected: %s", cmd)
 		pendingInstallCmd = cmd
 		// Don't call TransitionToEditor here - the subsequent action
 		// (OnNewFile, OnOpenProject, etc.) will handle the transition
@@ -1223,7 +1222,7 @@ func InitDashboard() {
 	}
 
 	thiccDashboard.OnExit = func() {
-		log.Println("THOCK Dashboard: Exit selected")
+		log.Println("THICC Dashboard: Exit selected")
 		exit(0)
 	}
 

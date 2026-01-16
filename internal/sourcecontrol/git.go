@@ -25,7 +25,7 @@ func (p *Panel) RefreshStatus() {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.Output()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git status failed: %v", err)
+		log.Printf("THICC SourceControl: git status failed: %v", err)
 		return
 	}
 
@@ -84,7 +84,7 @@ func (p *Panel) RefreshStatus() {
 	p.AheadCount = ahead
 	p.BehindCount = behind
 
-	log.Printf("THOCK SourceControl: Loaded %d staged, %d unstaged files, ahead: %d, behind: %d",
+	log.Printf("THICC SourceControl: Loaded %d staged, %d unstaged files, ahead: %d, behind: %d",
 		len(p.StagedFiles), len(p.UnstagedFiles), ahead, behind)
 }
 
@@ -94,10 +94,10 @@ func (p *Panel) StageFile(path string) error {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git add failed: %v, output: %s", err, string(output))
+		log.Printf("THICC SourceControl: git add failed: %v, output: %s", err, string(output))
 		return err
 	}
-	log.Printf("THOCK SourceControl: Staged file: %s", path)
+	log.Printf("THICC SourceControl: Staged file: %s", path)
 	return nil
 }
 
@@ -107,10 +107,10 @@ func (p *Panel) UnstageFile(path string) error {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git reset failed: %v, output: %s", err, string(output))
+		log.Printf("THICC SourceControl: git reset failed: %v, output: %s", err, string(output))
 		return err
 	}
-	log.Printf("THOCK SourceControl: Unstaged file: %s", path)
+	log.Printf("THICC SourceControl: Unstaged file: %s", path)
 	return nil
 }
 
@@ -120,10 +120,10 @@ func (p *Panel) StageAll() error {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git add -A failed: %v, output: %s", err, string(output))
+		log.Printf("THICC SourceControl: git add -A failed: %v, output: %s", err, string(output))
 		return err
 	}
-	log.Println("THOCK SourceControl: Staged all files")
+	log.Println("THICC SourceControl: Staged all files")
 	return nil
 }
 
@@ -133,10 +133,10 @@ func (p *Panel) UnstageAll() error {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git reset HEAD failed: %v, output: %s", err, string(output))
+		log.Printf("THICC SourceControl: git reset HEAD failed: %v, output: %s", err, string(output))
 		return err
 	}
-	log.Println("THOCK SourceControl: Unstaged all files")
+	log.Println("THICC SourceControl: Unstaged all files")
 	return nil
 }
 
@@ -146,10 +146,10 @@ func (p *Panel) Commit(message string) error {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git commit failed: %v, output: %s", err, string(output))
+		log.Printf("THICC SourceControl: git commit failed: %v, output: %s", err, string(output))
 		return err
 	}
-	log.Printf("THOCK SourceControl: Committed with message: %s", message)
+	log.Printf("THICC SourceControl: Committed with message: %s", message)
 	return nil
 }
 
@@ -159,10 +159,10 @@ func (p *Panel) Push() error {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git push failed: %v, output: %s", err, string(output))
+		log.Printf("THICC SourceControl: git push failed: %v, output: %s", err, string(output))
 		return err
 	}
-	log.Printf("THOCK SourceControl: Push successful, output: %s", string(output))
+	log.Printf("THICC SourceControl: Push successful, output: %s", string(output))
 	return nil
 }
 
@@ -172,10 +172,10 @@ func (p *Panel) Pull() error {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git pull failed: %v, output: %s", err, string(output))
+		log.Printf("THICC SourceControl: git pull failed: %v, output: %s", err, string(output))
 		return err
 	}
-	log.Printf("THOCK SourceControl: Pull successful, output: %s", string(output))
+	log.Printf("THICC SourceControl: Pull successful, output: %s", string(output))
 	return nil
 }
 
@@ -185,7 +185,7 @@ func (p *Panel) GetLocalBranches() ([]string, error) {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.Output()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git branch failed: %v", err)
+		log.Printf("THICC SourceControl: git branch failed: %v", err)
 		return nil, err
 	}
 
@@ -204,10 +204,10 @@ func (p *Panel) CheckoutBranch(branchName string) error {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git checkout failed: %v, output: %s", err, string(output))
+		log.Printf("THICC SourceControl: git checkout failed: %v, output: %s", err, string(output))
 		return err
 	}
-	log.Printf("THOCK SourceControl: Checked out branch: %s", branchName)
+	log.Printf("THICC SourceControl: Checked out branch: %s", branchName)
 	return nil
 }
 
@@ -218,7 +218,7 @@ func GetFileContentAtHEAD(repoRoot, path string) (string, error) {
 	cmd.Dir = repoRoot
 	output, err := cmd.Output()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git show failed for %s: %v", path, err)
+		log.Printf("THICC SourceControl: git show failed for %s: %v", path, err)
 		return "", err
 	}
 	return string(output), nil
@@ -293,7 +293,7 @@ func (p *Panel) RefreshCommitGraph() {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.Output()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git log failed: %v", err)
+		log.Printf("THICC SourceControl: git log failed: %v", err)
 		return
 	}
 
@@ -323,7 +323,7 @@ func (p *Panel) RefreshCommitGraph() {
 	p.computeAncestry()
 	p.mu.Unlock()
 
-	log.Printf("THOCK SourceControl: Loaded %d commits for graph", len(commits))
+	log.Printf("THICC SourceControl: Loaded %d commits for graph", len(commits))
 }
 
 // parseCommitLog parses git log output into CommitEntry slice
@@ -461,7 +461,7 @@ func (p *Panel) LoadMoreCommits() {
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.Output()
 	if err != nil {
-		log.Printf("THOCK SourceControl: git log (more) failed: %v", err)
+		log.Printf("THICC SourceControl: git log (more) failed: %v", err)
 		return
 	}
 
@@ -473,5 +473,5 @@ func (p *Panel) LoadMoreCommits() {
 	p.computeAncestry() // Recompute ancestry with new commits
 	p.mu.Unlock()
 
-	log.Printf("THOCK SourceControl: Loaded %d more commits, total: %d", len(newCommits), len(p.CommitGraph)+len(newCommits))
+	log.Printf("THICC SourceControl: Loaded %d more commits, total: %d", len(newCommits), len(p.CommitGraph)+len(newCommits))
 }

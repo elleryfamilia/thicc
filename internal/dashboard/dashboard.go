@@ -26,7 +26,7 @@ type MenuItem struct {
 	Shortcut string // Keyboard shortcut hint (e.g., "n")
 }
 
-// Dashboard is the welcome screen shown when thock starts without arguments
+// Dashboard is the welcome screen shown when thicc starts without arguments
 type Dashboard struct {
 	// Screen reference
 	Screen  tcell.Screen

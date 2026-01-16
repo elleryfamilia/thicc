@@ -397,7 +397,7 @@ func rgbTo256Color(r, g, b int) tcell.Color {
 
 // glyphToTcellStyle converts VT10x Glyph to tcell style
 func glyphToTcellStyle(glyph vt10x.Glyph) tcell.Style {
-	// Start with config.DefStyle to get the Thock background
+	// Start with config.DefStyle to get the Thicc background
 	style := config.DefStyle
 
 	// Foreground color
@@ -421,7 +421,7 @@ func glyphToTcellStyle(glyph vt10x.Glyph) tcell.Style {
 		}
 	}
 
-	// Background color - use Thock background for default, otherwise use the glyph's background
+	// Background color - use Thicc background for default, otherwise use the glyph's background
 	if glyph.BG != vt10x.DefaultBG {
 		// Same logic as foreground
 		if glyph.BG > 255 {
@@ -439,7 +439,7 @@ func glyphToTcellStyle(glyph vt10x.Glyph) tcell.Style {
 			style = style.Background(tcell.PaletteColor(int(glyph.BG)))
 		}
 	}
-	// If glyph.BG == vt10x.DefaultBG, we keep the Thock background from config.DefStyle
+	// If glyph.BG == vt10x.DefaultBG, we keep the Thicc background from config.DefStyle
 
 	// Text attributes (Mode is int16 with bitflags)
 	// Mode flags from vt10x (estimated from typical VT100 implementation)
