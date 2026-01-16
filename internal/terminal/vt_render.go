@@ -2,7 +2,6 @@ package terminal
 
 import (
 	"fmt"
-	"reflect"
 	"time"
 
 	"github.com/ellery/thicc/internal/config"
@@ -57,7 +56,7 @@ func (p *Panel) Render(screen tcell.Screen) {
 		p.renderScrolledView(screen, contentX, contentY, contentW, contentH, cols, rows)
 	} else {
 		// Render live view (normal rendering)
-		p.renderLiveView(screen, contentX, contentY, contentW, contentH, cols, rows, useAltScreen)
+		p.renderLiveView(screen, contentX, contentY, contentW, contentH, cols, rows)
 	}
 
 	// Draw scroll indicator if scrolled up
@@ -68,6 +67,9 @@ func (p *Panel) Render(screen tcell.Screen) {
 	// Show cursor if focused and NOT scrolled (offset by content area)
 	// Always use fake cursor for terminal to ensure visibility (native cursor may be invisible)
 	if p.Focus && p.VT.CursorVisible() && p.scrollOffset == 0 {
+		// Refresh lastCursor to match current screen content, preventing stale restoration
+		// (since we just redrew all terminal content, lastCursor has outdated data)
+		screenPkg.RefreshLastCursor()
 		cursor := p.VT.Cursor()
 		cx, cy := cursor.X, cursor.Y
 		if cx >= 0 && cx < contentW && cy >= 0 && cy < contentH {
@@ -118,8 +120,33 @@ func (p *Panel) renderLoadingIndicator(screen tcell.Screen, contentX, contentY, 
 	}
 }
 
+// Debug counter for VT buffer dumps
+var vtDumpCounter int
+
 // renderLiveView renders the current terminal content (not scrolled)
-func (p *Panel) renderLiveView(screen tcell.Screen, contentX, contentY, contentW, contentH, cols, rows int, useAltScreen bool) {
+func (p *Panel) renderLiveView(screen tcell.Screen, contentX, contentY, contentW, contentH, cols, rows int) {
+	// Debug: dump VT buffer contents occasionally
+	if debugPTY && debugFile != nil && vtDumpCounter < 10 {
+		vtDumpCounter++
+		fmt.Fprintf(debugFile, "=== VT BUFFER DUMP #%d (cursor at %d,%d) ===\n", vtDumpCounter, p.VT.Cursor().X, p.VT.Cursor().Y)
+		for y := 0; y < rows && y < 20; y++ { // First 20 rows
+			fmt.Fprintf(debugFile, "%02d: ", y)
+			for x := 0; x < cols; x++ {
+				glyph := p.VT.Cell(x, y)
+				if glyph.Char == 0 || glyph.Char == ' ' {
+					fmt.Fprintf(debugFile, " ")
+				} else if glyph.Char < 32 {
+					fmt.Fprintf(debugFile, ".")
+				} else {
+					fmt.Fprintf(debugFile, "%c", glyph.Char)
+				}
+			}
+			fmt.Fprintf(debugFile, "|\n")
+		}
+		fmt.Fprintf(debugFile, "=== END VT BUFFER ===\n\n")
+		debugFile.Sync()
+	}
+
 	// Always fill the ENTIRE content area to prevent artifacts from previous renders
 	for y := 0; y < contentH; y++ {
 		for x := 0; x < contentW; x++ {
@@ -128,13 +155,9 @@ func (p *Panel) renderLiveView(screen tcell.Screen, contentX, contentY, contentW
 
 			// Only read from VT if within its bounds
 			if y < rows && x < cols {
-				var glyph vt10x.Glyph
-
-				if useAltScreen {
-					glyph = p.getAltCell(x, y)
-				} else {
-					glyph = p.VT.Cell(x, y)
-				}
+				// Cell() returns the correct content for both normal and alt screen modes
+				// because vt10x internally swaps buffers when entering alt screen mode
+				glyph := p.VT.Cell(x, y)
 
 				r = glyph.Char
 				if r == 0 {
@@ -258,54 +281,6 @@ func (p *Panel) drawScrollIndicator(screen tcell.Screen) {
 	for i, r := range indicator {
 		screen.SetContent(x+i, p.Region.Y, r, nil, indicatorStyle)
 	}
-}
-
-// getAltCell retrieves a cell from the alternate screen buffer using reflection.
-// Note: vt10x's altLines field is unexported, so we must use reflect.Index()
-// directly rather than Interface() which doesn't work for unexported fields.
-func (p *Panel) getAltCell(x, y int) vt10x.Glyph {
-	// Get the concrete State struct from the Terminal interface
-	v := reflect.ValueOf(p.VT)
-	if v.Kind() == reflect.Ptr || v.Kind() == reflect.Interface {
-		v = v.Elem()
-	}
-
-	// Get altLines field (unexported []line where line = []Glyph)
-	altLinesField := v.FieldByName("altLines")
-	if !altLinesField.IsValid() {
-		// Fallback to primary buffer if field doesn't exist
-		return p.VT.Cell(x, y)
-	}
-
-	// Access the slice directly using Index() - works for unexported fields
-	if y >= altLinesField.Len() {
-		return vt10x.Glyph{}
-	}
-
-	lineVal := altLinesField.Index(y)
-	if x >= lineVal.Len() {
-		return vt10x.Glyph{}
-	}
-
-	// Get the Glyph struct fields directly via reflection
-	glyphVal := lineVal.Index(x)
-
-	// Extract Glyph fields: Char (rune), Mode (int16), FG (Color), BG (Color)
-	var glyph vt10x.Glyph
-	if charField := glyphVal.FieldByName("Char"); charField.IsValid() {
-		glyph.Char = rune(charField.Int())
-	}
-	if modeField := glyphVal.FieldByName("Mode"); modeField.IsValid() {
-		glyph.Mode = int16(modeField.Int())
-	}
-	if fgField := glyphVal.FieldByName("FG"); fgField.IsValid() {
-		glyph.FG = vt10x.Color(fgField.Uint())
-	}
-	if bgField := glyphVal.FieldByName("BG"); bgField.IsValid() {
-		glyph.BG = vt10x.Color(bgField.Uint())
-	}
-
-	return glyph
 }
 
 // drawBorder draws a border around the terminal panel

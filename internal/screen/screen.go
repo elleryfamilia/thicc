@@ -72,6 +72,19 @@ type screenCell struct {
 
 var lastCursor screenCell
 
+// RefreshLastCursor updates lastCursor to match the current screen content.
+// This should be called after redrawing content (like terminal panels) to prevent
+// ShowFakeCursor from restoring stale content.
+func RefreshLastCursor() {
+	if Screen == nil {
+		return
+	}
+	r, combc, style, _ := Screen.GetContent(lastCursor.x, lastCursor.y)
+	lastCursor.r = r
+	lastCursor.combc = combc
+	lastCursor.style = style
+}
+
 // ShowFakeCursor displays a cursor at the given position by modifying the
 // style of the given column instead of actually using the terminal cursor
 // This can be useful in certain terminals such as the windows console where

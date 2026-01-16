@@ -215,9 +215,14 @@ func (lm *LayoutManager) PreloadTerminal(screenW, screenH int) {
 	lm.ScreenW = screenW
 	lm.ScreenH = screenH
 
-	// Calculate terminal region (same logic as Initialize)
+	// Temporarily set active panel to terminal to calculate correct dimensions
+	// This ensures shouldExpandTree() returns the correct value for the final layout
+	// (when terminal is active, tree collapses, giving terminal more space)
+	savedActivePanel := lm.ActivePanel
+	lm.ActivePanel = 2 // Terminal panel
 	termX := lm.getTermX()
 	termW := lm.getTermWidth()
+	lm.ActivePanel = savedActivePanel // Restore
 
 	// Record what command we're preloading with (for later comparison)
 	lm.preloadedWithCommand = lm.AIToolCommand
@@ -868,9 +873,13 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 		})
 	}
 
-	// Calculate terminal region
+	// Calculate terminal region with terminal as active panel
+	// This ensures shouldExpandTree() returns the correct value for the final layout
+	savedActivePanel := lm.ActivePanel
+	lm.ActivePanel = 2 // Terminal panel
 	termX := lm.getTermX()
 	termW := lm.getTermWidth()
+	lm.ActivePanel = savedActivePanel // Restore
 
 	// Check if terminal was already preloaded
 	lm.mu.RLock()
@@ -897,8 +906,7 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 		log.Println("THICC: Using preloaded terminal panel")
 		lm.mu.Lock()
 		lm.Terminal.Region.X = termX
-		lm.Terminal.Region.Width = termW
-		lm.Terminal.Region.Height = lm.ScreenH
+		// Call Resize with new values - it will skip if size unchanged and update Region
 		_ = lm.Terminal.Resize(termW, lm.ScreenH)
 		lm.mu.Unlock()
 	} else {
@@ -1657,6 +1665,7 @@ func (lm *LayoutManager) panelAtX(x int) int {
 
 // setActivePanel changes the active panel and updates Focus flags immediately
 func (lm *LayoutManager) setActivePanel(panel int) {
+	log.Printf("THICC: setActivePanel: %d -> %d", lm.ActivePanel, panel)
 	lm.ActivePanel = panel
 
 	// Update Focus flags immediately (don't wait for render)
@@ -2183,39 +2192,21 @@ func (lm *LayoutManager) updateLayout() {
 	lm.mu.RUnlock()
 
 	if term != nil {
-		newX := lm.getTermX()
-		newWidth := lm.getTermWidth()
-		if term.Region.Width != newWidth {
-			term.Region.X = newX
-			term.Region.Width = newWidth
-			_ = term.Resize(newWidth, term.Region.Height)
-		} else {
-			term.Region.X = newX
-		}
+		term.Region.X = lm.getTermX()
+		// Call Resize with new values - it will skip if size unchanged
+		_ = term.Resize(lm.getTermWidth(), term.Region.Height)
 	}
 
 	if term2 != nil {
-		newX := lm.getTerm2X()
-		newWidth := lm.getTerm2Width()
-		if term2.Region.Width != newWidth {
-			term2.Region.X = newX
-			term2.Region.Width = newWidth
-			_ = term2.Resize(newWidth, term2.Region.Height)
-		} else {
-			term2.Region.X = newX
-		}
+		term2.Region.X = lm.getTerm2X()
+		// Call Resize with new values - it will skip if size unchanged
+		_ = term2.Resize(lm.getTerm2Width(), term2.Region.Height)
 	}
 
 	if term3 != nil {
-		newX := lm.getTerm3X()
-		newWidth := lm.getTerm3Width()
-		if term3.Region.Width != newWidth {
-			term3.Region.X = newX
-			term3.Region.Width = newWidth
-			_ = term3.Resize(newWidth, term3.Region.Height)
-		} else {
-			term3.Region.X = newX
-		}
+		term3.Region.X = lm.getTerm3X()
+		// Call Resize with new values - it will skip if size unchanged
+		_ = term3.Resize(lm.getTerm3Width(), term3.Region.Height)
 	}
 }
 
@@ -2249,30 +2240,24 @@ func (lm *LayoutManager) Resize(w, h int) {
 	lm.mu.RUnlock()
 
 	if term != nil {
-		termW := lm.getTermWidth()
 		term.Region.X = lm.getTermX()
 		term.Region.Y = 1
-		term.Region.Width = termW
-		term.Region.Height = contentH
-		_ = term.Resize(termW, contentH)
+		// Call Resize with new values - it will skip if size unchanged and update Region
+		_ = term.Resize(lm.getTermWidth(), contentH)
 	}
 
 	if term2 != nil {
-		term2W := lm.getTerm2Width()
 		term2.Region.X = lm.getTerm2X()
 		term2.Region.Y = 1
-		term2.Region.Width = term2W
-		term2.Region.Height = contentH
-		_ = term2.Resize(term2W, contentH)
+		// Call Resize with new values - it will skip if size unchanged and update Region
+		_ = term2.Resize(lm.getTerm2Width(), contentH)
 	}
 
 	if term3 != nil {
-		term3W := lm.getTerm3Width()
 		term3.Region.X = lm.getTerm3X()
 		term3.Region.Y = 1
-		term3.Region.Width = term3W
-		term3.Region.Height = contentH
-		_ = term3.Resize(term3W, contentH)
+		// Call Resize with new values - it will skip if size unchanged and update Region
+		_ = term3.Resize(lm.getTerm3Width(), contentH)
 	}
 
 	log.Printf("THICC: Layout resized to %dx%d (tree=%d, editor=%d, term=%d, term2=%d, term3=%d)",
@@ -2657,6 +2642,14 @@ func (lm *LayoutManager) showToolSelectorFor(panel int) {
 
 // createTerminalForPanel creates a terminal for the specified panel with the given command
 func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
+	// Hide tool selector FIRST
+	lm.ShowingToolSelector = false
+
+	// Set active panel BEFORE calculating dimensions
+	// This ensures shouldExpandTree() returns the correct value for the final layout
+	// (tree collapses when terminal is active, giving terminal more space)
+	lm.setActivePanel(panel)
+
 	var termX, termW int
 
 	switch panel {
@@ -2674,10 +2667,8 @@ func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
 		return
 	}
 
-	log.Printf("THICC: Creating terminal for panel %d at x=%d, w=%d, cmd=%v", panel, termX, termW, cmdArgs)
-
-	// Hide tool selector
-	lm.ShowingToolSelector = false
+	log.Printf("THICC: createTerminalForPanel: panel=%d, x=%d, w=%d, ActivePanel=%d, shouldExpandTree=%v, TerminalVisible=%v, EditorVisible=%v",
+		panel, termX, termW, lm.ActivePanel, lm.shouldExpandTree(), lm.TerminalVisible, lm.EditorVisible)
 
 	go func() {
 		term, err := terminal.NewPanel(termX, 1, termW, lm.ScreenH-1, cmdArgs)
@@ -2704,15 +2695,21 @@ func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
 
 		log.Printf("THICC: Terminal for panel %d created successfully", panel)
 
-		// Update regions and focus
+		// Update regions (active panel already set before calculating dimensions)
 		lm.updatePanelRegions()
-		lm.setActivePanel(panel)
 		lm.triggerRedraw()
 	}()
 }
 
 // createTerminalWithInstallCommand creates a shell terminal and types the install command
 func (lm *LayoutManager) createTerminalWithInstallCommand(panel int, installCmd string) {
+	// Hide tool selector FIRST
+	lm.ShowingToolSelector = false
+
+	// Set active panel BEFORE calculating dimensions
+	// This ensures shouldExpandTree() returns the correct value for the final layout
+	lm.setActivePanel(panel)
+
 	var termX, termW int
 
 	switch panel {
@@ -2731,9 +2728,6 @@ func (lm *LayoutManager) createTerminalWithInstallCommand(panel int, installCmd 
 	}
 
 	log.Printf("THICC: Creating terminal for panel %d with install command: %s", panel, installCmd)
-
-	// Hide tool selector
-	lm.ShowingToolSelector = false
 
 	go func() {
 		// Create a shell terminal (nil cmdArgs = default shell)
@@ -2771,9 +2765,8 @@ func (lm *LayoutManager) createTerminalWithInstallCommand(panel int, installCmd 
 			log.Printf("THICC: Typed install command: %s", installCmd)
 		}()
 
-		// Update regions and focus
+		// Update regions (active panel already set before calculating dimensions)
 		lm.updatePanelRegions()
-		lm.setActivePanel(panel)
 		lm.triggerRedraw()
 	}()
 }
@@ -2915,11 +2908,14 @@ func (lm *LayoutManager) updatePanelRegions() {
 
 	if term != nil {
 		if lm.TerminalVisible {
-			term.Region.X = lm.getTermX()
+			newX := lm.getTermX()
+			newW := lm.getTermWidth()
+			log.Printf("THICC: updatePanelRegions term1: newX=%d, newW=%d, ActivePanel=%d, shouldExpandTree=%v",
+				newX, newW, lm.ActivePanel, lm.shouldExpandTree())
+			term.Region.X = newX
 			term.Region.Y = 1
-			term.Region.Width = lm.getTermWidth()
-			term.Region.Height = contentH
-			_ = term.Resize(term.Region.Width, term.Region.Height)
+			// Call Resize with new values - it will skip if size unchanged
+			_ = term.Resize(newW, contentH)
 		} else {
 			term.Region.Width = 0
 		}
@@ -2929,9 +2925,8 @@ func (lm *LayoutManager) updatePanelRegions() {
 		if lm.Terminal2Visible {
 			term2.Region.X = lm.getTerm2X()
 			term2.Region.Y = 1
-			term2.Region.Width = lm.getTerm2Width()
-			term2.Region.Height = contentH
-			_ = term2.Resize(term2.Region.Width, term2.Region.Height)
+			// Call Resize with new values - it will skip if size unchanged
+			_ = term2.Resize(lm.getTerm2Width(), contentH)
 		} else {
 			term2.Region.Width = 0
 		}
@@ -2941,9 +2936,8 @@ func (lm *LayoutManager) updatePanelRegions() {
 		if lm.Terminal3Visible {
 			term3.Region.X = lm.getTerm3X()
 			term3.Region.Y = 1
-			term3.Region.Width = lm.getTerm3Width()
-			term3.Region.Height = contentH
-			_ = term3.Resize(term3.Region.Width, term3.Region.Height)
+			// Call Resize with new values - it will skip if size unchanged
+			_ = term3.Resize(lm.getTerm3Width(), contentH)
 		} else {
 			term3.Region.Width = 0
 		}

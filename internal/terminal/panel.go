@@ -16,6 +16,27 @@ import (
 	"github.com/micro-editor/tcell/v2"
 )
 
+// Debug logging for PTY output - set THICC_DEBUG_PTY=1 to enable
+var debugPTY bool
+var debugFile *os.File
+
+func init() {
+	debugPTY = os.Getenv("THICC_DEBUG_PTY") == "1"
+	log.Printf("THICC: Debug PTY check - THICC_DEBUG_PTY=%q, debugPTY=%v", os.Getenv("THICC_DEBUG_PTY"), debugPTY)
+	if debugPTY {
+		var err error
+		debugFile, err = os.Create("/tmp/thicc_pty_debug.log")
+		if err != nil {
+			log.Printf("THICC: Failed to create debug file: %v", err)
+			debugPTY = false
+		} else {
+			log.Printf("THICC: PTY debug logging enabled -> /tmp/thicc_pty_debug.log")
+			fmt.Fprintf(debugFile, "=== THICC PTY DEBUG LOG STARTED ===\n\n")
+			debugFile.Sync()
+		}
+	}
+}
+
 // hasStarship checks if the starship prompt is installed
 func hasStarship() bool {
 	path, err := exec.LookPath("starship")
@@ -297,20 +318,29 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	cmd.Env = append(cmd.Env, "TERM=xterm-256color")
 	cmd.Env = append(cmd.Env, "THICC_TERM=1") // Marker so users can customize prompt in their shell config
 
-	// Start command with PTY
-	ptmx, err := pty.Start(cmd)
+	// Start command with PTY at the correct size from the beginning
+	// This prevents apps from rendering at default size then re-rendering on SIGWINCH
+	winSize := &pty.Winsize{
+		Rows: uint16(contentH),
+		Cols: uint16(contentW),
+	}
+	ptmx, err := pty.StartWithSize(cmd, winSize)
 	if err != nil {
 		return nil, err
 	}
 
-	// NOW create VT emulator with PTY as writer (enables DSR/CPR responses)
-	vt := vt10x.New(vt10x.WithSize(contentW, contentH), vt10x.WithWriter(ptmx))
+	if debugPTY && debugFile != nil {
+		fmt.Fprintf(debugFile, "=== TERMINAL CREATED ===\n")
+		fmt.Fprintf(debugFile, "Command: %v\n", cmdArgs)
+		fmt.Fprintf(debugFile, "Region: x=%d y=%d w=%d h=%d\n", x, y, w, h)
+		fmt.Fprintf(debugFile, "Content size: %dx%d (cols x rows)\n", contentW, contentH)
+		fmt.Fprintf(debugFile, "PTY Winsize: %d cols x %d rows\n", winSize.Cols, winSize.Rows)
+		fmt.Fprintf(debugFile, "=== END ===\n\n")
+		debugFile.Sync()
+	}
 
-	// Set initial PTY size (content area, not full region)
-	_ = pty.Setsize(ptmx, &pty.Winsize{
-		Rows: uint16(contentH),
-		Cols: uint16(contentW),
-	})
+	// Create VT emulator with PTY as writer (enables DSR/CPR responses)
+	vt := vt10x.New(vt10x.WithSize(contentW, contentH), vt10x.WithWriter(ptmx))
 
 	// Load settings and create scrollback buffer
 	settings := LoadSettings()
@@ -443,6 +473,24 @@ func (p *Panel) readLoop() {
 		}
 
 		if n > 0 {
+			// Debug: log raw PTY output
+			if debugPTY && debugFile != nil {
+				fmt.Fprintf(debugFile, "=== PTY OUTPUT (%d bytes) ===\n", n)
+				// Log hex dump for escape sequences
+				for i, b := range buf[:n] {
+					if b < 32 || b > 126 {
+						fmt.Fprintf(debugFile, "\\x%02x", b)
+					} else {
+						fmt.Fprintf(debugFile, "%c", b)
+					}
+					if (i+1)%80 == 0 {
+						fmt.Fprintf(debugFile, "\n")
+					}
+				}
+				fmt.Fprintf(debugFile, "\n=== END ===\n\n")
+				debugFile.Sync()
+			}
+
 			// Hold mutex during VT operations to prevent race with Resize
 			p.mu.Lock()
 
@@ -687,6 +735,20 @@ func (p *Panel) Write(data []byte) (int, error) {
 func (p *Panel) Resize(w, h int) error {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	// Skip if size hasn't changed (avoids unnecessary SIGWINCH to apps)
+	if p.Region.Width == w && p.Region.Height == h {
+		if debugPTY && debugFile != nil {
+			fmt.Fprintf(debugFile, "=== RESIZE SKIPPED (same size %dx%d) ===\n\n", w, h)
+			debugFile.Sync()
+		}
+		return nil
+	}
+
+	if debugPTY && debugFile != nil {
+		fmt.Fprintf(debugFile, "=== RESIZE %dx%d -> %dx%d ===\n\n", p.Region.Width, p.Region.Height, w, h)
+		debugFile.Sync()
+	}
 
 	p.Region.Width = w
 	p.Region.Height = h
