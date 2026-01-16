@@ -106,6 +106,11 @@ type LayoutManager struct {
 
 	// Multiplexer detection - true if running in tmux/zellij/screen
 	InMultiplexer bool
+
+	// Idle detection for suspending watchers
+	lastActivity      time.Time     // Last user input timestamp
+	watchersSuspended bool          // Whether watchers are currently suspended
+	idleCheckStop     chan struct{} // Stop channel for idle checker
 }
 
 // NewLayoutManager creates a new layout manager
@@ -115,7 +120,7 @@ func NewLayoutManager(root string) *LayoutManager {
 		os.Getenv("ZELLIJ") != "" ||
 		os.Getenv("STY") != ""
 
-	return &LayoutManager{
+	lm := &LayoutManager{
 		TreeWidth:         30,              // Fixed tree width
 		TreeWidthExpanded: 40,              // Wider when focused or single pane
 		LeftPanelsPct:     55,              // Tree + Editor = 55% of screen
@@ -133,7 +138,61 @@ func NewLayoutManager(root string) *LayoutManager {
 		TabBar:          NewTabBar(),
 		PaneNavBar:      NewPaneNavBar(),
 		InMultiplexer:   inMux,
+		lastActivity:    time.Now(),
+		idleCheckStop:   make(chan struct{}),
 	}
+
+	// Start idle checker goroutine
+	go lm.idleChecker()
+
+	return lm
+}
+
+// idleTimeout is how long to wait without user input before suspending watchers
+const idleTimeout = 1 * time.Minute
+
+// idleChecker periodically checks for inactivity and suspends watchers
+func (lm *LayoutManager) idleChecker() {
+	ticker := time.NewTicker(30 * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-lm.idleCheckStop:
+			return
+		case <-ticker.C:
+			if time.Since(lm.lastActivity) > idleTimeout && !lm.watchersSuspended {
+				lm.suspendWatchers()
+			}
+		}
+	}
+}
+
+// suspendWatchers stops file watching and git polling to reduce CPU usage
+func (lm *LayoutManager) suspendWatchers() {
+	lm.watchersSuspended = true
+	if lm.FileBrowser != nil && lm.FileBrowser.Tree != nil {
+		lm.FileBrowser.Tree.DisableWatching()
+	}
+	if lm.SourceControl != nil {
+		lm.SourceControl.StopPolling()
+	}
+	log.Println("THICC: Watchers suspended due to inactivity")
+}
+
+// resumeWatchers restarts file watching and git polling after user activity
+func (lm *LayoutManager) resumeWatchers() {
+	if !lm.watchersSuspended {
+		return
+	}
+	lm.watchersSuspended = false
+	if lm.TreeVisible && lm.FileBrowser != nil && lm.FileBrowser.Tree != nil {
+		lm.FileBrowser.Tree.EnableWatching()
+	}
+	if lm.SourceControlVisible && lm.SourceControl != nil {
+		lm.SourceControl.StartPolling()
+	}
+	log.Println("THICC: Watchers resumed")
 }
 
 // SetAIToolCommand sets the AI tool command to auto-launch in the terminal
@@ -1053,6 +1112,12 @@ func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 
 // HandleEvent routes events to the active panel
 func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
+	// Track activity and resume watchers if suspended
+	lm.lastActivity = time.Now()
+	if lm.watchersSuspended {
+		lm.resumeWatchers()
+	}
+
 	// Handle modal dialog first (takes priority over everything)
 	if lm.Modal != nil && lm.Modal.Active {
 		return lm.Modal.HandleEvent(event)
@@ -2216,6 +2281,11 @@ func (lm *LayoutManager) Resize(w, h int) {
 
 // Close cleans up resources
 func (lm *LayoutManager) Close() {
+	// Stop idle checker goroutine
+	if lm.idleCheckStop != nil {
+		close(lm.idleCheckStop)
+	}
+
 	if lm.FileBrowser != nil {
 		lm.FileBrowser.Close()
 	}
@@ -2286,10 +2356,17 @@ func (lm *LayoutManager) ToggleTree() {
 		lm.TreeVisible = true
 		lm.SourceControlVisible = false
 		log.Printf("THICC: Tree visibility toggled to %v (hiding Source Control)", lm.TreeVisible)
+		// Re-enable watching if not suspended
+		if !lm.watchersSuspended && lm.FileBrowser != nil && lm.FileBrowser.Tree != nil {
+			lm.FileBrowser.Tree.EnableWatching()
+		}
 		lm.setActivePanel(0)
 	} else {
-		// Hide tree
+		// Hide tree - disable watching to save resources
 		lm.TreeVisible = false
+		if lm.FileBrowser != nil && lm.FileBrowser.Tree != nil {
+			lm.FileBrowser.Tree.DisableWatching()
+		}
 		log.Printf("THICC: Tree visibility toggled to %v", lm.TreeVisible)
 
 		// If we just hid the focused pane, move focus to next visible pane

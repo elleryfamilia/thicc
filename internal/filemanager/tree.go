@@ -603,6 +603,15 @@ func (t *Tree) EnableWatching() error {
 	return nil
 }
 
+// DisableWatching stops file system watching (can be re-enabled later)
+func (t *Tree) DisableWatching() {
+	if t.watcher != nil {
+		t.watcher.Stop()
+		t.watcher = nil
+		log.Printf("THICC Tree: Watching disabled for %s", t.Root)
+	}
+}
+
 // Close stops watching and cleans up resources
 func (t *Tree) Close() {
 	if t.watcher != nil {
