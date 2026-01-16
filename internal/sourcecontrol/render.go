@@ -905,7 +905,7 @@ func (p *Panel) drawGraphCommitRow(screen tcell.Screen, y int, commit *CommitEnt
 	}
 
 	// Calculate text area width (after graph prefix)
-	prefixWidth := 4 // "● ▾ " = 4 chars
+	prefixWidth := 3 // "● " = dot + space
 	textWidth := p.Region.Width - prefixWidth - 2
 
 	// Wrap the subject to multiple lines if expanded
@@ -989,20 +989,6 @@ func (p *Panel) drawGraphCommitRow(screen tcell.Screen, y int, commit *CommitEnt
 			}
 			p.drawTextAt(screen, x, currentY, dot, dotStyle)
 			x += 2 // dot + space
-
-			// Expansion indicator if has files
-			if len(commit.Files) > 0 {
-				indicator := "▸"
-				if commit.Expanded {
-					indicator = "▾"
-				}
-				indicatorStyle := config.DefStyle.Foreground(tcell.ColorGray)
-				if isSelected && p.Focus && p.Section == SectionCommitGraph {
-					indicatorStyle = style
-				}
-				p.drawTextAt(screen, x, currentY, indicator, indicatorStyle)
-				x += 2
-			}
 		} else {
 			// Continuation lines: just indent to align with first line's text
 			x = prefixWidth
