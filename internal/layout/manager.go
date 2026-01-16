@@ -17,6 +17,7 @@ import (
 	"github.com/ellery/thicc/internal/filemanager"
 	"github.com/ellery/thicc/internal/sourcecontrol"
 	"github.com/ellery/thicc/internal/terminal"
+	"github.com/ellery/thicc/internal/thicc"
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -1334,6 +1335,7 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 			return true
 		}
 
+
 		// Global file operations (work from any panel when FileBrowser exists)
 		if lm.FileBrowser != nil {
 			switch ev.Key() {
@@ -1419,6 +1421,10 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 			case 'a':
 				log.Println("THICC: Alt+a detected, toggling source control")
 				lm.ToggleSourceControl()
+				return true
+			case 's':
+				log.Println("THICC: Alt+s detected, opening settings")
+				lm.OpenSettings()
 				return true
 			}
 		}
@@ -3269,10 +3275,28 @@ func (lm *LayoutManager) SaveCurrentBuffer() bool {
 					if lm.FileBrowser != nil && lm.FileBrowser.OnFileSaved != nil {
 						lm.FileBrowser.OnFileSaved(filename)
 					}
+
+					// Check if this is the settings file and reload
+					lm.handleSettingsFileSaved(filename)
 				})
 				return true
 			} else {
-				// Existing file - just save
+				// Existing file - check if it's settings file and validate first
+				if thicc.IsSettingsFile(bp.Buf.Path) {
+					// Validate settings before saving
+					content := bp.Buf.Bytes()
+					_, errors := thicc.ValidateSettingsJSON(content)
+					if len(errors) > 0 {
+						var errMsgs []string
+						for _, err := range errors {
+							errMsgs = append(errMsgs, err.Error())
+						}
+						action.InfoBar.Error("Cannot save - invalid settings: " + strings.Join(errMsgs, "; "))
+						return false
+					}
+				}
+
+				// Save the file
 				log.Printf("THICC: Saving existing file: %s", bp.Buf.Path)
 				bp.Save()
 
@@ -3285,11 +3309,41 @@ func (lm *LayoutManager) SaveCurrentBuffer() bool {
 				if lm.FileBrowser != nil && lm.FileBrowser.OnFileSaved != nil {
 					lm.FileBrowser.OnFileSaved(bp.Buf.Path)
 				}
+
+				// Check if this is the settings file and reload
+				lm.handleSettingsFileSaved(bp.Buf.Path)
 				return true
 			}
 		}
 	}
 	return false
+}
+
+// handleSettingsFileSaved handles validation and reload when settings file is saved
+func (lm *LayoutManager) handleSettingsFileSaved(path string) {
+	if !thicc.IsSettingsFile(path) {
+		return
+	}
+
+	log.Println("THICC: Settings file saved, validating and reloading...")
+
+	errors := thicc.ReloadSettings()
+	if len(errors) > 0 {
+		// Show validation errors
+		var errMsgs []string
+		for _, err := range errors {
+			errMsgs = append(errMsgs, err.Error())
+		}
+		action.InfoBar.Error("Settings validation failed: " + strings.Join(errMsgs, "; "))
+		return
+	}
+
+	// Apply settings that can be hot-reloaded
+	config.ReloadThiccBackground()
+	config.InitDoubleClickThreshold()
+
+	lm.ShowTimedMessage("Settings reloaded", 2*time.Second)
+	lm.triggerRedraw()
 }
 
 // ShowProjectPicker shows the project picker with current directory pre-filled
@@ -3310,6 +3364,35 @@ func (lm *LayoutManager) ShowQuickFind() {
 		lm.QuickFindPicker.Show()
 		lm.triggerRedraw()
 	}
+}
+
+// OpenSettings opens the THICC settings file in the editor
+func (lm *LayoutManager) OpenSettings() {
+	// Ensure settings file exists with defaults
+	if err := thicc.EnsureSettingsFile(); err != nil {
+		action.InfoBar.Error("Failed to create settings file: " + err.Error())
+		return
+	}
+
+	settingsPath := thicc.GetSettingsFilePath()
+
+	// Make editor visible if hidden
+	if !lm.EditorVisible {
+		lm.EditorVisible = true
+		lm.updateLayout()
+	}
+
+	// Open the settings file in the editor
+	lm.previewFileInEditor(settingsPath)
+
+	// Pin the tab since this was intentionally opened
+	if lm.TabBar != nil {
+		lm.TabBar.PinTab(lm.TabBar.ActiveIndex)
+	}
+
+	// Focus the editor
+	lm.FocusEditor()
+	lm.triggerRedraw()
 }
 
 // navigateToProject changes the root directory and reinitializes the file browser

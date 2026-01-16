@@ -7,9 +7,10 @@ thock
 thicc-arm64
 thock.exe
 !cmd/thock
-thicc
+/thicc
 thicc.exe
 !cmd/thicc
+!internal/thicc
 binaries/
 tmp.sh
 test/

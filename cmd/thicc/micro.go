@@ -33,6 +33,7 @@ import (
 	"github.com/ellery/thicc/internal/layout"
 	"github.com/ellery/thicc/internal/screen"
 	"github.com/ellery/thicc/internal/shell"
+	"github.com/ellery/thicc/internal/thicc"
 	"github.com/ellery/thicc/internal/update"
 	"github.com/ellery/thicc/internal/util"
 )
@@ -608,6 +609,13 @@ func main() {
 	if err != nil {
 		screen.TermMessage(err)
 	}
+
+	// Load THICC-specific settings early (before colorscheme init)
+	log.Println("THICC: Loading THICC settings")
+	thicc.LoadSettings()
+	config.ReloadThiccBackground()
+	config.InitDoubleClickThreshold()
+	log.Println("THICC: THICC settings loaded")
 
 	log.Println("THICC: Before InitRuntimeFiles")
 	config.InitRuntimeFiles(true)

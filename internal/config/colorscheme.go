@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/ellery/thicc/internal/thicc"
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -53,16 +54,39 @@ func ColorschemeExists(colorschemeName string) bool {
 	return FindRuntimeFile(RTColorscheme, colorschemeName) != nil
 }
 
+// DefaultBackgroundColor is the default background color hex value
+const DefaultBackgroundColor = "#0b0614"
+
 // ThiccBackground is the default background color for all panels
 // Uses 256-color palette in tmux for compatibility, true color otherwise
 var ThiccBackground = initThiccBackground()
 
 func initThiccBackground() tcell.Color {
+	return getBackgroundColor(DefaultBackgroundColor)
+}
+
+// getBackgroundColor converts a hex color to tcell.Color, handling tmux compatibility
+func getBackgroundColor(hexColor string) tcell.Color {
 	if InTmux {
 		// Use 256-color palette for tmux compatibility
-		return tcell.Color232 // Very dark gray (#080808)
+		return hexTo256Color(hexColor)
 	}
-	return tcell.GetColor("#0b0614") // True color dark purple
+	return tcell.GetColor(hexColor)
+}
+
+// ReloadThiccBackground reloads the background color from settings
+func ReloadThiccBackground() {
+	colorHex := DefaultBackgroundColor
+	if thicc.GlobalThiccSettings != nil {
+		customColor := thicc.GetBackgroundColor()
+		if customColor != "" {
+			colorHex = customColor
+		}
+	}
+	ThiccBackground = getBackgroundColor(colorHex)
+	// Update DefStyle with new background
+	fg, _, _ := DefStyle.Decompose()
+	DefStyle = DefStyle.Foreground(fg).Background(ThiccBackground)
 }
 
 // InitColorscheme picks and initializes the colorscheme when micro starts

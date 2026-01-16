@@ -94,7 +94,7 @@ func (h *BufPane) MousePress(e *tcell.EventMouse) bool {
 		h.Cursor = h.Buf.GetActiveCursor()
 		h.Cursor.Loc = mouseLoc
 	}
-	if time.Since(h.lastClickTime)/time.Millisecond < config.DoubleClickThreshold && (mouseLoc.X == h.lastLoc.X && mouseLoc.Y == h.lastLoc.Y) {
+	if time.Since(h.lastClickTime) < time.Duration(config.DoubleClickThreshold)*time.Millisecond && (mouseLoc.X == h.lastLoc.X && mouseLoc.Y == h.lastLoc.Y) {
 		if h.DoubleClick {
 			// Triple click
 			h.lastClickTime = time.Now()

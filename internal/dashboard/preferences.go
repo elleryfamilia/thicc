@@ -51,12 +51,12 @@ func (ps *PreferencesStore) Load() error {
 			// No preferences file yet, use defaults
 			return nil
 		}
-		log.Printf("THOCK Dashboard: Failed to read preferences.json: %v", err)
+		log.Printf("THICC Dashboard: Failed to read preferences.json: %v", err)
 		return err
 	}
 
 	if err := json.Unmarshal(data, ps); err != nil {
-		log.Printf("THOCK Dashboard: Failed to parse preferences.json: %v", err)
+		log.Printf("THICC Dashboard: Failed to parse preferences.json: %v", err)
 		return err
 	}
 
@@ -66,19 +66,19 @@ func (ps *PreferencesStore) Load() error {
 // Save writes preferences to disk
 func (ps *PreferencesStore) Save() error {
 	if err := EnsureConfigDir(); err != nil {
-		log.Printf("THOCK Dashboard: Failed to create config dir: %v", err)
+		log.Printf("THICC Dashboard: Failed to create config dir: %v", err)
 		return err
 	}
 
 	data, err := json.MarshalIndent(ps, "", "  ")
 	if err != nil {
-		log.Printf("THOCK Dashboard: Failed to marshal preferences.json: %v", err)
+		log.Printf("THICC Dashboard: Failed to marshal preferences.json: %v", err)
 		return err
 	}
 
 	filePath := GetPreferencesFilePath()
 	if err := os.WriteFile(filePath, data, 0644); err != nil {
-		log.Printf("THOCK Dashboard: Failed to write preferences.json: %v", err)
+		log.Printf("THICC Dashboard: Failed to write preferences.json: %v", err)
 		return err
 	}
 

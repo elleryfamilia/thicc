@@ -518,19 +518,14 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 			}
 		}
 
-		// Check if clicking in commit section (input box area)
-		if localY >= p.commitSectionY && localY < p.buttonsY {
-			p.Section = SectionCommitInput
-			log.Printf("THOCK SourceControl: Focused commit input")
-			return true
-		}
+		// Check file clicks FIRST (specific Y positions) before range checks
 
 		// Check if clicking on an unstaged file
 		for i, fileY := range p.unstagedFileYs {
 			if localY == fileY {
 				p.Section = SectionUnstaged
 				p.Selected = i
-				log.Printf("THOCK SourceControl: Selected unstaged file %d", i)
+				log.Printf("THOCK SourceControl: Selected unstaged file %d at Y=%d", i, fileY)
 				// Trigger diff view for the clicked file
 				if i < len(p.UnstagedFiles) && p.OnFileSelect != nil {
 					p.OnFileSelect(p.UnstagedFiles[i].Path, false)
@@ -552,7 +547,7 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 			if localY == fileY {
 				p.Section = SectionStaged
 				p.Selected = i
-				log.Printf("THOCK SourceControl: Selected staged file %d", i)
+				log.Printf("THOCK SourceControl: Selected staged file %d at Y=%d", i, fileY)
 				// Trigger diff view for the clicked file
 				if i < len(p.StagedFiles) && p.OnFileSelect != nil {
 					p.OnFileSelect(p.StagedFiles[i].Path, true)
@@ -566,6 +561,13 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 			p.Section = SectionStaged
 			p.Selected = 0
 			log.Printf("THOCK SourceControl: Focused staged section")
+			return true
+		}
+
+		// Check if clicking in commit section (input box area) - AFTER file checks
+		if localY >= p.commitSectionY && localY < p.buttonsY {
+			p.Section = SectionCommitInput
+			log.Printf("THOCK SourceControl: Focused commit input")
 			return true
 		}
 
