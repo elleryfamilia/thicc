@@ -2053,7 +2053,7 @@ func (lm *LayoutManager) drawPlaceholders(screen tcell.Screen) {
 
 // drawPlaceholderBox draws a single placeholder box with title and shortcut hint
 func (lm *LayoutManager) drawPlaceholderBox(screen tcell.Screen, x, y, width, height int, title, shortcut string) {
-	borderStyle := tcell.StyleDefault.Foreground(tcell.ColorGray)
+	borderStyle := tcell.StyleDefault.Foreground(tcell.NewRGBColor(100, 40, 140)) // Darker violet
 	titleStyle := tcell.StyleDefault.Foreground(tcell.Color205) // Hot pink
 	hintStyle := tcell.StyleDefault.Foreground(tcell.Color51)   // Cyan
 
@@ -2107,7 +2107,7 @@ func (lm *LayoutManager) drawEditorBorder(screen tcell.Screen, focused bool) {
 	if focused {
 		style = config.DefStyle.Foreground(tcell.Color205) // Hot pink
 	} else {
-		style = config.DefStyle.Foreground(tcell.ColorGray)
+		style = config.DefStyle.Foreground(tcell.NewRGBColor(100, 40, 140)) // Darker violet
 	}
 
 	editorX := lm.getTreeWidth()

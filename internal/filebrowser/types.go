@@ -32,7 +32,7 @@ var DefaultStyle = tcell.StyleDefault.Foreground(tcell.Color252)
 func GetFocusedStyle() tcell.Style {
 	return config.DefStyle.
 		Foreground(tcell.ColorBlack).
-		Background(tcell.ColorWhite)
+		Background(tcell.Color226) // Spider-Verse yellow
 }
 
 // GetDirectoryStyle returns the style for directories, using the editor's background

@@ -176,10 +176,11 @@ func (d *Dashboard) drawLogo(screen tcell.Screen) {
 		logoY = 1
 	}
 
-	// Check if there's room for the logo
-	if logoY < 0 || d.ScreenW < ThiccLogoWidth+4 {
+	// Check if there's room for the logo (need extra width for ASCII art parentheses)
+	totalLogoWidth := ThiccLogoWidth + LeftParenWidth + RightParenWidth + 2 // +2 for spacing
+	if logoY < 0 || d.ScreenW < totalLogoWidth+4 {
 		// Draw simple text title instead
-		title := "THICC"
+		title := "(THICC)"
 		titleX := d.menuRegion.X + (d.menuRegion.Width-len(title))/2
 		d.drawText(screen, titleX, d.menuRegion.Y-2, title, StyleTitle)
 		return
@@ -200,6 +201,42 @@ func (d *Dashboard) drawLogo(screen tcell.Screen) {
 		}
 	}
 
+	// Draw ASCII art parentheses around the logo
+	leftParenX := logoX - LeftParenWidth - 1
+	rightParenX := logoX + ThiccLogoWidth + 1
+
+	// Draw left parenthesis
+	if leftParenX >= 0 {
+		for lineIdx, line := range LeftParen {
+			y := logoY + lineIdx
+			runeIdx := 0
+			for _, ch := range line {
+				x := leftParenX + runeIdx
+				if x >= 0 && x < d.ScreenW {
+					style := GetLogoColorForChar(ch)
+					screen.SetContent(x, y, ch, nil, style)
+				}
+				runeIdx++
+			}
+		}
+	}
+
+	// Draw right parenthesis
+	if rightParenX+RightParenWidth <= d.ScreenW {
+		for lineIdx, line := range RightParen {
+			y := logoY + lineIdx
+			runeIdx := 0
+			for _, ch := range line {
+				x := rightParenX + runeIdx
+				if x >= 0 && x < d.ScreenW {
+					style := GetLogoColorForChar(ch)
+					screen.SetContent(x, y, ch, nil, style)
+				}
+				runeIdx++
+			}
+		}
+	}
+
 	// Draw tagline below logo in cyan
 	taglineX := d.menuRegion.X + (d.menuRegion.Width-len(ThiccTagline))/2
 	taglineY := logoY + ThiccLogoHeight + 1
@@ -213,8 +250,9 @@ func (d *Dashboard) drawLogo(screen tcell.Screen) {
 func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 	r := d.menuRegion
 
-	// Draw border
-	d.drawBorder(screen, r.X, r.Y, r.Width, r.Height)
+	// Draw border - dim when an overlay is active
+	hasOverlay := d.IsProjectPickerActive() || d.IsFilePickerActive() || d.IsFolderCreatorActive() || d.IsOnboardingGuideActive()
+	d.drawBorder(screen, r.X, r.Y, r.Width, r.Height, !hasOverlay)
 
 	// Draw all menu items (linear order)
 	y := r.Y + 2
@@ -260,7 +298,7 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 		// Installable tools section
 		if len(d.InstallTools) > 0 {
 			// Draw "Not Installed" separator
-			hintStyle := tcell.StyleDefault.Foreground(tcell.ColorGray).Background(ColorBgDark)
+			hintStyle := tcell.StyleDefault.Foreground(ColorViolet).Background(ColorBgDark)
 			sepText := "── Not Installed ──"
 			sepX := r.X + (r.Width-len(sepText))/2
 			d.drawText(screen, sepX, y, sepText, hintStyle)
@@ -316,10 +354,13 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 }
 
 // drawBorder draws a double-line border around a region
-func (d *Dashboard) drawBorder(screen tcell.Screen, x, y, w, h int) {
+func (d *Dashboard) drawBorder(screen tcell.Screen, x, y, w, h int, focused bool) {
 	// Elegant cyan/blue border (comic-book style)
 	// All styles must have explicit fg AND bg to prevent color changes in light mode
 	style := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark).Bold(true)
+	if !focused {
+		style = StyleBorderDim
+	}
 
 	// Corners
 	screen.SetContent(x, y, '╔', nil, style)

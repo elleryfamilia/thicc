@@ -64,11 +64,11 @@ func (p *Panel) drawHeader(screen tcell.Screen) {
 	}
 
 	// Draw the directory name with appropriate style
-	p.drawText(screen, 1, 1, displayName, style)
+	p.drawText(screen, 3, 1, displayName, style)
 
 	// Line 2: Separator
-	separator := strings.Repeat("─", p.Region.Width-2)
-	p.drawText(screen, 1, 2, separator, GetDividerStyle())
+	separator := strings.Repeat("─", p.Region.Width-4)
+	p.drawText(screen, 3, 2, separator, GetDividerStyle())
 }
 
 // min returns the minimum of two integers
@@ -86,7 +86,7 @@ func (p *Panel) drawNodes(screen tcell.Screen) {
 
 	// Show loading message if tree isn't ready yet
 	if nodes == nil {
-		p.drawText(screen, 1, startY, "Loading files...", GetDefaultStyle())
+		p.drawText(screen, 3, startY, "Loading files...", GetDefaultStyle())
 		return
 	}
 
@@ -129,7 +129,7 @@ func (p *Panel) renderNode(screen tcell.Screen, y int, node *filemanager.TreeNod
 		}
 	}
 
-	x := 1 // Left padding
+	x := 3 // Left padding (3 chars from border)
 
 	// Indentation (1 space per level to save horizontal space)
 	indent := strings.Repeat(" ", node.Indent)
@@ -195,48 +195,40 @@ func GetBorderStyle() tcell.Style {
 }
 
 // drawBorder draws a border around the panel
-// Uses double-line (focused/pink) or single-line (unfocused/gray) to match other panels
+// Focused: double-line pink border
+// Unfocused: single-line violet border
 func (p *Panel) drawBorder(screen tcell.Screen) {
-	var style tcell.Style
+	pinkStyle := GetBorderStyle()                                              // Hot pink
+	violetStyle := config.DefStyle.Foreground(tcell.NewRGBColor(100, 40, 140)) // Darker violet
+
 	if p.Focus {
-		style = GetBorderStyle() // Hot pink
-	} else {
-		style = config.DefStyle.Foreground(tcell.ColorGray)
-	}
-
-	// Draw vertical lines
-	for y := 1; y < p.Region.Height-1; y++ {
-		if p.Focus {
-			screen.SetContent(p.Region.X, p.Region.Y+y, '║', nil, style)
-			screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '║', nil, style)
-		} else {
-			screen.SetContent(p.Region.X, p.Region.Y+y, '│', nil, style)
-			screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '│', nil, style)
+		// Double-line border in pink
+		for y := 1; y < p.Region.Height-1; y++ {
+			screen.SetContent(p.Region.X, p.Region.Y+y, '║', nil, pinkStyle)
+			screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '║', nil, pinkStyle)
 		}
-	}
-
-	// Draw horizontal lines
-	for x := 1; x < p.Region.Width-1; x++ {
-		if p.Focus {
-			screen.SetContent(p.Region.X+x, p.Region.Y, '═', nil, style)
-			screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '═', nil, style)
-		} else {
-			screen.SetContent(p.Region.X+x, p.Region.Y, '─', nil, style)
-			screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '─', nil, style)
+		for x := 1; x < p.Region.Width-1; x++ {
+			screen.SetContent(p.Region.X+x, p.Region.Y, '═', nil, pinkStyle)
+			screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '═', nil, pinkStyle)
 		}
-	}
-
-	// Draw corners
-	if p.Focus {
-		screen.SetContent(p.Region.X, p.Region.Y, '╔', nil, style)
-		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '╗', nil, style)
-		screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '╚', nil, style)
-		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '╝', nil, style)
+		screen.SetContent(p.Region.X, p.Region.Y, '╔', nil, pinkStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '╗', nil, pinkStyle)
+		screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '╚', nil, pinkStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '╝', nil, pinkStyle)
 	} else {
-		screen.SetContent(p.Region.X, p.Region.Y, '┌', nil, style)
-		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '┐', nil, style)
-		screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '└', nil, style)
-		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '┘', nil, style)
+		// Single-line border in violet
+		for y := 1; y < p.Region.Height-1; y++ {
+			screen.SetContent(p.Region.X, p.Region.Y+y, '│', nil, violetStyle)
+			screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '│', nil, violetStyle)
+		}
+		for x := 1; x < p.Region.Width-1; x++ {
+			screen.SetContent(p.Region.X+x, p.Region.Y, '─', nil, violetStyle)
+			screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '─', nil, violetStyle)
+		}
+		screen.SetContent(p.Region.X, p.Region.Y, '┌', nil, violetStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '┐', nil, violetStyle)
+		screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '└', nil, violetStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '┘', nil, violetStyle)
 	}
 }
 

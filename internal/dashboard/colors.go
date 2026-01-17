@@ -16,6 +16,9 @@ var (
 	ColorYellow    = tcell.Color226 // #FFFF00 - Bright yellow
 	ColorYellowDim = tcell.Color220 // #FFD700 - Gold
 
+	// Violet - Spider-Verse shadow/accent
+	ColorViolet = tcell.NewRGBColor(160, 60, 210) // #A03CD2 - Spider-Verse violet
+
 	// Background - Deep purple/black
 	ColorBgDark  = tcell.Color16  // #000000 - Pure black
 	ColorBgPanel = tcell.Color233 // #121212 - Very dark gray
@@ -71,12 +74,12 @@ var (
 			Background(ColorBgDark)
 
 	StyleBorderDim = tcell.StyleDefault.
-			Foreground(ColorMagentaDark).
+			Foreground(ColorViolet).
 			Background(ColorBgDark)
 
 	// Version and footer
 	StyleVersion = tcell.StyleDefault.
-			Foreground(ColorTextMuted).
+			Foreground(ColorViolet).
 			Background(ColorBgDark)
 
 	StyleFooterHint = tcell.StyleDefault.

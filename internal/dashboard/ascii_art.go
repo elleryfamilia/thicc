@@ -48,8 +48,38 @@ var ThiccLogoWidth = 58
 // ThiccLogoHeight is the height of the logo
 var ThiccLogoHeight = len(ThiccLogo)
 
+// LeftParen - ASCII art left parenthesis in DOS Rebel font
+var LeftParen = []string{
+	`   ███`,
+	`  ███ `,
+	` ███  `,
+	`░███  `,
+	`░███  `,
+	`░░███ `,
+	` ░░███`,
+	`  ░░░ `,
+}
+
+// LeftParenWidth is the width of the left parenthesis
+var LeftParenWidth = 6
+
+// RightParen - ASCII art right parenthesis in DOS Rebel font
+var RightParen = []string{
+	` ███  `,
+	`░░███ `,
+	` ░░███`,
+	`  ░███`,
+	`  ░███`,
+	`  ███ `,
+	` ██░  `,
+	`░░░   `,
+}
+
+// RightParenWidth is the width of the right parenthesis
+var RightParenWidth = 6
+
 // ThiccTagline appears under the logo
-var ThiccTagline = "a terminal editor that sparks joy"
+var ThiccTagline = "Get Thicc, Ship Quick"
 
 // GetLogoColorForChar returns the color style based on the character type
 // Solid blocks (█) get one color, shaded blocks (▒, ░) get another for depth
@@ -60,8 +90,8 @@ func GetLogoColorForChar(ch rune) tcell.Style {
 		// Solid parts - bright magenta/pink
 		return tcell.StyleDefault.Foreground(ColorMagenta).Background(ColorBgDark).Bold(true)
 	case '▒', '░':
-		// Shaded/outline parts - cyan for contrast
-		return tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark).Bold(true)
+		// Shaded/outline parts - violet for Spider-Verse shadow effect
+		return tcell.StyleDefault.Foreground(ColorViolet).Background(ColorBgDark)
 	default:
 		// Everything else (spaces, etc)
 		return tcell.StyleDefault.Foreground(ColorMagenta).Background(ColorBgDark).Bold(true)

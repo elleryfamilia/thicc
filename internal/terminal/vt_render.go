@@ -284,52 +284,56 @@ func (p *Panel) drawScrollIndicator(screen tcell.Screen) {
 }
 
 // drawBorder draws a border around the terminal panel
+// Focused: double-line pink border
+// Passthrough: double-line orange border
+// Unfocused: single-line violet border
 func (p *Panel) drawBorder(screen tcell.Screen) {
-	var style tcell.Style
+	pinkStyle := GetBorderStyle()                                              // Hot pink
+	violetStyle := config.DefStyle.Foreground(tcell.NewRGBColor(100, 40, 140)) // Darker violet
+	orangeStyle := config.DefStyle.Foreground(tcell.ColorOrange)               // Passthrough mode
+
 	if p.PassthroughMode {
-		style = config.DefStyle.Foreground(tcell.ColorOrange) // Orange when in passthrough mode
+		// Double-line orange border for passthrough mode
+		for y := 1; y < p.Region.Height-1; y++ {
+			screen.SetContent(p.Region.X, p.Region.Y+y, '║', nil, orangeStyle)
+			screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '║', nil, orangeStyle)
+		}
+		for x := 1; x < p.Region.Width-1; x++ {
+			screen.SetContent(p.Region.X+x, p.Region.Y, '═', nil, orangeStyle)
+			screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '═', nil, orangeStyle)
+		}
+		screen.SetContent(p.Region.X, p.Region.Y, '╔', nil, orangeStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '╗', nil, orangeStyle)
+		screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '╚', nil, orangeStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '╝', nil, orangeStyle)
 	} else if p.Focus {
-		style = GetBorderStyle() // Hot pink when focused
-	} else {
-		style = config.DefStyle.Foreground(tcell.ColorGray) // Gray when not focused
-	}
-
-	// Use double-line border for focused or passthrough mode
-	useDoubleLine := p.Focus || p.PassthroughMode
-
-	// Draw vertical lines
-	for y := 1; y < p.Region.Height-1; y++ {
-		if useDoubleLine {
-			screen.SetContent(p.Region.X, p.Region.Y+y, '║', nil, style)
-			screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '║', nil, style)
-		} else {
-			screen.SetContent(p.Region.X, p.Region.Y+y, '│', nil, style)
-			screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '│', nil, style)
+		// Double-line border in pink
+		for y := 1; y < p.Region.Height-1; y++ {
+			screen.SetContent(p.Region.X, p.Region.Y+y, '║', nil, pinkStyle)
+			screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '║', nil, pinkStyle)
 		}
-	}
-
-	// Draw horizontal lines
-	for x := 1; x < p.Region.Width-1; x++ {
-		if useDoubleLine {
-			screen.SetContent(p.Region.X+x, p.Region.Y, '═', nil, style)
-			screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '═', nil, style)
-		} else {
-			screen.SetContent(p.Region.X+x, p.Region.Y, '─', nil, style)
-			screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '─', nil, style)
+		for x := 1; x < p.Region.Width-1; x++ {
+			screen.SetContent(p.Region.X+x, p.Region.Y, '═', nil, pinkStyle)
+			screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '═', nil, pinkStyle)
 		}
-	}
-
-	// Draw corners
-	if useDoubleLine {
-		screen.SetContent(p.Region.X, p.Region.Y, '╔', nil, style)
-		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '╗', nil, style)
-		screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '╚', nil, style)
-		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '╝', nil, style)
+		screen.SetContent(p.Region.X, p.Region.Y, '╔', nil, pinkStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '╗', nil, pinkStyle)
+		screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '╚', nil, pinkStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '╝', nil, pinkStyle)
 	} else {
-		screen.SetContent(p.Region.X, p.Region.Y, '┌', nil, style)
-		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '┐', nil, style)
-		screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '└', nil, style)
-		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '┘', nil, style)
+		// Single-line border in violet
+		for y := 1; y < p.Region.Height-1; y++ {
+			screen.SetContent(p.Region.X, p.Region.Y+y, '│', nil, violetStyle)
+			screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+y, '│', nil, violetStyle)
+		}
+		for x := 1; x < p.Region.Width-1; x++ {
+			screen.SetContent(p.Region.X+x, p.Region.Y, '─', nil, violetStyle)
+			screen.SetContent(p.Region.X+x, p.Region.Y+p.Region.Height-1, '─', nil, violetStyle)
+		}
+		screen.SetContent(p.Region.X, p.Region.Y, '┌', nil, violetStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y, '┐', nil, violetStyle)
+		screen.SetContent(p.Region.X, p.Region.Y+p.Region.Height-1, '└', nil, violetStyle)
+		screen.SetContent(p.Region.X+p.Region.Width-1, p.Region.Y+p.Region.Height-1, '┘', nil, violetStyle)
 	}
 }
 

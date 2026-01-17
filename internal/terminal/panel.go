@@ -76,21 +76,32 @@ _cmd_start=0
 preexec() { _cmd_start=$SECONDS }
 _cmd_elapsed() {
   # Determine previous segment color for arrow transition
-  # Not in git repo: use folder segment color (53=magenta)
-  # In git repo clean: use git segment color (30=cyan)
-  # In git repo dirty: use git segment color (208=orange)
-  local gbg=53
+  # Not in git repo: use folder segment color (24=navy)
+  # In git repo clean: use git segment color (30=teal)
+  # In git repo dirty: use git segment color (#60fdff=aqua)
+  local dirty_git=""
   if git rev-parse --git-dir &>/dev/null; then
-    gbg=30
-    [[ -n "$(git status --porcelain 2>/dev/null | head -1)" ]] && gbg=208
+    [[ -n "$(git status --porcelain 2>/dev/null | head -1)" ]] && dirty_git=1
   fi
 
   if (( _cmd_start > 0 )) && (( SECONDS - _cmd_start > 0 )); then
-    # git_bg -> gold segment -> default
-    echo "%k%F{${gbg}}%K{178}${_g_arrow}%F{black} ${_g_clock} $((SECONDS - _cmd_start))s %k%F{178}${_g_arrow}%f"
+    # prev_bg -> white segment -> default
+    if [[ -n "$dirty_git" ]]; then
+      echo "%{\e[0m\e[38;2;96;253;255m\e[48;5;231m%}${_g_arrow}%F{black} ${_g_clock} $((SECONDS - _cmd_start))s %k%F{231}${_g_arrow}%f"
+    elif git rev-parse --git-dir &>/dev/null; then
+      echo "%k%F{30}%K{231}${_g_arrow}%F{black} ${_g_clock} $((SECONDS - _cmd_start))s %k%F{231}${_g_arrow}%f"
+    else
+      echo "%k%F{24}%K{231}${_g_arrow}%F{black} ${_g_clock} $((SECONDS - _cmd_start))s %k%F{231}${_g_arrow}%f"
+    fi
   else
-    # git_bg -> default (just the ending arrow)
-    echo "%k%F{${gbg}}${_g_arrow}%f"
+    # prev_bg -> default (just the ending arrow)
+    if [[ -n "$dirty_git" ]]; then
+      echo "%{\e[0m\e[38;2;96;253;255m%}${_g_arrow}%f"
+    elif git rev-parse --git-dir &>/dev/null; then
+      echo "%k%F{30}${_g_arrow}%f"
+    else
+      echo "%k%F{24}${_g_arrow}%f"
+    fi
   fi
   _cmd_start=0
 }
@@ -111,19 +122,21 @@ _git_info() {
   [[ "$ahead" -gt 0 ]] 2>/dev/null && ab="+${ahead}"
   [[ "$behind" -gt 0 ]] 2>/dev/null && ab="${ab}-${behind}"
 
-  # Segment bg color: 30=cyan (clean), 208=orange (dirty)
-  local bg=30
-  [[ -n "$dirty" ]] && bg=208
-
   # Truncate branch to 12 chars
   branch="${branch:0:12}"
 
-  # Output: [magenta arrow on git_bg][white text on git_bg][content]
-  echo "%F{53}%K{${bg}}${_g_arrow}%f%F{231} ${_g_branch} ${branch}${ab} "
+  # Segment color: 30=teal (clean), #60fdff=aqua (dirty)
+  if [[ -n "$dirty" ]]; then
+    # Dirty: aqua background (#60fdff) with black text
+    echo "%F{24}%{\e[48;2;96;253;255m%}${_g_arrow}%f%F{black} ${_g_branch} ${branch}${ab} %{\e[0m%}%F{#60fdff}"
+  else
+    # Clean: teal background with white text
+    echo "%F{24}%K{30}${_g_arrow}%f%F{231} ${_g_branch} ${branch}${ab} "
+  fi
 }
 
-# Build prompt: [magenta] dir [dynamic git segment] [yellow time if >0] [arrow]
-PROMPT='%K{53}%F{231} ${_g_folder} %1~ %k$(_git_info)$(_cmd_elapsed) '
+# Build prompt: [navy] dir [dynamic git segment] [muted gold time if >0] [arrow]
+PROMPT='%K{24}%F{231} ${_g_folder} %1~ %k$(_git_info)$(_cmd_elapsed) '
 RPROMPT=''
 `
 	}
@@ -140,19 +153,27 @@ _cmd_start=0
 _timer_start() { _cmd_start=$SECONDS; }
 _timer_show() {
   # Determine previous segment color for arrow transition
-  # Not in git repo: use folder segment color (53=magenta)
-  # In git repo clean: use git segment color (30=cyan)
-  # In git repo dirty: use git segment color (208=orange)
-  local gbg=53
+  local dirty_git=""
   if git rev-parse --git-dir &>/dev/null; then
-    gbg=30
-    [[ -n "$(git status --porcelain 2>/dev/null | head -1)" ]] && gbg=208
+    [[ -n "$(git status --porcelain 2>/dev/null | head -1)" ]] && dirty_git=1
   fi
 
   if (( _cmd_start > 0 )) && (( SECONDS - _cmd_start > 0 )); then
-    printf "\e[0m\e[38;5;${gbg}m\e[48;5;178m${_g_arrow}\e[30m ${_g_clock} %ss \e[0m\e[38;5;178m${_g_arrow}\e[0m" "$((SECONDS - _cmd_start))"
+    if [[ -n "$dirty_git" ]]; then
+      printf "\e[0m\e[38;2;96;253;255m\e[48;5;231m${_g_arrow}\e[30m ${_g_clock} %ss \e[0m\e[38;5;231m${_g_arrow}\e[0m" "$((SECONDS - _cmd_start))"
+    elif git rev-parse --git-dir &>/dev/null; then
+      printf "\e[0m\e[38;5;30m\e[48;5;231m${_g_arrow}\e[30m ${_g_clock} %ss \e[0m\e[38;5;231m${_g_arrow}\e[0m" "$((SECONDS - _cmd_start))"
+    else
+      printf "\e[0m\e[38;5;24m\e[48;5;231m${_g_arrow}\e[30m ${_g_clock} %ss \e[0m\e[38;5;231m${_g_arrow}\e[0m" "$((SECONDS - _cmd_start))"
+    fi
   else
-    printf "\e[0m\e[38;5;${gbg}m${_g_arrow}\e[0m"
+    if [[ -n "$dirty_git" ]]; then
+      printf "\e[0m\e[38;2;96;253;255m${_g_arrow}\e[0m"
+    elif git rev-parse --git-dir &>/dev/null; then
+      printf "\e[0m\e[38;5;30m${_g_arrow}\e[0m"
+    else
+      printf "\e[0m\e[38;5;24m${_g_arrow}\e[0m"
+    fi
   fi
   _cmd_start=0
 }
@@ -162,12 +183,17 @@ _git_info() {
   local branch=$(git symbolic-ref --short HEAD 2>/dev/null)
   [[ -z "$branch" ]] && return
   local dirty=$(git status --porcelain 2>/dev/null | head -1)
-  local bg=30
-  [[ -n "$dirty" ]] && bg=208
-  printf "\e[38;5;53m\e[48;5;${bg}m${_g_arrow}\e[97m ${_g_branch} ${branch:0:12} "
+  branch="${branch:0:12}"
+  if [[ -n "$dirty" ]]; then
+    # Dirty: aqua background (#60fdff) with black text
+    printf "\e[38;5;24m\e[48;2;96;253;255m${_g_arrow}\e[30m ${_g_branch} ${branch} "
+  else
+    # Clean: teal background with white text
+    printf "\e[38;5;24m\e[48;5;30m${_g_arrow}\e[97m ${_g_branch} ${branch} "
+  fi
 }
 
-PS1='\[\e[48;5;53m\e[97m\] ${_g_folder} \W \[\e[0m\]$(_git_info)$(_timer_show) '
+PS1='\[\e[48;5;24m\e[97m\] ${_g_folder} \W \[\e[0m\]$(_git_info)$(_timer_show) '
 `
 }
 
