@@ -1,15 +1,18 @@
 package layout
 
 import (
+	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
 
 	"github.com/ellery/thicc/internal/action"
 	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/screen"
 	"github.com/ellery/thicc/internal/clipboard"
 	"github.com/ellery/thicc/internal/config"
 	"github.com/ellery/thicc/internal/dashboard"
@@ -29,6 +32,33 @@ type Region struct {
 	Height int
 }
 
+// WorkInProgress holds information about unsaved work
+type WorkInProgress struct {
+	UnsavedBuffers   []string // Names of modified buffers
+	ActiveAISessions []string // Names of active AI tool terminals
+}
+
+// HasWork returns true if there is any unsaved work
+func (w *WorkInProgress) HasWork() bool {
+	return len(w.UnsavedBuffers) > 0 || len(w.ActiveAISessions) > 0
+}
+
+// Message returns a human-readable description of the work in progress
+func (w *WorkInProgress) Message() string {
+	var parts []string
+	if n := len(w.UnsavedBuffers); n == 1 {
+		parts = append(parts, "1 file with unsaved changes")
+	} else if n > 1 {
+		parts = append(parts, fmt.Sprintf("%d files with unsaved changes", n))
+	}
+	if n := len(w.ActiveAISessions); n == 1 {
+		parts = append(parts, "1 active AI session ("+w.ActiveAISessions[0]+")")
+	} else if n > 1 {
+		parts = append(parts, fmt.Sprintf("%d active AI sessions", n))
+	}
+	return strings.Join(parts, ", ")
+}
+
 // LayoutManager coordinates the 3-panel layout
 type LayoutManager struct {
 	// Panels
@@ -44,6 +74,7 @@ type LayoutManager struct {
 	InputModal     *InputModal
 	ConfirmModal   *ConfirmModal
 	ShortcutsModal *ShortcutsModal
+	LoadingOverlay *LoadingOverlay
 	ProjectPicker  *dashboard.ProjectPicker
 	QuickFindPicker *QuickFindPicker
 
@@ -111,6 +142,10 @@ type LayoutManager struct {
 	lastActivity      time.Time     // Last user input timestamp
 	watchersSuspended bool          // Whether watchers are currently suspended
 	idleCheckStop     chan struct{} // Stop channel for idle checker
+
+	// aiToolEverSpawned tracks if ANY AI tool was spawned this session
+	// Enables dynamic detection on quit (vs fast-path when only shells used)
+	aiToolEverSpawned bool
 }
 
 // NewLayoutManager creates a new layout manager
@@ -134,6 +169,7 @@ func NewLayoutManager(root string) *LayoutManager {
 		InputModal:      NewInputModal(),
 		ConfirmModal:    NewConfirmModal(),
 		ShortcutsModal:  NewShortcutsModal(),
+		LoadingOverlay:  NewLoadingOverlay(),
 		ProjectPicker:   nil, // Initialized when screen is available
 		TabBar:          NewTabBar(),
 		PaneNavBar:      NewPaneNavBar(),
@@ -203,6 +239,25 @@ func (lm *LayoutManager) SetAIToolCommand(cmd []string) {
 	lm.AIToolCommand = cmd
 }
 
+// isShellCommand returns true if the command is a shell (bash, zsh, sh, fish, etc.)
+func isShellCommand(cmdArgs []string) bool {
+	if len(cmdArgs) == 0 {
+		return false
+	}
+	base := filepath.Base(cmdArgs[0])
+	switch base {
+	case "bash", "zsh", "sh", "fish", "ksh", "csh", "tcsh", "dash":
+		return true
+	}
+	return false
+}
+
+// MarkAIToolSpawned records that an AI tool was spawned this session.
+// This enables dynamic PTY detection on quit (vs fast-path when only shells used).
+func (lm *LayoutManager) MarkAIToolSpawned() {
+	lm.aiToolEverSpawned = true
+}
+
 // PreloadTerminal creates the terminal in the background while dashboard is showing
 // This allows the shell prompt to initialize before the user sees it
 func (lm *LayoutManager) PreloadTerminal(screenW, screenH int) {
@@ -228,6 +283,11 @@ func (lm *LayoutManager) PreloadTerminal(screenW, screenH int) {
 
 	// Record what command we're preloading with (for later comparison)
 	lm.preloadedWithCommand = lm.AIToolCommand
+
+	// Mark if we're spawning an AI tool (not a shell)
+	if lm.AIToolCommand != nil && len(lm.AIToolCommand) > 0 && !isShellCommand(lm.AIToolCommand) {
+		lm.MarkAIToolSpawned()
+	}
 
 	log.Println("THICC: Preloading terminal panel in background")
 	go func() {
@@ -1079,6 +1139,11 @@ func (lm *LayoutManager) RenderOverlay(screen tcell.Screen) {
 			lm.TabBar.Focused = (lm.ActivePanel == 1)
 			lm.TabBar.Render(screen)
 		}
+	}
+
+	// Draw loading overlay on top of everything (full screen)
+	if lm.LoadingOverlay != nil && lm.LoadingOverlay.Active {
+		lm.LoadingOverlay.Render(screen, lm.ScreenW, lm.ScreenH)
 	}
 
 	// Draw modal dialog on top of everything
@@ -2672,6 +2737,11 @@ func (lm *LayoutManager) createTerminalForPanel(panel int, cmdArgs []string) {
 	log.Printf("THICC: createTerminalForPanel: panel=%d, x=%d, w=%d, ActivePanel=%d, shouldExpandTree=%v, TerminalVisible=%v, EditorVisible=%v",
 		panel, termX, termW, lm.ActivePanel, lm.shouldExpandTree(), lm.TerminalVisible, lm.EditorVisible)
 
+	// Mark if we're spawning an AI tool (not a shell)
+	if cmdArgs != nil && len(cmdArgs) > 0 && !isShellCommand(cmdArgs) {
+		lm.MarkAIToolSpawned()
+	}
+
 	go func() {
 		term, err := terminal.NewPanel(termX, 1, termW, lm.ScreenH-1, cmdArgs)
 		if err != nil {
@@ -2997,45 +3067,100 @@ func (lm *LayoutManager) checkAndPinOnModification() {
 	}
 }
 
-// handleQuit handles the quit action with modal for unsaved changes
-func (lm *LayoutManager) handleQuit() bool {
-	// Check if any buffer has unsaved changes
-	tab := action.MainTab()
-	if tab == nil {
-		return false
-	}
+// GetWorkInProgress checks all buffers and terminals for unsaved work
+func (lm *LayoutManager) GetWorkInProgress() *WorkInProgress {
+	wip := &WorkInProgress{}
 
-	// Find the first BufPane with unsaved changes
-	for _, pane := range tab.Panes {
-		if bp, ok := pane.(*action.BufPane); ok {
-			if bp.Buf.Modified() {
-				// Show modal for unsaved changes
-				bufName := bp.Buf.GetName()
-				if bufName == "" {
-					bufName = "Untitled"
-				}
-				lm.ShowModal("Unsaved Changes",
-					"Save changes to "+bufName+"?",
-					func(yes, canceled bool) {
-						if canceled {
-							// User pressed Esc, don't quit
-							return
-						}
-						if yes {
-							// Save then quit
-							bp.Save()
-						}
-						// Force quit (whether saved or user said no)
-						bp.ForceQuit()
-					})
-				return true
+	// Check ALL open buffers
+	for _, b := range buffer.OpenBuffers {
+		if b.Modified() {
+			name := b.GetName()
+			if name == "" {
+				name = "Untitled"
 			}
-			// No unsaved changes, just quit
-			bp.ForceQuit()
-			return true
+			wip.UnsavedBuffers = append(wip.UnsavedBuffers, name)
 		}
 	}
-	return false
+
+	// Always check terminal panels for AI tools (removed early return)
+	// This catches manually launched AI tools like typing "claude" in shell
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+
+	log.Printf("THICC: GetWorkInProgress checking terminals - T1=%v T2=%v T3=%v",
+		lm.Terminal != nil, lm.Terminal2 != nil, lm.Terminal3 != nil)
+
+	if lm.Terminal != nil {
+		if tool := lm.Terminal.GetForegroundAITool(); tool != "" {
+			log.Printf("THICC: Terminal1 has AI tool: %s", tool)
+			wip.ActiveAISessions = append(wip.ActiveAISessions, tool)
+		}
+	}
+	if lm.Terminal2 != nil {
+		if tool := lm.Terminal2.GetForegroundAITool(); tool != "" {
+			log.Printf("THICC: Terminal2 has AI tool: %s", tool)
+			wip.ActiveAISessions = append(wip.ActiveAISessions, tool)
+		}
+	}
+	if lm.Terminal3 != nil {
+		if tool := lm.Terminal3.GetForegroundAITool(); tool != "" {
+			log.Printf("THICC: Terminal3 has AI tool: %s", tool)
+			wip.ActiveAISessions = append(wip.ActiveAISessions, tool)
+		}
+	}
+
+	return wip
+}
+
+// handleQuit handles the quit action with warning for unsaved changes or active AI sessions
+func (lm *LayoutManager) handleQuit() bool {
+	log.Println("THICC: handleQuit called")
+
+	// Always do full detection - removed fast path to catch manually launched AI tools
+	lm.LoadingOverlay.Show("Quitting...")
+	lm.triggerRedraw()
+
+	// Do the dynamic PTY detection (this may involve syscalls)
+	go func() {
+		wip := lm.GetWorkInProgress()
+
+		// Hide loading overlay
+		lm.LoadingOverlay.Hide()
+
+		if !wip.HasWork() {
+			log.Println("THICC: No work in progress, quitting")
+			lm.forceQuitAll()
+			return
+		}
+
+		log.Printf("THICC: Work in progress detected: unsaved=%v, aiSessions=%v",
+			wip.UnsavedBuffers, wip.ActiveAISessions)
+
+		// Show danger modal with work-in-progress warning
+		lm.ConfirmModal.Show(
+			"Exit THICC?",
+			wip.Message(),
+			"All changes will be lost!",
+			lm.ScreenW, lm.ScreenH,
+			func(confirmed bool) {
+				if confirmed {
+					lm.forceQuitAll()
+				}
+			},
+		)
+		lm.triggerRedraw()
+	}()
+
+	return true
+}
+
+// forceQuitAll closes all buffers and exits the application
+func (lm *LayoutManager) forceQuitAll() {
+	// Close all buffers and exit
+	buffer.CloseOpenBuffers()
+	screen.Screen.Fini()
+	action.InfoBar.Close()
+	runtime.Goexit()
 }
 
 // ShowModal displays a modal yes/no dialog

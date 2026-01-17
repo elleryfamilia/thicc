@@ -247,6 +247,10 @@ type Panel struct {
 	// Auto-respawn shell when process exits
 	autoRespawn bool
 
+	// OriginalCommand stores the command args used to create this panel
+	// nil/empty means default shell, non-empty non-shell means AI tool
+	OriginalCommand []string
+
 	// Selection state for copy/paste
 	Selection          [2]Loc // Start and end of selection (Y is lineIndex into scrollback+live buffer)
 	mouseReleased      bool   // Track mouse button state for drag detection
@@ -296,6 +300,13 @@ func isShellCommand(cmdArgs []string) bool {
 // NewPanel creates a new terminal panel
 // cmdArgs is the command to run (defaults to user's shell if nil/empty)
 func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
+	// Store original command before any modifications (for AI tool detection)
+	var originalCmd []string
+	if cmdArgs != nil && len(cmdArgs) > 0 {
+		originalCmd = make([]string, len(cmdArgs))
+		copy(originalCmd, cmdArgs)
+	}
+
 	// Determine if we should auto-respawn shell when process exits
 	// (true when running an AI tool, false when running default shell)
 	autoRespawn := cmdArgs != nil && len(cmdArgs) > 0
@@ -372,17 +383,18 @@ func NewPanel(x, y, w, h int, cmdArgs []string) (*Panel, error) {
 	settings := LoadSettings()
 
 	p := &Panel{
-		VT:            vt,
-		PTY:           ptmx,
-		Cmd:           cmd,
-		Region:        Region{X: x, Y: y, Width: w, Height: h},
-		Running:       true,
-		Focus:         false,
-		throttleDelay: 16 * time.Millisecond, // 60fps max
-		autoRespawn:   autoRespawn,
-		mouseReleased: true, // Start with mouse released
-		Scrollback:    NewScrollbackBuffer(settings.ScrollbackLines),
-		scrollOffset:  0,
+		VT:              vt,
+		PTY:             ptmx,
+		Cmd:             cmd,
+		Region:          Region{X: x, Y: y, Width: w, Height: h},
+		Running:         true,
+		Focus:           false,
+		throttleDelay:   16 * time.Millisecond, // 60fps max
+		autoRespawn:     autoRespawn,
+		OriginalCommand: originalCmd,
+		mouseReleased:   true, // Start with mouse released
+		Scrollback:      NewScrollbackBuffer(settings.ScrollbackLines),
+		scrollOffset:    0,
 	}
 
 	// Start reading from PTY in background
@@ -831,6 +843,72 @@ func (p *Panel) IsRunning() bool {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	return p.Running
+}
+
+// IsAIToolSession returns true if this terminal has an AI tool in the foreground
+func (p *Panel) IsAIToolSession() bool {
+	return p.GetForegroundAITool() != ""
+}
+
+// GetToolName returns the name of the foreground process in this terminal
+func (p *Panel) GetToolName() string {
+	p.mu.Lock()
+	pty := p.PTY
+	running := p.Running
+	p.mu.Unlock()
+
+	if !running || pty == nil {
+		return "Shell"
+	}
+
+	procName := getForegroundProcessName(pty)
+	if procName == "" {
+		return "Shell"
+	}
+	return procName
+}
+
+// isAIToolProcess checks if the process name matches a known AI tool
+func isAIToolProcess(name string) bool {
+	// Match commands from aiterminal.GetAvailableAITools()
+	aiTools := []string{"claude", "gemini", "codex", "opencode", "aider", "copilot", "ollama", "kiro-cli"}
+	baseName := filepath.Base(name)
+	for _, tool := range aiTools {
+		if baseName == tool {
+			return true
+		}
+	}
+	return false
+}
+
+// GetForegroundAITool returns name of AI tool in PTY foreground, or empty string if none
+func (p *Panel) GetForegroundAITool() string {
+	p.mu.Lock()
+	pty := p.PTY
+	running := p.Running
+	p.mu.Unlock()
+
+	log.Printf("THICC: GetForegroundAITool: running=%v, pty=%v", running, pty != nil)
+
+	if !running || pty == nil {
+		log.Println("THICC: GetForegroundAITool: early return - not running or no PTY")
+		return ""
+	}
+
+	procName := getForegroundProcessName(pty)
+	log.Printf("THICC: getForegroundProcessName returned: %q", procName)
+
+	if procName == "" {
+		return ""
+	}
+
+	isAI := isAIToolProcess(procName)
+	log.Printf("THICC: isAIToolProcess(%q) = %v", procName, isAI)
+
+	if isAI {
+		return procName
+	}
+	return ""
 }
 
 // HasSelection returns true if there is an active text selection
