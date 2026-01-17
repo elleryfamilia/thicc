@@ -342,7 +342,7 @@ func (t *TabBar) Render(screen tcell.Screen) {
 	// Styles
 	activeStyle := tcell.StyleDefault.
 		Background(tcell.Color205). // Hot pink background
-		Foreground(tcell.ColorBlack)
+		Foreground(tcell.ColorWhite)
 	inactiveStyle := tcell.StyleDefault.
 		Background(tcell.Color240). // Dimmed gray
 		Foreground(tcell.ColorWhite)
