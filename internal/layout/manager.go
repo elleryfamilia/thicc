@@ -187,9 +187,11 @@ func (lm *LayoutManager) resumeWatchers() {
 	}
 	lm.watchersSuspended = false
 	if lm.TreeVisible && lm.FileBrowser != nil && lm.FileBrowser.Tree != nil {
+		lm.FileBrowser.Tree.Refresh()
 		lm.FileBrowser.Tree.EnableWatching()
 	}
 	if lm.SourceControlVisible && lm.SourceControl != nil {
+		lm.SourceControl.RefreshStatus()
 		lm.SourceControl.StartPolling()
 	}
 	log.Println("THICC: Watchers resumed")
