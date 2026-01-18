@@ -136,6 +136,12 @@ type SharedBuffer struct {
 	ReloadDisabled bool
 
 	isModified bool
+	// EverSaved tracks if the buffer was saved at least once this session
+	// Used for $EDITOR compatibility to determine exit code
+	EverSaved bool
+	// FromCLI tracks if the buffer was opened from command-line argument
+	// Used for $EDITOR compatibility to determine exit code
+	FromCLI bool
 	// Whether or not suggestions can be autocompleted must be shared because
 	// it changes based on how the buffer has changed
 	HasSuggestions bool

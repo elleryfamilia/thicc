@@ -497,6 +497,8 @@ func LoadInput(args []string) ([]*buffer.Buffer, string, int) {
 				screen.TermMessage(err)
 				continue
 			}
+			// Mark buffer as opened from CLI for $EDITOR exit code handling
+			buf.SharedBuffer.FromCLI = true
 			// If the file didn't exist, input will be empty, and we'll open an empty buffer
 			buffers = append(buffers, buf)
 			fileCount++
@@ -583,7 +585,16 @@ func main() {
 		if util.Stdout.Len() > 0 {
 			fmt.Fprint(os.Stdout, util.Stdout.String())
 		}
-		exit(0)
+		// Determine exit code for $EDITOR compatibility:
+		// Exit 1 if any CLI-opened buffer was never saved (user aborted)
+		code := 0
+		for _, b := range buffer.OpenBuffers {
+			if b.SharedBuffer.FromCLI && !b.SharedBuffer.EverSaved {
+				code = 1
+				break
+			}
+		}
+		exit(code)
 	}()
 
 	var err error

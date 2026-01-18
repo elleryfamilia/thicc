@@ -338,6 +338,7 @@ func (b *Buffer) saveToFile(filename string, withSudo bool, autoSave bool) error
 	b.Path = filename
 	b.AbsPath = absFilename
 	b.isModified = false
+	b.EverSaved = true
 	b.UpdateModTime()
 
 	if newPath {
