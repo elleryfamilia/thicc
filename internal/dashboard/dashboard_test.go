@@ -225,9 +225,9 @@ func TestNavigation_MenuPane_DownKey(t *testing.T) {
 	d := newTestDashboard(t)
 	defer d.Screen.Fini()
 
-	// Start in menu pane
+	// Start in menu pane (left column)
 	assert.False(t, d.InRecentPane)
-	assert.False(t, d.InAIToolsPane)
+	assert.True(t, d.LeftColumnFocus)
 	assert.Equal(t, 0, d.SelectedIdx)
 
 	// Move down
@@ -267,7 +267,7 @@ func TestNavigation_EmptyRecentSkipped(t *testing.T) {
 	sendKey(d, tcell.KeyDown, 0, tcell.ModNone)
 
 	assert.False(t, d.InRecentPane, "Should not enter empty recent pane")
-	assert.False(t, d.InAIToolsPane, "Should not enter empty AI tools pane")
+	assert.True(t, d.LeftColumnFocus, "Should stay in left column with no AI tools")
 	assert.Equal(t, 0, d.SelectedIdx, "Should wrap to first menu item")
 }
 
@@ -318,20 +318,20 @@ func TestState_OnlyOnePaneActive(t *testing.T) {
 		{Path: "/test/project", Name: "project", IsFolder: true},
 	}
 
-	// Switch to menu pane
+	// Switch to menu pane (left column)
 	d.SwitchToMenuPane()
 	assert.False(t, d.InRecentPane)
-	assert.False(t, d.InAIToolsPane)
+	assert.True(t, d.LeftColumnFocus)
 
-	// Switch to recent pane
+	// Switch to recent pane (left column)
 	d.SwitchToRecentPane()
 	assert.True(t, d.InRecentPane)
-	assert.False(t, d.InAIToolsPane)
+	assert.True(t, d.LeftColumnFocus)
 
-	// Switch to AI tools pane
+	// Switch to AI tools pane (right column)
 	d.SwitchToAIToolsPane()
 	assert.False(t, d.InRecentPane)
-	assert.True(t, d.InAIToolsPane)
+	assert.False(t, d.LeftColumnFocus)
 }
 
 func TestState_RecentIdxResetOnPaneSwitch(t *testing.T) {

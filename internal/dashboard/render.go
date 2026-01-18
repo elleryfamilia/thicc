@@ -11,7 +11,10 @@ import (
 
 // Layout constants
 const (
-	MenuPanelWidth      = 38
+	LeftColumnWidth     = 34
+	RightColumnWidth    = 32
+	TotalPanelWidth     = 67 // LeftColumnWidth + 1 (divider) + RightColumnWidth
+	MenuPanelWidth      = 38 // Legacy, kept for compatibility
 	MenuPanelMinHeight  = 16
 	RecentMaxVisible    = 5
 	FooterHeight        = 2
@@ -65,49 +68,74 @@ func (d *Dashboard) clearScreen(screen tcell.Screen) {
 
 // calculateLayout determines positions of major elements
 func (d *Dashboard) calculateLayout() {
-	// Menu panel is centered horizontally, slightly right of center
-	menuX := (d.ScreenW - MenuPanelWidth) / 2
-	if menuX < MarshmallowArtWidth+ArtLeftMargin+4 {
-		menuX = MarshmallowArtWidth + ArtLeftMargin + 4
-	}
-
-	// Calculate menu height based on content
+	// Calculate left column height (menu items + recent projects)
 	recentCount := len(d.RecentStore.Projects)
 	if recentCount > RecentMaxVisible {
 		recentCount = RecentMaxVisible
 	}
-	menuHeight := 4 + len(d.MenuItems) + 1 // header + items + spacing
+	leftColumnHeight := 2 + len(d.MenuItems) + 1 // top border + items + 1 for Exit spacing
+	if recentCount > 0 {
+		leftColumnHeight += 3 + recentCount // section header + separator + items
+	}
+	leftColumnHeight += 2 // bottom padding + border
 
-	// AI Tools section height (available + installable)
+	// Calculate right column height (AI tools)
 	totalTools := d.totalAIToolItems()
+	rightColumnHeight := 4 // header + separator + border padding
 	if totalTools > 0 {
 		extraRows := 0
 		if len(d.InstallTools) > 0 {
 			extraRows = 1 // "Not Installed" separator
 		}
-		menuHeight += 3 + totalTools + extraRows // section header + separator + tools + install separator
+		rightColumnHeight += totalTools + extraRows
+	} else {
+		rightColumnHeight += 1 // "No AI tools" message
 	}
 
-	if recentCount > 0 {
-		menuHeight += 3 + recentCount // section header + items
+	// Use the taller column height for both
+	panelHeight := leftColumnHeight
+	if rightColumnHeight > panelHeight {
+		panelHeight = rightColumnHeight
+	}
+	if panelHeight < MenuPanelMinHeight {
+		panelHeight = MenuPanelMinHeight
 	}
 
-	menuHeight += 1 // bottom border padding
-
-	if menuHeight < MenuPanelMinHeight {
-		menuHeight = MenuPanelMinHeight
+	// Total width includes left column + 1 char divider + right column
+	// The divider replaces the gap between columns
+	totalWidth := LeftColumnWidth + 1 + RightColumnWidth
+	startX := (d.ScreenW - totalWidth) / 2
+	if startX < 2 {
+		startX = 2
 	}
 
-	menuY := (d.ScreenH - menuHeight) / 2
-	if menuY < 2 {
-		menuY = 2
+	panelY := (d.ScreenH - panelHeight) / 2
+	if panelY < 2 {
+		panelY = 2
 	}
 
+	// Set left column region (inside the outer border)
+	d.leftColumnRegion = Region{
+		X:      startX,
+		Y:      panelY,
+		Width:  LeftColumnWidth,
+		Height: panelHeight,
+	}
+
+	// Set right column region (after the divider)
+	d.rightColumnRegion = Region{
+		X:      startX + LeftColumnWidth + 1, // +1 for the divider
+		Y:      panelY,
+		Width:  RightColumnWidth,
+		Height: panelHeight,
+	}
+
+	// menuRegion covers the entire panel (used by logo positioning)
 	d.menuRegion = Region{
-		X:      menuX,
-		Y:      menuY,
-		Width:  MenuPanelWidth,
-		Height: menuHeight,
+		X:      startX,
+		Y:      panelY,
+		Width:  totalWidth,
+		Height: panelHeight,
 	}
 }
 
@@ -246,72 +274,58 @@ func (d *Dashboard) drawLogo(screen tcell.Screen) {
 	}
 }
 
-// drawMenuPanel renders the bordered menu box with items
+// drawMenuPanel renders the two-column layout as a single box with center divider
 func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
+	hasOverlay := d.IsProjectPickerActive() || d.IsFilePickerActive() || d.IsFolderCreatorActive() || d.IsOnboardingGuideActive()
 	r := d.menuRegion
 
-	// Draw border - dim when an overlay is active
-	hasOverlay := d.IsProjectPickerActive() || d.IsFilePickerActive() || d.IsFolderCreatorActive() || d.IsOnboardingGuideActive()
+	// Draw single outer border
 	d.drawBorder(screen, r.X, r.Y, r.Width, r.Height, !hasOverlay)
 
-	// Draw all menu items (linear order)
-	y := r.Y + 2
-	for i, item := range d.MenuItems {
-		isSelected := !d.InRecentPane && !d.InAIToolsPane && d.SelectedIdx == i
-		d.drawMenuItem(screen, r.X+2, y, r.Width-4, item, isSelected)
-		y++
+	// Draw center divider
+	dividerX := d.leftColumnRegion.X + d.leftColumnRegion.Width
+	d.drawCenterDivider(screen, dividerX, r.Y, r.Height, !hasOverlay)
+
+	// Draw left column content (menu + recent projects)
+	d.drawLeftColumnContent(screen)
+
+	// Draw right column content (AI tools)
+	d.drawRightColumnContent(screen)
+}
+
+// drawCenterDivider draws a vertical divider with T-connectors at top and bottom
+func (d *Dashboard) drawCenterDivider(screen tcell.Screen, x, y, height int, focused bool) {
+	style := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark).Bold(true)
+	if !focused {
+		style = StyleBorderDim
 	}
 
-	// Draw AI Tools section if there are any available or installable
-	totalTools := d.totalAIToolItems()
-	if totalTools > 0 {
-		y++ // spacing
+	// Top T-connector
+	screen.SetContent(x, y, '╦', nil, style)
 
-		// Store the start of AI tools region for click detection
-		extraRows := 0
-		if len(d.InstallTools) > 0 {
-			extraRows = 1 // separator line
-		}
-		d.aiToolsRegion = Region{X: r.X + 2, Y: y, Width: r.Width - 4, Height: totalTools + 2 + extraRows}
+	// Vertical line
+	for i := y + 1; i < y+height-1; i++ {
+		screen.SetContent(x, i, '║', nil, style)
+	}
 
-		// Section header
-		header := "AI Tools"
-		headerX := r.X + (r.Width-len(header))/2
-		d.drawText(screen, headerX, y, header, StyleSectionHeader)
-		y++
+	// Bottom T-connector
+	screen.SetContent(x, y+height-1, '╩', nil, style)
+}
 
-		// Separator line (cyan to match border)
-		separatorStyle := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark)
-		for x := r.X + 2; x < r.X+r.Width-2; x++ {
-			screen.SetContent(x, y, '─', nil, separatorStyle)
-		}
-		y++
+// drawLeftColumnContent renders the left column content (menu items and recent projects)
+func (d *Dashboard) drawLeftColumnContent(screen tcell.Screen) {
+	r := d.leftColumnRegion
 
-		// Available AI tool items with radio buttons
-		for i, tool := range d.AITools {
-			isFocused := d.InAIToolsPane && d.AIToolsIdx == i
-			isToolSelected := d.IsAIToolSelected(tool.Name)
-			d.drawAIToolItem(screen, r.X+2, y, r.Width-4, tool, isFocused, isToolSelected)
+	// Draw all menu items
+	y := r.Y + 2
+	for i, item := range d.MenuItems {
+		// Add spacing before Exit (destructive action)
+		if item.ID == MenuExit {
 			y++
 		}
-
-		// Installable tools section
-		if len(d.InstallTools) > 0 {
-			// Draw "Not Installed" separator
-			hintStyle := tcell.StyleDefault.Foreground(ColorViolet).Background(ColorBgDark)
-			sepText := "── Not Installed ──"
-			sepX := r.X + (r.Width-len(sepText))/2
-			d.drawText(screen, sepX, y, sepText, hintStyle)
-			y++
-
-			// Installable tool items
-			for i, tool := range d.InstallTools {
-				idx := len(d.AITools) + i
-				isFocused := d.InAIToolsPane && d.AIToolsIdx == idx
-				d.drawInstallToolItem(screen, r.X+2, y, r.Width-4, tool, isFocused)
-				y++
-			}
-		}
+		isSelected := d.LeftColumnFocus && !d.InRecentPane && d.SelectedIdx == i
+		d.drawMenuItem(screen, r.X+2, y, r.Width-3, item, isSelected)
+		y++
 	}
 
 	// Draw recent projects section if there are any
@@ -326,30 +340,93 @@ func (d *Dashboard) drawMenuPanel(screen tcell.Screen) {
 
 		// Separator line (cyan to match border)
 		recentSepStyle := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark)
-		for x := r.X + 2; x < r.X+r.Width-2; x++ {
+		for x := r.X + 2; x < r.X+r.Width-1; x++ {
 			screen.SetContent(x, y, '─', nil, recentSepStyle)
 		}
 		y++
 
-		// Recent project items
+		// Store recent region for click detection
 		visibleCount := len(d.RecentStore.Projects)
 		if visibleCount > RecentMaxVisible {
 			visibleCount = RecentMaxVisible
 		}
+		d.recentRegion = Region{X: r.X + 2, Y: y, Width: r.Width - 3, Height: visibleCount}
 
+		// Recent project items
 		for i := 0; i < visibleCount; i++ {
 			proj := d.RecentStore.Projects[i]
-			isSelected := d.InRecentPane && d.RecentIdx == i
-			d.drawRecentItem(screen, r.X+2, y, r.Width-4, i+1, proj, isSelected)
+			isSelected := d.LeftColumnFocus && d.InRecentPane && d.RecentIdx == i
+			d.drawRecentItem(screen, r.X+2, y, r.Width-3, i+1, proj, isSelected)
 			y++
 		}
 
 		// Show more indicator if needed
 		if len(d.RecentStore.Projects) > RecentMaxVisible {
-			moreText := fmt.Sprintf("  ... and %d more", len(d.RecentStore.Projects)-RecentMaxVisible)
+			moreText := fmt.Sprintf("  ... +%d more", len(d.RecentStore.Projects)-RecentMaxVisible)
 			d.drawText(screen, r.X+2, y, moreText, StyleVersion)
+		}
+	}
+}
+
+// drawRightColumnContent renders the right column content (AI tools)
+func (d *Dashboard) drawRightColumnContent(screen tcell.Screen) {
+	r := d.rightColumnRegion
+
+	y := r.Y + 2
+
+	// Section header
+	header := "AI Tools"
+	headerX := r.X + (r.Width-len(header))/2
+	d.drawText(screen, headerX, y, header, StyleSectionHeader)
+	y++
+
+	// Separator line (cyan to match border)
+	separatorStyle := tcell.StyleDefault.Foreground(ColorCyan).Background(ColorBgDark)
+	for x := r.X + 1; x < r.X+r.Width-2; x++ {
+		screen.SetContent(x, y, '─', nil, separatorStyle)
+	}
+	y++
+
+	totalTools := d.totalAIToolItems()
+	if totalTools > 0 {
+		// Store the start of AI tools region for click detection
+		extraRows := 0
+		if len(d.InstallTools) > 0 {
+			extraRows = 1 // separator line
+		}
+		d.aiToolsRegion = Region{X: r.X + 1, Y: y, Width: r.Width - 3, Height: totalTools + extraRows}
+
+		// Available AI tool items with radio buttons
+		inRightColumn := !d.LeftColumnFocus
+		for i, tool := range d.AITools {
+			isFocused := inRightColumn && d.AIToolsIdx == i
+			isToolSelected := d.IsAIToolSelected(tool.Name)
+			d.drawAIToolItem(screen, r.X+1, y, r.Width-3, tool, isFocused, isToolSelected)
 			y++
 		}
+
+		// Installable tools section
+		if len(d.InstallTools) > 0 {
+			// Draw "Not Installed" separator
+			hintStyle := tcell.StyleDefault.Foreground(ColorViolet).Background(ColorBgDark)
+			sepText := "─ Not Installed ─"
+			sepX := r.X + (r.Width-len(sepText))/2
+			d.drawText(screen, sepX, y, sepText, hintStyle)
+			y++
+
+			// Installable tool items
+			for i, tool := range d.InstallTools {
+				idx := len(d.AITools) + i
+				isFocused := inRightColumn && d.AIToolsIdx == idx
+				d.drawInstallToolItem(screen, r.X+1, y, r.Width-3, tool, isFocused)
+				y++
+			}
+		}
+	} else {
+		// No AI tools message
+		noToolsMsg := "No AI tools"
+		msgX := r.X + (r.Width-len(noToolsMsg))/2
+		d.drawText(screen, msgX, y, noToolsMsg, StyleVersion)
 	}
 }
 
@@ -665,17 +742,21 @@ func (d *Dashboard) drawText(screen tcell.Screen, x, y int, text string, style t
 
 // GetMenuItemAtPosition returns the menu item index at the given screen position, or -1
 func (d *Dashboard) GetMenuItemAtPosition(x, y int) int {
-	r := d.menuRegion
+	r := d.leftColumnRegion
 
-	// Check if within menu bounds
-	if x < r.X+2 || x >= r.X+r.Width-2 {
+	// Check if within left column content area (inside border, before divider)
+	if x < r.X+2 || x >= r.X+r.Width {
 		return -1
 	}
 
 	itemY := r.Y + 2
 
-	// Check all menu items (linear order)
-	for i := range d.MenuItems {
+	// Check all menu items (accounting for Exit spacing)
+	for i, item := range d.MenuItems {
+		// Exit has extra spacing before it
+		if item.ID == MenuExit {
+			itemY++
+		}
 		if y == itemY {
 			return i
 		}
@@ -687,24 +768,17 @@ func (d *Dashboard) GetMenuItemAtPosition(x, y int) int {
 
 // GetRecentItemAtPosition returns the recent project index at the given screen position, or -1
 func (d *Dashboard) GetRecentItemAtPosition(x, y int) int {
-	r := d.menuRegion
+	r := d.leftColumnRegion
 
-	// Check if within bounds
-	if x < r.X+2 || x >= r.X+r.Width-2 {
+	// Check if within left column content area
+	if x < r.X+2 || x >= r.X+r.Width {
 		return -1
 	}
 
-	// Calculate where recent items start (after menu and AI tools section)
-	recentStartY := r.Y + 2 + len(d.MenuItems) // menu items
-	totalTools := d.totalAIToolItems()
-	if totalTools > 0 {
-		extraRows := 0
-		if len(d.InstallTools) > 0 {
-			extraRows = 1 // "Not Installed" separator
-		}
-		recentStartY += 1 + 2 + totalTools + extraRows // spacing + header + separator + tools + install separator
-	}
-	recentStartY += 3 // spacing + header + separator for recent
+	// Calculate where recent items start (after menu items in left column)
+	// +1 for Exit spacing
+	recentStartY := r.Y + 2 + len(d.MenuItems) + 1 // menu items + Exit spacing
+	recentStartY += 3                              // spacing + header + separator for recent
 
 	visibleCount := len(d.RecentStore.Projects)
 	if visibleCount > RecentMaxVisible {
@@ -724,10 +798,10 @@ func (d *Dashboard) GetRecentItemAtPosition(x, y int) int {
 // The returned index covers both available tools (0 to len(AITools)-1) and
 // installable tools (len(AITools) to totalAIToolItems()-1)
 func (d *Dashboard) GetAIToolItemAtPosition(x, y int) int {
-	r := d.menuRegion
+	r := d.rightColumnRegion
 
-	// Check if within bounds
-	if x < r.X+2 || x >= r.X+r.Width-2 {
+	// Check if within right column content area (after divider, inside border)
+	if x < r.X+1 || x >= r.X+r.Width-2 {
 		return -1
 	}
 
@@ -736,8 +810,8 @@ func (d *Dashboard) GetAIToolItemAtPosition(x, y int) int {
 		return -1
 	}
 
-	// Calculate where AI tools items start
-	aiToolsStartY := r.Y + 2 + len(d.MenuItems) + 1 + 2 // menu items + spacing + header + separator
+	// Calculate where AI tools items start (after header + separator)
+	aiToolsStartY := r.Y + 2 + 2 // border offset + header + separator
 
 	// Check available tools
 	for i := 0; i < len(d.AITools); i++ {

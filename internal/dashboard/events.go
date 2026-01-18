@@ -131,9 +131,17 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 		d.MoveNext()
 		return true
 
+	case tcell.KeyLeft:
+		d.MoveLeft()
+		return true
+
+	case tcell.KeyRight:
+		d.MoveRight()
+		return true
+
 	case tcell.KeyEnter:
-		// In AI tools pane, Enter toggles selection
-		if d.InAIToolsPane {
+		// In AI tools pane (right column), Enter toggles selection
+		if !d.LeftColumnFocus {
 			d.ToggleAIToolSelection()
 			return true
 		}
@@ -176,27 +184,40 @@ func (d *Dashboard) handleKey(ev *tcell.EventKey) bool {
 	case 'k':
 		d.MovePrevious()
 		return true
+	case 'h':
+		d.MoveLeft()
+		return true
+	case 'l':
+		d.MoveRight()
+		return true
 	case 'g':
-		// g - go to first item (top of menu)
-		d.SwitchToMenuPane()
-		d.SelectedIdx = 0
+		// g - go to first item (top of current column)
+		if d.LeftColumnFocus {
+			d.InRecentPane = false
+			d.SelectedIdx = 0
+		} else {
+			d.AIToolsIdx = 0
+		}
 		return true
 	case 'G':
-		// G - go to last item (bottom of recent or AI tools)
-		totalTools := d.totalAIToolItems()
-		if len(d.RecentStore.Projects) > 0 {
-			d.SwitchToRecentPane()
-			d.RecentIdx = len(d.RecentStore.Projects) - 1
-		} else if totalTools > 0 {
-			d.SwitchToAIToolsPane()
-			d.AIToolsIdx = totalTools - 1
+		// G - go to last item (bottom of current column)
+		if d.LeftColumnFocus {
+			if len(d.RecentStore.Projects) > 0 {
+				d.SwitchToRecentPane()
+				d.RecentIdx = len(d.RecentStore.Projects) - 1
+			} else {
+				d.SelectedIdx = len(d.MenuItems) - 1
+			}
 		} else {
-			d.SelectedIdx = len(d.MenuItems) - 1
+			totalTools := d.totalAIToolItems()
+			if totalTools > 0 {
+				d.AIToolsIdx = totalTools - 1
+			}
 		}
 		return true
 	case ' ':
-		// Space toggles AI tool selection when in AI tools pane
-		if d.InAIToolsPane {
+		// Space toggles AI tool selection when in AI tools pane (right column)
+		if !d.LeftColumnFocus {
 			d.ToggleAIToolSelection()
 		}
 		return true
@@ -229,29 +250,29 @@ func (d *Dashboard) handleMouse(ev *tcell.EventMouse) bool {
 
 // handleLeftClick processes left mouse button clicks
 func (d *Dashboard) handleLeftClick(x, y int) bool {
-	// Check if click is on a menu item
+	// Check if click is on a menu item (left column)
 	if itemIdx := d.GetMenuItemAtPosition(x, y); itemIdx >= 0 {
 		d.SelectedIdx = itemIdx
 		d.InRecentPane = false
-		d.InAIToolsPane = false
+		d.LeftColumnFocus = true
 		d.ActivateSelection()
 		return true
 	}
 
-	// Check if click is on an AI tool item
+	// Check if click is on an AI tool item (right column)
 	if toolIdx := d.GetAIToolItemAtPosition(x, y); toolIdx >= 0 {
 		d.AIToolsIdx = toolIdx
-		d.InAIToolsPane = true
+		d.LeftColumnFocus = false
 		d.InRecentPane = false
 		d.ToggleAIToolSelection()
 		return true
 	}
 
-	// Check if click is on a recent project
+	// Check if click is on a recent project (left column)
 	if recentIdx := d.GetRecentItemAtPosition(x, y); recentIdx >= 0 {
 		d.RecentIdx = recentIdx
 		d.InRecentPane = true
-		d.InAIToolsPane = false
+		d.LeftColumnFocus = true
 		d.ActivateSelection()
 		return true
 	}

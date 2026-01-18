@@ -48,13 +48,17 @@ type Dashboard struct {
 	AITools            []aiterminal.AITool    // Available AI tools (cached)
 	InstallTools       []aiterminal.AITool    // Installable but not installed tools
 	AIToolsIdx         int                    // Selected index in AI tools list (includes both available and installable)
-	InAIToolsPane      bool                   // True if focus is on AI tools section
 	SelectedInstallCmd string                 // Install command if an installable tool is selected (non-persisted)
 
+	// Two-column layout state
+	LeftColumnFocus bool // True if focus is on left column (menu/recent), false for right column (AI tools)
+
 	// Layout regions (calculated during render)
-	menuRegion    Region
-	aiToolsRegion Region
-	recentRegion  Region
+	menuRegion        Region
+	aiToolsRegion     Region
+	recentRegion      Region
+	leftColumnRegion  Region
+	rightColumnRegion Region
 
 	// Project Picker modal
 	ProjectPicker *ProjectPicker
@@ -114,11 +118,11 @@ func NewDashboard(screen tcell.Screen) *Dashboard {
 		RecentIdx:    -1,
 		InRecentPane: false,
 
-		PrefsStore:    NewPreferencesStore(),
-		AITools:       aiterminal.GetAvailableToolsOnly(),
-		InstallTools:  aiterminal.GetInstallableTools(),
-		AIToolsIdx:    0,
-		InAIToolsPane: false,
+		PrefsStore:      NewPreferencesStore(),
+		AITools:         aiterminal.GetAvailableToolsOnly(),
+		InstallTools:    aiterminal.GetInstallableTools(),
+		AIToolsIdx:      0,
+		LeftColumnFocus: true, // Start with left column focused
 	}
 
 	// Load recent projects from disk
@@ -260,33 +264,30 @@ func (d *Dashboard) MoveNext() {
 				d.SelectedIdx = 0
 			}
 		}
-	} else if d.InAIToolsPane {
-		// In AI tools pane - move down or go to recent/menu
+	} else if !d.LeftColumnFocus {
+		// In right column (AI tools pane) - move down or wrap to top of right column
 		totalTools := d.totalAIToolItems()
 		if totalTools > 0 {
 			d.AIToolsIdx++
 			if d.AIToolsIdx >= totalTools {
-				// Move to recent projects if available, else wrap to menu
-				if len(d.RecentStore.Projects) > 0 {
-					d.SwitchToRecentPane()
-					d.RecentIdx = 0
-				} else {
-					d.SwitchToMenuPane()
-					d.SelectedIdx = 0
-				}
+				// Wrap to top of left column
+				d.LeftColumnFocus = true
+				d.InRecentPane = false
+				d.SelectedIdx = 0
 			}
 		}
 	} else {
-		// In menu pane - move down or go to AI tools/recent
+		// In left column menu pane - move down or go to recent projects
 		d.SelectedIdx++
 		if d.SelectedIdx >= len(d.MenuItems) {
-			// Move to AI tools if available
-			if d.totalAIToolItems() > 0 {
-				d.SwitchToAIToolsPane()
-				d.AIToolsIdx = 0
-			} else if len(d.RecentStore.Projects) > 0 {
+			// Move to recent projects if available, else wrap to top of right column
+			if len(d.RecentStore.Projects) > 0 {
 				d.SwitchToRecentPane()
 				d.RecentIdx = 0
+			} else if d.totalAIToolItems() > 0 {
+				// Wrap to top of right column (AI tools)
+				d.LeftColumnFocus = false
+				d.AIToolsIdx = 0
 			} else {
 				d.SelectedIdx = 0 // Wrap within menu
 			}
@@ -299,41 +300,43 @@ func (d *Dashboard) MovePrevious() {
 	totalTools := d.totalAIToolItems()
 
 	if d.InRecentPane {
-		// In recent pane - move up or go to AI tools/menu
+		// In left column recent pane - move up or go to menu
 		if len(d.RecentStore.Projects) > 0 {
 			d.RecentIdx--
 			if d.RecentIdx < 0 {
-				// Move to AI tools if available, else menu
-				if totalTools > 0 {
-					d.SwitchToAIToolsPane()
-					d.AIToolsIdx = totalTools - 1
-				} else {
-					d.SwitchToMenuPane()
-					d.SelectedIdx = len(d.MenuItems) - 1
-				}
-			}
-		}
-	} else if d.InAIToolsPane {
-		// In AI tools pane - move up or go to menu
-		if totalTools > 0 {
-			d.AIToolsIdx--
-			if d.AIToolsIdx < 0 {
 				// Move to menu
 				d.SwitchToMenuPane()
 				d.SelectedIdx = len(d.MenuItems) - 1
 			}
 		}
+	} else if !d.LeftColumnFocus {
+		// In right column (AI tools pane) - move up or wrap to bottom of left column
+		if totalTools > 0 {
+			d.AIToolsIdx--
+			if d.AIToolsIdx < 0 {
+				// Wrap to bottom of left column
+				d.LeftColumnFocus = true
+				if len(d.RecentStore.Projects) > 0 {
+					d.InRecentPane = true
+					d.RecentIdx = len(d.RecentStore.Projects) - 1
+				} else {
+					d.InRecentPane = false
+					d.SelectedIdx = len(d.MenuItems) - 1
+				}
+			}
+		}
 	} else {
-		// In menu pane - move up or wrap to recent/AI tools
+		// In left column menu pane - move up or wrap to bottom of right column
 		d.SelectedIdx--
 		if d.SelectedIdx < 0 {
-			// Wrap to bottom of list (recent > AI tools > menu)
-			if len(d.RecentStore.Projects) > 0 {
+			// Wrap to bottom of right column (AI tools)
+			if totalTools > 0 {
+				d.LeftColumnFocus = false
+				d.AIToolsIdx = totalTools - 1
+			} else if len(d.RecentStore.Projects) > 0 {
+				// No AI tools, wrap to recent projects
 				d.SwitchToRecentPane()
 				d.RecentIdx = len(d.RecentStore.Projects) - 1
-			} else if totalTools > 0 {
-				d.SwitchToAIToolsPane()
-				d.AIToolsIdx = totalTools - 1
 			} else {
 				d.SelectedIdx = len(d.MenuItems) - 1 // Wrap within menu
 			}
@@ -341,29 +344,29 @@ func (d *Dashboard) MovePrevious() {
 	}
 }
 
-// SwitchToRecentPane switches focus to the recent projects pane
+// SwitchToRecentPane switches focus to the recent projects pane (left column)
 func (d *Dashboard) SwitchToRecentPane() {
 	if len(d.RecentStore.Projects) > 0 {
 		d.InRecentPane = true
-		d.InAIToolsPane = false
+		d.LeftColumnFocus = true
 		if d.RecentIdx < 0 {
 			d.RecentIdx = 0
 		}
 	}
 }
 
-// SwitchToMenuPane switches focus to the menu pane
+// SwitchToMenuPane switches focus to the menu pane (left column)
 func (d *Dashboard) SwitchToMenuPane() {
 	d.InRecentPane = false
-	d.InAIToolsPane = false
+	d.LeftColumnFocus = true
 	d.RecentIdx = -1
 }
 
-// SwitchToAIToolsPane switches focus to the AI tools pane
+// SwitchToAIToolsPane switches focus to the AI tools pane (right column)
 func (d *Dashboard) SwitchToAIToolsPane() {
 	totalTools := d.totalAIToolItems()
 	if totalTools > 0 {
-		d.InAIToolsPane = true
+		d.LeftColumnFocus = false
 		d.InRecentPane = false
 		d.RecentIdx = -1
 		// Ensure AIToolsIdx is valid
@@ -373,14 +376,88 @@ func (d *Dashboard) SwitchToAIToolsPane() {
 	}
 }
 
+// MoveLeft moves focus to the left column, trying to match the current row position
+func (d *Dashboard) MoveLeft() {
+	if !d.LeftColumnFocus {
+		d.LeftColumnFocus = true
+		d.InRecentPane = false
+
+		// Try to match the row position from AI tools to left column
+		// AI tools start at row 0, menu items also start at row 0
+		// But Exit has a gap before it, so rows 0-3 map to menu items 0-3,
+		// row 4 is the gap, and row 5 maps to Exit (index 4)
+		targetRow := d.AIToolsIdx
+
+		// Menu items 0-3 (New File, Open File, Open Project, New Folder)
+		if targetRow < 4 {
+			d.SelectedIdx = targetRow
+			d.InRecentPane = false
+		} else if targetRow == 4 {
+			// Row 4 is the gap before Exit, map to Exit
+			d.SelectedIdx = 4 // Exit
+			d.InRecentPane = false
+		} else if targetRow == 5 {
+			// Row 5 is Exit
+			d.SelectedIdx = 4 // Exit
+			d.InRecentPane = false
+		} else {
+			// Try to map to recent projects (accounting for menu + Exit gap + header/separator gap)
+			// Menu takes rows 0-5 (4 items + gap + Exit), then spacing + header + separator = 3 more
+			recentRow := targetRow - 6 - 3 // 6 = menu rows, 3 = spacing + header + separator
+			if recentRow >= 0 && recentRow < len(d.RecentStore.Projects) {
+				d.InRecentPane = true
+				d.RecentIdx = recentRow
+			} else {
+				// Default to last menu item or first recent
+				if len(d.RecentStore.Projects) > 0 {
+					d.InRecentPane = true
+					d.RecentIdx = 0
+				} else {
+					d.SelectedIdx = len(d.MenuItems) - 1
+				}
+			}
+		}
+	}
+}
+
+// MoveRight moves focus to the right column (AI tools), trying to match the current row position
+func (d *Dashboard) MoveRight() {
+	if d.LeftColumnFocus && d.totalAIToolItems() > 0 {
+		d.LeftColumnFocus = false
+
+		// Calculate the current row position in left column
+		// Account for Exit spacing: items 0-3 are rows 0-3, Exit (item 4) is row 5
+		var currentRow int
+		if d.InRecentPane {
+			// Recent items start after menu (6 rows) + spacing + header + separator (3 rows)
+			currentRow = 6 + 3 + d.RecentIdx
+		} else if d.SelectedIdx == 4 {
+			// Exit is at row 5 (after the gap at row 4)
+			currentRow = 5
+		} else {
+			currentRow = d.SelectedIdx
+		}
+
+		// Map to AI tools index
+		totalTools := d.totalAIToolItems()
+		if currentRow < totalTools {
+			d.AIToolsIdx = currentRow
+		} else {
+			d.AIToolsIdx = totalTools - 1
+		}
+		d.InRecentPane = false
+	}
+}
+
 // ToggleAIToolSelection toggles the selection of the current AI tool
 // This implements radio-button behavior - selecting one deselects others
 // For installable tools, it selects them (install happens when user opens a file/project)
 func (d *Dashboard) ToggleAIToolSelection() {
-	log.Printf("THICC Dashboard: ToggleAIToolSelection called, AIToolsIdx=%d, InAIToolsPane=%v, totalItems=%d, availableCount=%d",
-		d.AIToolsIdx, d.InAIToolsPane, d.totalAIToolItems(), len(d.AITools))
+	inAIToolsPane := !d.LeftColumnFocus
+	log.Printf("THICC Dashboard: ToggleAIToolSelection called, AIToolsIdx=%d, inAIToolsPane=%v, totalItems=%d, availableCount=%d",
+		d.AIToolsIdx, inAIToolsPane, d.totalAIToolItems(), len(d.AITools))
 
-	if !d.InAIToolsPane || d.totalAIToolItems() == 0 {
+	if d.LeftColumnFocus || d.totalAIToolItems() == 0 {
 		log.Println("THICC Dashboard: ToggleAIToolSelection early return - not in pane or no tools")
 		return
 	}
