@@ -3,12 +3,17 @@ package dashboard
 import (
 	"testing"
 
+	"github.com/ellery/thicc/internal/config"
 	"github.com/micro-editor/tcell/v2"
 	"github.com/stretchr/testify/assert"
 )
 
 // newTestDashboard creates a dashboard with SimulationScreen for testing
 func newTestDashboard(t *testing.T) *Dashboard {
+	// Use a temp directory for config to avoid creating artifacts in the source tree
+	tempDir := t.TempDir()
+	config.ConfigDir = tempDir
+
 	sim := tcell.NewSimulationScreen("")
 	if err := sim.Init(); err != nil {
 		t.Fatalf("Failed to init simulation screen: %v", err)
