@@ -20,7 +20,7 @@ thicc is for developers who pair with AI but still read the diff. We made the de
 
 Most editors let you configure everything. We don't. thicc ships with one colorscheme, one layout, and zero apologies. Less time tweaking, more time shipping.
 
-We're built for the AI-assisted workflow—terminal pane ready for Claude, Copilot CLI, or whatever you're into. But we put *you* in the driver's seat, not the model.
+We're built for the AI-assisted workflow—terminal pane ready for Claude, Copilot CLI, or whatever you're into. Run them natively, no middlemen.
 
 ## Get it
 
@@ -28,11 +28,7 @@ We're built for the AI-assisted workflow—terminal pane ready for Claude, Copil
 curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/install.sh | sh
 ```
 
-This installs to `~/.local/bin` (no sudo required). For system-wide install:
-
-```sh
-curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/install.sh | GLOBAL=1 sh
-```
+Installs to `~/.local/bin`.
 
 Or build from source:
 
@@ -40,7 +36,7 @@ Or build from source:
 git clone https://github.com/elleryfamilia/thicc
 cd thicc
 make build
-mv thicc ~/.local/bin/  # or: sudo mv thicc /usr/local/bin
+mv thicc ~/.local/bin/
 ```
 
 ## Run it
@@ -99,8 +95,6 @@ thicc --update
 ```sh
 thicc --uninstall
 ```
-
-If installed to `/usr/local/bin` (with `GLOBAL=1`), you may need `sudo thicc --uninstall`.
 
 ## License
 
