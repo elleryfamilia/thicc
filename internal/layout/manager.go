@@ -21,6 +21,7 @@ import (
 	"github.com/ellery/thicc/internal/sourcecontrol"
 	"github.com/ellery/thicc/internal/terminal"
 	"github.com/ellery/thicc/internal/thicc"
+	"github.com/ellery/thicc/internal/update"
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -3156,11 +3157,21 @@ func (lm *LayoutManager) handleQuit() bool {
 
 // forceQuitAll closes all buffers and exits the application
 func (lm *LayoutManager) forceQuitAll() {
-	// Close all buffers and exit
-	buffer.CloseOpenBuffers()
-	screen.Screen.Fini()
-	action.InfoBar.Close()
-	runtime.Goexit()
+	doQuit := func() {
+		buffer.CloseOpenBuffers()
+		screen.Screen.Fini()
+		action.InfoBar.Close()
+		runtime.Goexit()
+	}
+
+	// Check for updates before quitting
+	update.CheckAndPrompt(
+		action.InfoBar.YNPrompt,
+		action.InfoBar.Message,
+		func(result update.Result, err error) {
+			doQuit()
+		},
+	)
 }
 
 // ShowModal displays a modal yes/no dialog
