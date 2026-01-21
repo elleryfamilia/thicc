@@ -32,6 +32,7 @@ import (
 	"github.com/ellery/thicc/internal/dashboard"
 	"github.com/ellery/thicc/internal/layout"
 	"github.com/ellery/thicc/internal/screen"
+	"github.com/ellery/thicc/internal/session"
 	"github.com/ellery/thicc/internal/shell"
 	"github.com/ellery/thicc/internal/thicc"
 	"github.com/ellery/thicc/internal/update"
@@ -50,6 +51,10 @@ var (
 	flagUpdate    = flag.Bool("update", false, "Check for updates and install if available")
 	flagUninstall = flag.Bool("uninstall", false, "Uninstall thicc from your system")
 	flagReportBug = flag.Bool("report-bug", false, "Report a bug or issue")
+	flagSession       = flag.String("session", "", "Use a named session (allows multiple sessions per project)")
+	flagNoSession     = flag.Bool("no-session", false, "Disable session sharing")
+	flagListSessions  = flag.Bool("list-sessions", false, "List active sessions and exit")
+	flagSkipDashboard = flag.Bool("skip-dashboard", false, "Skip dashboard (internal)")
 	optionFlags   map[string]*string
 
 	sighup chan os.Signal
@@ -82,6 +87,11 @@ func InitFlags() {
 		fmt.Println("  -clean             Clean configuration directory and exit")
 		fmt.Println("  -config-dir <dir>  Use custom configuration directory")
 		fmt.Println("  -debug             Enable debug logging to ./log.txt")
+		fmt.Println("")
+		fmt.Println("Session sharing:")
+		fmt.Println("  -session <name>    Use a named session (for multiple sessions per project)")
+		fmt.Println("  -no-session        Disable session sharing")
+		fmt.Println("  -list-sessions     List active sessions and exit")
 		fmt.Println("")
 		fmt.Println("Navigation:")
 		fmt.Println("  Ctrl+Space         Switch between panes")
@@ -396,6 +406,42 @@ func DoReportBugFlag() {
 	os.Exit(0)
 }
 
+// DoListSessions handles the --list-sessions flag
+func DoListSessions() {
+	// Show sessions directory
+	sessDir, err := session.GetSessionDir()
+	if err != nil {
+		fmt.Printf("Error getting sessions directory: %v\n", err)
+		return
+	}
+	fmt.Printf("Sessions directory: %s\n\n", sessDir)
+
+	sessions, err := session.ListSessions()
+	if err != nil {
+		fmt.Printf("Error listing sessions: %v\n", err)
+		return
+	}
+
+	if len(sessions) == 0 {
+		fmt.Println("No active sessions")
+		// List any socket files that exist (even if not responding)
+		entries, _ := os.ReadDir(sessDir)
+		if len(entries) > 0 {
+			fmt.Println("\nStale socket files:")
+			for _, e := range entries {
+				fmt.Printf("  %s\n", e.Name())
+			}
+		}
+		return
+	}
+
+	fmt.Printf("Active sessions (%d):\n\n", len(sessions))
+	for _, s := range sessions {
+		fmt.Printf("  %s\n", s.Name)
+		fmt.Printf("    Socket: %s\n", s.SocketPath)
+	}
+}
+
 // LoadInput determines which files should be loaded into buffers
 // based on the input stored in flag.Args()
 // Returns:
@@ -677,6 +723,61 @@ func main() {
 
 	DoPluginFlags()
 
+	// Handle --list-sessions flag
+	if *flagListSessions {
+		DoListSessions()
+		os.Exit(0)
+	}
+
+	// Determine if we would show the dashboard (no args and interactive terminal)
+	// Session client mode should be skipped if we're showing dashboard
+	args := flag.Args()
+	wouldShowDashboard := !*flagSkipDashboard && len(args) == 0 && isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd())
+
+	// Debug: log startup info
+	log.Printf("THICC Startup: PID=%d args=%v flagNoSession=%v flagSkipDashboard=%v wouldShowDashboard=%v cwd=%s",
+		os.Getpid(), args, *flagNoSession, *flagSkipDashboard, wouldShowDashboard, func() string { d, _ := os.Getwd(); return d }())
+
+	// THICC: PTY-based session sharing support
+	// Check if we should connect to an existing session or start as server
+	// Only try session sharing if we're opening a specific project (not showing dashboard)
+	if !*flagNoSession && !wouldShowDashboard {
+		// Determine project root: use first arg if it's a directory, otherwise use cwd
+		projectRoot, _ := os.Getwd()
+		if len(args) > 0 {
+			// Check if first arg is a directory path
+			argPath := args[0]
+			if info, err := os.Stat(argPath); err == nil && info.IsDir() {
+				// Convert to absolute path for consistent session keying
+				if absPath, err := filepath.Abs(argPath); err == nil {
+					projectRoot = absPath
+				}
+			}
+		}
+		log.Printf("THICC: Session projectRoot=%s", projectRoot)
+
+		sessionCfg := &session.Config{
+			SessionName: *flagSession,
+			ProjectRoot: projectRoot,
+			Disabled:    false,
+		}
+
+		sess, err := session.NewSession(sessionCfg)
+		if err == nil && !sess.IsServer {
+			// Existing session found - run as PTY client
+			log.Println("THICC: Found existing session, running as PTY client")
+			runSessionClient(sess)
+			os.Exit(0)
+		} else if err == nil && sess.IsServer {
+			// No existing session - we're the first instance
+			// Spawn THICC child in PTY and serve clients
+			log.Printf("THICC: No existing session found, starting as PTY server (socket: %s)", sess.SocketPath)
+			runSessionServer(sess, sessionCfg, args)
+			os.Exit(0)
+		}
+		// If session creation failed, continue normally
+	}
+
 	log.Println("THICC: Before screen.Init")
 	err = screen.Init()
 	log.Println("THICC: After screen.Init")
@@ -685,6 +786,7 @@ func main() {
 		fmt.Println("Fatal: thicc could not initialize a screen.")
 		exit(1)
 	}
+
 	m := clipboard.SetMethod(config.GetGlobalOption("clipboard").(string))
 	clipErr := clipboard.Initialize(m)
 
@@ -766,14 +868,11 @@ func main() {
 	log.Println("THICC: After InitGlobals")
 
 	buffer.SetMessager(action.InfoBar)
-	args := flag.Args()
 	log.Println("THICC: Before LoadInput, args:", args)
 
-	// THICC: Check if we should show the dashboard (no args and interactive terminal)
-	if len(args) == 0 && isatty.IsTerminal(os.Stdin.Fd()) && isatty.IsTerminal(os.Stdout.Fd()) {
-		log.Println("THICC: No args provided, showing dashboard")
-		showDashboard = true
-	}
+	// THICC: Check if we should show the dashboard (already computed above as wouldShowDashboard)
+	showDashboard = wouldShowDashboard
+	log.Printf("THICC: showDashboard=%v (from wouldShowDashboard)", showDashboard)
 
 	var b []*buffer.Buffer
 	var firstFilePath string // Path of first file opened (for file browser root)
@@ -1176,16 +1275,26 @@ func InitDashboard() {
 
 	thiccDashboard.OnOpenProject = func(path string) {
 		log.Println("THICC Dashboard: Opening project:", path)
+		// Add to recent projects first (before potential session takeover)
+		thiccDashboard.RecentStore.AddProject(path, true)
+
+		if !*flagNoSession {
+			// Check for existing session - if found, connect as client (exits)
+			if tryConnectToExistingSession(path) {
+				return
+			}
+			// No existing session - start as PTY server (exits)
+			startSessionServerForProject(path)
+			return
+		}
+
+		// Sessions disabled - transition normally
 		showDashboard = false
-		// Change to the project folder
 		if err := os.Chdir(path); err != nil {
 			log.Printf("THICC Dashboard: Failed to chdir to %s: %v", path, err)
 		}
-		// Reset layout so it gets recreated with the new working directory
 		thiccLayout = nil
-		TransitionToEditor(nil, "", false) // Hide editor, show file browser + terminal
-		// Add to recent projects
-		thiccDashboard.RecentStore.AddProject(path, true)
+		TransitionToEditor(nil, "", false)
 	}
 
 	thiccDashboard.OnOpenFile = func(path string) {
@@ -1198,30 +1307,46 @@ func InitDashboard() {
 
 	thiccDashboard.OnOpenFolder = func(path string) {
 		log.Println("THICC Dashboard: Opening folder:", path)
+		// Add to recent projects first (before potential session takeover)
+		thiccDashboard.RecentStore.AddProject(path, true)
+
+		if !*flagNoSession {
+			// Check for existing session - if found, connect as client (exits)
+			if tryConnectToExistingSession(path) {
+				return
+			}
+			// No existing session - start as PTY server (exits)
+			startSessionServerForProject(path)
+			return
+		}
+
+		// Sessions disabled - transition normally
 		showDashboard = false
-		// Change to the folder
 		if err := os.Chdir(path); err != nil {
 			log.Printf("THICC Dashboard: Failed to chdir to %s: %v", path, err)
 		}
-		// Reset layout so it gets recreated with the new working directory
 		thiccLayout = nil
-		TransitionToEditor(nil, "", false) // Hide editor, show file browser + terminal
-		// Add to recent projects
-		thiccDashboard.RecentStore.AddProject(path, true)
+		TransitionToEditor(nil, "", false)
 	}
 
 	thiccDashboard.OnNewFolder = func(path string) {
 		log.Println("THICC Dashboard: New folder created, opening:", path)
+		// Add to recent projects first
+		thiccDashboard.RecentStore.AddProject(path, true)
+
+		if !*flagNoSession {
+			// New folder won't have existing session - start as PTY server (exits)
+			startSessionServerForProject(path)
+			return
+		}
+
+		// Sessions disabled - transition normally
 		showDashboard = false
-		// Change to the new folder
 		if err := os.Chdir(path); err != nil {
 			log.Printf("THICC Dashboard: Failed to chdir to %s: %v", path, err)
 		}
-		// Reset layout so it gets recreated with the new working directory
 		thiccLayout = nil
-		TransitionToEditor(nil, "", false) // Hide editor, show file browser + terminal
-		// Add to recent projects
-		thiccDashboard.RecentStore.AddProject(path, true)
+		TransitionToEditor(nil, "", false)
 	}
 
 	thiccDashboard.OnInstallTool = func(cmd string) {
@@ -1340,4 +1465,137 @@ func TransitionToEditor(buffers []*buffer.Buffer, filePath string, showEditor bo
 	}
 
 	log.Println("THICC: TransitionToEditor completed")
+}
+
+// runSessionClient runs THICC as a PTY client, connecting to an existing session.
+// This uses raw terminal mode and forwards stdin/stdout to the server.
+func runSessionClient(sess *session.Session) {
+	log.Printf("THICC: Running as PTY client, connecting to %s", sess.SocketPath)
+
+	// Create client
+	client, err := session.NewClient(sess)
+	if err != nil {
+		fmt.Printf("Failed to create session client: %v\n", err)
+		return
+	}
+
+	// Connect to server
+	if err := client.Connect(); err != nil {
+		fmt.Printf("Failed to connect to session: %v\n", err)
+		return
+	}
+	defer client.Disconnect()
+
+	log.Printf("THICC: Connected to session '%s'", client.SessionName())
+
+	// Run the client (blocks until disconnect)
+	if err := client.Run(); err != nil {
+		log.Printf("Session client ended: %v", err)
+	}
+
+	// Show disconnect message
+	client.ShowDisconnectMessage()
+}
+
+// runSessionServer runs THICC as a PTY server, spawning the child process in a PTY.
+// This blocks until the child process exits.
+func runSessionServer(sess *session.Session, cfg *session.Config, thiccArgs []string) {
+	log.Printf("THICC: Running as PTY server, socket: %s", sess.SocketPath)
+
+	server, err := session.NewServer(sess, cfg)
+	if err != nil {
+		fmt.Printf("Failed to create session server: %v\n", err)
+		return
+	}
+
+	// Start the server (spawns THICC child in PTY)
+	if err := server.Start(thiccArgs); err != nil {
+		fmt.Printf("Failed to start session server: %v\n", err)
+		server.Stop()
+		return
+	}
+
+	log.Printf("THICC: PTY server started, waiting for child to exit")
+
+	// Wait for child to exit
+	server.Wait()
+
+	log.Printf("THICC: PTY server exiting")
+}
+
+// tryConnectToExistingSession checks if a session exists for the given project path.
+// If found, connects as PTY client, runs the client loop, then exits.
+// Returns true if connected as client (caller should return), false to continue normally.
+func tryConnectToExistingSession(projectPath string) bool {
+	sessionCfg := &session.Config{
+		SessionName: *flagSession,
+		ProjectRoot: projectPath,
+	}
+
+	sess, err := session.NewSession(sessionCfg)
+	if err != nil {
+		log.Printf("THICC: Failed to create session: %v", err)
+		return false
+	}
+
+	if sess.IsServer {
+		// No existing session - we're the first one
+		log.Printf("THICC: No existing session for %s", projectPath)
+		return false
+	}
+
+	// Existing session found - connect as PTY client
+	log.Printf("THICC: Found existing session for %s, connecting as PTY client", projectPath)
+
+	// Clean up dashboard state and finalize screen
+	showDashboard = false
+	if screen.Screen != nil {
+		screen.Screen.Fini()
+	}
+
+	// Run as PTY client (uses raw terminal mode, not tcell)
+	runSessionClient(sess)
+
+	// After client disconnects, exit
+	os.Exit(0)
+	return true // Won't reach here, but for clarity
+}
+
+// startSessionServerForProject starts a PTY server for a project selected from the dashboard.
+// This finalizes the tcell screen and restarts as a PTY server.
+func startSessionServerForProject(projectPath string) {
+	if *flagNoSession {
+		log.Println("THICC: Session sharing disabled via --no-session")
+		return
+	}
+
+	log.Printf("THICC: startSessionServerForProject called for: %s", projectPath)
+
+	sessionCfg := &session.Config{
+		SessionName: *flagSession,
+		ProjectRoot: projectPath,
+	}
+
+	sess, err := session.NewSession(sessionCfg)
+	if err != nil {
+		log.Printf("THICC: Failed to create session: %v", err)
+		return
+	}
+
+	if !sess.IsServer {
+		// Another instance beat us to it - this shouldn't happen since we checked earlier
+		log.Printf("THICC: Session already exists, unexpected")
+		return
+	}
+
+	// Finalize the tcell screen before switching to PTY mode
+	if screen.Screen != nil {
+		screen.Screen.Fini()
+	}
+
+	// Run as PTY server with the project path as argument
+	runSessionServer(sess, sessionCfg, []string{projectPath})
+
+	// After server exits, we should exit too
+	os.Exit(0)
 }
