@@ -5,7 +5,6 @@ import (
 	"log"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -3161,7 +3160,7 @@ func (lm *LayoutManager) forceQuitAll() {
 		buffer.CloseOpenBuffers()
 		screen.Screen.Fini()
 		action.InfoBar.Close()
-		runtime.Goexit()
+		os.Exit(0)
 	}
 
 	// Check for updates before quitting
