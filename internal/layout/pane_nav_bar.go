@@ -7,7 +7,7 @@ import (
 // Pane icons (larger Nerd Font glyphs)
 const (
 	PaneIconFolder        = '\uf07b' // nf-fa-folder
-	PaneIconSourceControl = '\ue725' // nf-dev-git_branch
+	PaneIconSourceControl = '\ueba1' // nf-dev-github_alt (octocat)
 	PaneIconCode          = '\uf121' // nf-fa-code
 	PaneIconTerminal      = '\uf489' // nf-oct-terminal
 )

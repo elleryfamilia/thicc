@@ -964,11 +964,11 @@ func (p *Panel) drawCommitGraph(screen tcell.Screen, graphHeight int) {
 	dividerStyle := config.DefStyle.Foreground(tcell.ColorGray)
 	labelStyle := config.DefStyle.Foreground(colorHeader).Bold(true)
 
-	// Draw "History" label
-	p.drawText(screen, 1, y, " History ", labelStyle)
+	// Draw "Log" label with commit icon
+	p.drawText(screen, 1, y, fmt.Sprintf(" %s Log ", IconCommit), labelStyle)
 
 	// Draw divider line after label
-	labelWidth := 9 // len(" History ")
+	labelWidth := 7 // len(" X Log ") where X is icon
 	dividerWidth := p.Region.Width - labelWidth - 3
 	if dividerWidth > 0 {
 		divider := strings.Repeat("─", dividerWidth)
