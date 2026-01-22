@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/ellery/thicc/internal/config"
+	runewidth "github.com/mattn/go-runewidth"
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -87,6 +88,11 @@ func (p *Panel) Render(screen tcell.Screen) {
 	if p.ShowBranchDialog {
 		p.drawBranchDialog(screen)
 	}
+
+	// Draw discard confirmation dialog if visible
+	if p.ShowDiscardConfirm {
+		p.drawDiscardConfirmDialog(screen)
+	}
 }
 
 // clearRegion clears the panel's screen region
@@ -103,6 +109,9 @@ func (p *Panel) clearRegion(screen tcell.Screen) {
 func (p *Panel) drawHeader(screen tcell.Screen) int {
 	y := 1 // After top border
 
+	// Track header Y for click detection
+	p.headerY = y
+
 	// Header: just branch icon + branch name (compact)
 	branchName := p.GetBranchName()
 	if branchName == "" {
@@ -111,7 +120,32 @@ func (p *Panel) drawHeader(screen tcell.Screen) int {
 
 	header := fmt.Sprintf(" %s %s", IconBranch, branchName)
 	style := config.DefStyle.Foreground(colorHeader).Bold(true)
+
+	// Selection highlight when header section is focused
+	if p.Section == SectionHeader {
+		if p.Focus {
+			style = config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite).Bold(true)
+			// Fill line with selection background
+			for x := 1; x < p.Region.Width-1; x++ {
+				screen.SetContent(p.Region.X+x, p.Region.Y+y, ' ', nil, style)
+			}
+		} else {
+			style = config.DefStyle.Background(tcell.Color236).Foreground(colorHeader).Bold(true)
+		}
+	}
+
 	p.drawText(screen, 1, y, header, style)
+
+	// Add [b] hint to show it's clickable for branch switching
+	hintStyle := config.DefStyle.Foreground(tcell.ColorGray)
+	if p.Section == SectionHeader && p.Focus {
+		hintStyle = config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite)
+	}
+	hintX := runewidth.StringWidth(header) + 2
+	hint := "[⌥B]"
+	if hintX+runewidth.StringWidth(hint) < p.Region.Width-2 {
+		p.drawText(screen, hintX, y, hint, hintStyle)
+	}
 
 	return y + 2 // Extra space after branch name
 }
@@ -133,9 +167,9 @@ func (p *Panel) drawUnstagedSection(screen tcell.Screen, startY int) int {
 
 	// Draw shortcut hints if there's space
 	hintStyle := config.DefStyle.Foreground(tcell.ColorGray)
-	hintX := len(header) + 2
-	hint := "[space] stage"
-	if hintX+len(hint) < p.Region.Width-2 {
+	hintX := runewidth.StringWidth(header) + 2
+	hint := "[space]stage [⌥D]discard"
+	if hintX+runewidth.StringWidth(hint) < p.Region.Width-2 {
 		p.drawText(screen, hintX, y, hint, hintStyle)
 	}
 	y++
@@ -198,9 +232,9 @@ func (p *Panel) drawStagedSection(screen tcell.Screen, startY int) int {
 
 	// Draw shortcut hints if there's space
 	hintStyle := config.DefStyle.Foreground(tcell.ColorGray)
-	hintX := len(header) + 2
+	hintX := runewidth.StringWidth(header) + 2
 	hint := "[space] unstage"
-	if hintX+len(hint) < p.Region.Width-2 {
+	if hintX+runewidth.StringWidth(hint) < p.Region.Width-2 {
 		p.drawText(screen, hintX, y, hint, hintStyle)
 	}
 	y++
@@ -659,6 +693,107 @@ func (p *Panel) drawBranchDialog(screen tcell.Screen) {
 
 	// Footer with hints
 	footer := " ↑↓:select Enter Esc "
+	footerStyle := config.DefStyle.Foreground(tcell.ColorGray)
+	footerX := dialogX + (dialogWidth-len(footer))/2
+	for i, r := range footer {
+		screen.SetContent(footerX+i, footerY+1, r, nil, footerStyle)
+	}
+
+	// Bottom border
+	screen.SetContent(dialogX, dialogY+dialogHeight-1, '╚', nil, borderStyle)
+	for x := 1; x < dialogWidth-1; x++ {
+		screen.SetContent(dialogX+x, dialogY+dialogHeight-1, '═', nil, borderStyle)
+	}
+	screen.SetContent(dialogX+dialogWidth-1, dialogY+dialogHeight-1, '╝', nil, borderStyle)
+}
+
+// drawDiscardConfirmDialog draws a confirmation dialog for discarding changes
+func (p *Panel) drawDiscardConfirmDialog(screen tcell.Screen) {
+	if !p.ShowDiscardConfirm {
+		return
+	}
+
+	// Dialog dimensions
+	dialogWidth := 40
+	if p.Region.Width-4 < dialogWidth {
+		dialogWidth = p.Region.Width - 4
+	}
+	dialogHeight := 8
+
+	// Center dialog in panel
+	dialogX := p.Region.X + (p.Region.Width-dialogWidth)/2
+	dialogY := p.Region.Y + (p.Region.Height-dialogHeight)/2
+
+	// Clear dialog area
+	bgStyle := config.DefStyle
+	for dy := 0; dy < dialogHeight; dy++ {
+		for dx := 0; dx < dialogWidth; dx++ {
+			screen.SetContent(dialogX+dx, dialogY+dy, ' ', nil, bgStyle)
+		}
+	}
+
+	// Draw border (red for warning)
+	borderStyle := config.DefStyle.Foreground(colorDeleted)
+	// Top border
+	screen.SetContent(dialogX, dialogY, '╔', nil, borderStyle)
+	for x := 1; x < dialogWidth-1; x++ {
+		screen.SetContent(dialogX+x, dialogY, '═', nil, borderStyle)
+	}
+	screen.SetContent(dialogX+dialogWidth-1, dialogY, '╗', nil, borderStyle)
+
+	// Title
+	title := " Discard Changes? "
+	if p.DiscardIsUntracked {
+		title = " Delete File? "
+	}
+	titleX := dialogX + (dialogWidth-len(title))/2
+	titleStyle := config.DefStyle.Foreground(colorDeleted).Bold(true)
+	for i, r := range title {
+		screen.SetContent(titleX+i, dialogY, r, nil, titleStyle)
+	}
+
+	// Sides
+	for y := 1; y < dialogHeight-1; y++ {
+		screen.SetContent(dialogX, dialogY+y, '║', nil, borderStyle)
+		screen.SetContent(dialogX+dialogWidth-1, dialogY+y, '║', nil, borderStyle)
+	}
+
+	// Message lines
+	textStyle := config.DefStyle.Foreground(tcell.Color252)
+	warningStyle := config.DefStyle.Foreground(colorDeleted).Bold(true)
+
+	// Line 1: File name
+	fileName := p.DiscardTarget
+	if len(fileName) > dialogWidth-4 {
+		fileName = "..." + fileName[len(fileName)-dialogWidth+7:]
+	}
+	line1X := dialogX + (dialogWidth-len(fileName))/2
+	for i, r := range fileName {
+		screen.SetContent(line1X+i, dialogY+2, r, nil, textStyle)
+	}
+
+	// Line 2: Warning message
+	var warning string
+	if p.DiscardIsUntracked {
+		warning = "This will DELETE the file permanently!"
+	} else {
+		warning = "This will revert to the last commit."
+	}
+	line2X := dialogX + (dialogWidth-len(warning))/2
+	for i, r := range warning {
+		screen.SetContent(line2X+i, dialogY+4, r, nil, warningStyle)
+	}
+
+	// Footer separator
+	footerY := dialogY + dialogHeight - 2
+	screen.SetContent(dialogX, footerY, '╠', nil, borderStyle)
+	for x := 1; x < dialogWidth-1; x++ {
+		screen.SetContent(dialogX+x, footerY, '─', nil, borderStyle)
+	}
+	screen.SetContent(dialogX+dialogWidth-1, footerY, '╣', nil, borderStyle)
+
+	// Footer with hints
+	footer := " Enter:confirm  Esc:cancel "
 	footerStyle := config.DefStyle.Foreground(tcell.ColorGray)
 	footerX := dialogX + (dialogWidth-len(footer))/2
 	for i, r := range footer {

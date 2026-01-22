@@ -38,7 +38,8 @@ type CommitEntry struct {
 type Section int
 
 const (
-	SectionUnstaged    Section = iota
+	SectionHeader      Section = iota // Branch header (clickable for branch switch)
+	SectionUnstaged
 	SectionStaged
 	SectionCommitInput // Text input for commit message
 	SectionCommitBtn   // Commit button
@@ -89,7 +90,13 @@ type Panel struct {
 	pollStop   chan struct{}
 	polling    bool
 
+	// Discard confirmation dialog state
+	ShowDiscardConfirm bool   // Whether discard confirmation is shown
+	DiscardTarget      string // Path of file to discard
+	DiscardIsUntracked bool   // Whether the file is untracked (deletion warning)
+
 	// Click position tracking (set during render, used by mouse handler)
+	headerY         int   // Y position of branch header (clickable)
 	unstagedHeaderY int   // Y position of unstaged section header
 	stagedHeaderY   int   // Y position of staged section header
 	commitSectionY  int   // Y position of commit section
@@ -277,7 +284,11 @@ func (p *Panel) MoveUp() {
 	case SectionUnstaged:
 		if p.Selected > 0 {
 			p.Selected--
+		} else {
+			p.Section = SectionHeader
 		}
+	case SectionHeader:
+		// Already at top
 	}
 	p.ensureSelectedVisible()
 }
@@ -285,6 +296,9 @@ func (p *Panel) MoveUp() {
 // MoveDown moves selection down
 func (p *Panel) MoveDown() {
 	switch p.Section {
+	case SectionHeader:
+		p.Section = SectionUnstaged
+		p.Selected = 0
 	case SectionUnstaged:
 		if p.Selected < len(p.UnstagedFiles)-1 {
 			p.Selected++
@@ -318,6 +332,8 @@ func (p *Panel) MoveDown() {
 // NextSection moves to the next section
 func (p *Panel) NextSection() {
 	switch p.Section {
+	case SectionHeader:
+		p.Section = SectionUnstaged
 	case SectionUnstaged:
 		p.Section = SectionStaged
 	case SectionStaged:
@@ -333,7 +349,7 @@ func (p *Panel) NextSection() {
 		p.GraphSelected = 0
 		p.GraphTopLine = 0
 	case SectionCommitGraph:
-		p.Section = SectionUnstaged
+		p.Section = SectionHeader
 	}
 	p.Selected = 0
 	p.TopLine = 0
@@ -759,6 +775,9 @@ func (p *Panel) ShowBranchSwitcher() {
 // HideBranchSwitcher closes the branch dialog
 func (p *Panel) HideBranchSwitcher() {
 	p.ShowBranchDialog = false
+	if p.OnRefresh != nil {
+		p.OnRefresh()
+	}
 }
 
 // SwitchToSelectedBranch switches to the selected branch

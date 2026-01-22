@@ -3,6 +3,7 @@ package sourcecontrol
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
@@ -20,8 +21,8 @@ func (p *Panel) RefreshStatus() {
 		return
 	}
 
-	// Run git status --porcelain
-	cmd := exec.Command("git", "status", "--porcelain")
+	// Run git status --porcelain -uall (show individual files in untracked directories)
+	cmd := exec.Command("git", "status", "--porcelain", "-uall")
 	cmd.Dir = p.RepoRoot
 	output, err := cmd.Output()
 	if err != nil {
@@ -111,6 +112,33 @@ func (p *Panel) UnstageFile(path string) error {
 		return err
 	}
 	log.Printf("THICC SourceControl: Unstaged file: %s", path)
+	return nil
+}
+
+// DiscardChanges discards changes to a file, reverting it to the last commit
+// For untracked files, this deletes the file
+func (p *Panel) DiscardChanges(path string, isUntracked bool) error {
+	fullPath := filepath.Join(p.RepoRoot, path)
+
+	if isUntracked {
+		// For untracked files, delete the file
+		err := os.Remove(fullPath)
+		if err != nil {
+			log.Printf("THICC SourceControl: failed to delete untracked file: %v", err)
+			return err
+		}
+		log.Printf("THICC SourceControl: Deleted untracked file: %s", path)
+	} else {
+		// For tracked files, use git checkout to revert
+		cmd := exec.Command("git", "checkout", "--", path)
+		cmd.Dir = p.RepoRoot
+		output, err := cmd.CombinedOutput()
+		if err != nil {
+			log.Printf("THICC SourceControl: git checkout failed: %v, output: %s", err, string(output))
+			return err
+		}
+		log.Printf("THICC SourceControl: Discarded changes to: %s", path)
+	}
 	return nil
 }
 

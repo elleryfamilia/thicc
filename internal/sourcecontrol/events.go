@@ -34,6 +34,11 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 
 // handleKey processes keyboard events
 func (p *Panel) handleKey(ev *tcell.EventKey) bool {
+	// Modal: Discard confirmation dialog takes priority when visible
+	if p.ShowDiscardConfirm {
+		return p.handleDiscardConfirmKey(ev)
+	}
+
 	// Modal: Branch dialog takes priority when visible
 	if p.ShowBranchDialog {
 		return p.handleBranchDialogKey(ev)
@@ -52,6 +57,16 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 			return true
 		case 'l', 'L':
 			p.DoPull()
+			return true
+		case 'd', 'D':
+			// Discard changes (only for unstaged files)
+			if p.Section == SectionUnstaged {
+				p.showDiscardConfirm()
+			}
+			return true
+		case 'b', 'B':
+			// Open branch switcher
+			p.ShowBranchSwitcher()
 			return true
 		}
 	}
@@ -80,6 +95,11 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 	// Handle commit graph section
 	if p.Section == SectionCommitGraph {
 		return p.handleGraphKey(ev)
+	}
+
+	// Handle header section
+	if p.Section == SectionHeader {
+		return p.handleHeaderKey(ev)
 	}
 
 	switch ev.Key() {
@@ -130,14 +150,6 @@ func (p *Panel) handleKey(ev *tcell.EventKey) bool {
 			if p.CanPush() {
 				p.DoPush()
 			}
-			return true
-		case 'l':
-			// Pull
-			p.DoPull()
-			return true
-		case 'b':
-			// Open branch switcher
-			p.ShowBranchSwitcher()
 			return true
 		case 'r':
 			// Refresh
@@ -423,6 +435,107 @@ func (p *Panel) handleBranchDialogKey(ev *tcell.EventKey) bool {
 	return true
 }
 
+// handleDiscardConfirmKey handles keyboard events for the discard confirmation dialog
+func (p *Panel) handleDiscardConfirmKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyEnter:
+		p.confirmDiscard()
+		return true
+
+	case tcell.KeyEsc:
+		p.hideDiscardConfirm()
+		return true
+	}
+
+	// Consume all events when dialog is open
+	return true
+}
+
+// handleHeaderKey handles keyboard events when header section is focused
+func (p *Panel) handleHeaderKey(ev *tcell.EventKey) bool {
+	switch ev.Key() {
+	case tcell.KeyUp:
+		// Already at top, do nothing
+		return true
+	case tcell.KeyDown:
+		p.MoveDown()
+		return true
+	case tcell.KeyTab:
+		p.NextSection()
+		return true
+	case tcell.KeyEnter:
+		// Open branch switcher
+		p.ShowBranchSwitcher()
+		return true
+	case tcell.KeyEsc:
+		p.Section = SectionUnstaged
+		p.Selected = 0
+		return true
+	default:
+		switch ev.Rune() {
+		case 'k':
+			// Already at top
+			return true
+		case 'j':
+			p.MoveDown()
+			return true
+		}
+	}
+	return false
+}
+
+// showDiscardConfirm shows the discard confirmation dialog for the selected file
+func (p *Panel) showDiscardConfirm() {
+	// Only works for unstaged files
+	if p.Section != SectionUnstaged {
+		return
+	}
+
+	file := p.GetSelectedFile()
+	if file == nil {
+		return
+	}
+
+	p.DiscardTarget = file.Path
+	p.DiscardIsUntracked = file.Status == "?"
+	p.ShowDiscardConfirm = true
+
+	if p.OnRefresh != nil {
+		p.OnRefresh()
+	}
+}
+
+// hideDiscardConfirm hides the discard confirmation dialog
+func (p *Panel) hideDiscardConfirm() {
+	p.ShowDiscardConfirm = false
+	p.DiscardTarget = ""
+	p.DiscardIsUntracked = false
+
+	if p.OnRefresh != nil {
+		p.OnRefresh()
+	}
+}
+
+// confirmDiscard executes the discard operation
+func (p *Panel) confirmDiscard() {
+	if p.DiscardTarget == "" {
+		p.hideDiscardConfirm()
+		return
+	}
+
+	err := p.DiscardChanges(p.DiscardTarget, p.DiscardIsUntracked)
+	if err != nil {
+		log.Printf("THICC SourceControl: Failed to discard: %v", err)
+	}
+
+	p.hideDiscardConfirm()
+	p.RefreshStatus()
+
+	if p.OnRefresh != nil {
+		p.OnRefresh()
+	}
+}
+
 // handleEnter handles the Enter key for file sections
 func (p *Panel) handleEnter() bool {
 	switch p.Section {
@@ -499,6 +612,15 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 	// Handle left click
 	if ev.Buttons() == tcell.Button1 {
 		localX := x - p.Region.X
+
+		// Check if clicking on header (branch name)
+		if localY == p.headerY {
+			// Click on header opens branch switcher
+			p.Section = SectionHeader
+			p.ShowBranchSwitcher()
+			log.Printf("THICC SourceControl: Clicked header, opening branch switcher")
+			return true
+		}
 
 		// Check if clicking on buttons row
 		if localY == p.buttonsY {
