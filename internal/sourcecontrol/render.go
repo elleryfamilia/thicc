@@ -118,30 +118,55 @@ func (p *Panel) drawHeader(screen tcell.Screen) int {
 		branchName = "no branch"
 	}
 
-	header := fmt.Sprintf(" %s %s", IconBranch, branchName)
-	style := config.DefStyle.Foreground(colorHeader).Bold(true)
+	header := fmt.Sprintf(" %s %s ", IconBranch, branchName)
+	headerWidth := runewidth.StringWidth(header)
+
+	// Powerline rounded end character
+	const powerlineRoundRight = '\ue0b4'
+
+	// Colors matching terminal prompt:
+	// Clean: teal background (Color 30) with white text (Color 231)
+	// Dirty: aqua background (#60fdff) with black text
+	isDirty := len(p.UnstagedFiles) > 0 || len(p.StagedFiles) > 0
+	var bgColor tcell.Color
+	var fgColor tcell.Color
+	if isDirty {
+		bgColor = tcell.NewRGBColor(96, 253, 255) // #60fdff aqua
+		fgColor = tcell.ColorBlack
+	} else {
+		bgColor = tcell.Color30 // teal
+		fgColor = tcell.Color231 // white
+	}
 
 	// Selection highlight when header section is focused
-	if p.Section == SectionHeader {
-		if p.Focus {
-			style = config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite).Bold(true)
-			// Fill line with selection background
-			for x := 1; x < p.Region.Width-1; x++ {
-				screen.SetContent(p.Region.X+x, p.Region.Y+y, ' ', nil, style)
-			}
-		} else {
-			style = config.DefStyle.Background(tcell.Color236).Foreground(colorHeader).Bold(true)
+	if p.Section == SectionHeader && p.Focus {
+		// Focused: invert to white background
+		style := config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite).Bold(true)
+		for x := 1; x < headerWidth+1; x++ {
+			screen.SetContent(p.Region.X+x, p.Region.Y+y, ' ', nil, style)
 		}
+		p.drawText(screen, 1, y, header, style)
+		// Powerline cap in white transitioning to default
+		capStyle := config.DefStyle.Foreground(tcell.ColorWhite)
+		screen.SetContent(p.Region.X+headerWidth+1, p.Region.Y+y, powerlineRoundRight, nil, capStyle)
+	} else {
+		// Normal: color based on dirty state
+		style := config.DefStyle.Foreground(fgColor).Background(bgColor).Bold(true)
+		for x := 1; x < headerWidth+1; x++ {
+			screen.SetContent(p.Region.X+x, p.Region.Y+y, ' ', nil, style)
+		}
+		p.drawText(screen, 1, y, header, style)
+		// Powerline rounded cap
+		capStyle := config.DefStyle.Foreground(bgColor)
+		screen.SetContent(p.Region.X+headerWidth+1, p.Region.Y+y, powerlineRoundRight, nil, capStyle)
 	}
 
-	p.drawText(screen, 1, y, header, style)
-
-	// Add [b] hint to show it's clickable for branch switching
+	// Add [⌥b] hint after the powerline cap
 	hintStyle := config.DefStyle.Foreground(tcell.ColorGray)
 	if p.Section == SectionHeader && p.Focus {
-		hintStyle = config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite)
+		hintStyle = config.DefStyle.Foreground(tcell.ColorWhite)
 	}
-	hintX := runewidth.StringWidth(header) + 2
+	hintX := headerWidth + 3
 	hint := "[⌥b]"
 	if hintX+runewidth.StringWidth(hint) < p.Region.Width-2 {
 		p.drawText(screen, hintX, y, hint, hintStyle)
