@@ -121,8 +121,8 @@ func (p *Panel) drawHeader(screen tcell.Screen) int {
 	header := fmt.Sprintf(" %s %s ", IconBranch, branchName)
 	headerWidth := runewidth.StringWidth(header)
 
-	// Powerline rounded end character
-	const powerlineRoundRight = '\ue0b4'
+	// Powerline arrow (same as terminal prompt)
+	const powerlineArrow = '\ue0b0'
 
 	// Colors matching terminal prompt:
 	// Clean: teal background (Color 30) with white text (Color 231)
@@ -148,7 +148,7 @@ func (p *Panel) drawHeader(screen tcell.Screen) int {
 		p.drawText(screen, 1, y, header, style)
 		// Powerline cap in white transitioning to default
 		capStyle := config.DefStyle.Foreground(tcell.ColorWhite)
-		screen.SetContent(p.Region.X+headerWidth+1, p.Region.Y+y, powerlineRoundRight, nil, capStyle)
+		screen.SetContent(p.Region.X+headerWidth+1, p.Region.Y+y, powerlineArrow, nil, capStyle)
 	} else {
 		// Normal: color based on dirty state
 		style := config.DefStyle.Foreground(fgColor).Background(bgColor).Bold(true)
@@ -158,7 +158,7 @@ func (p *Panel) drawHeader(screen tcell.Screen) int {
 		p.drawText(screen, 1, y, header, style)
 		// Powerline rounded cap
 		capStyle := config.DefStyle.Foreground(bgColor)
-		screen.SetContent(p.Region.X+headerWidth+1, p.Region.Y+y, powerlineRoundRight, nil, capStyle)
+		screen.SetContent(p.Region.X+headerWidth+1, p.Region.Y+y, powerlineArrow, nil, capStyle)
 	}
 
 	// Add [⌥b] hint after the powerline cap
