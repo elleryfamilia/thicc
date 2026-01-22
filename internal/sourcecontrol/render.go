@@ -204,13 +204,6 @@ func (p *Panel) drawUnstagedSection(screen tcell.Screen, startY int) int {
 		y++
 	}
 
-	// Empty state
-	if len(p.UnstagedFiles) == 0 {
-		emptyStyle := config.DefStyle.Foreground(tcell.ColorGray)
-		p.drawText(screen, 3, y, "No unstaged changes", emptyStyle)
-		y++
-	}
-
 	y++ // Spacing
 	return y
 }
@@ -266,13 +259,6 @@ func (p *Panel) drawStagedSection(screen tcell.Screen, startY int) int {
 
 		isSelected := p.Section == SectionStaged && i == p.Selected
 		p.drawFileEntry(screen, y, file, isSelected, true)
-		y++
-	}
-
-	// Empty state
-	if len(p.StagedFiles) == 0 {
-		emptyStyle := config.DefStyle.Foreground(tcell.ColorGray)
-		p.drawText(screen, 3, y, "No staged changes", emptyStyle)
 		y++
 	}
 
