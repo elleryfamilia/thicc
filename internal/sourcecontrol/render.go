@@ -156,7 +156,7 @@ func (p *Panel) drawHeader(screen tcell.Screen) int {
 			screen.SetContent(p.Region.X+x, p.Region.Y+y, ' ', nil, style)
 		}
 		p.drawText(screen, 1, y, header, style)
-		// Powerline rounded cap
+		// Powerline arrow cap
 		capStyle := config.DefStyle.Foreground(bgColor)
 		screen.SetContent(p.Region.X+headerWidth+1, p.Region.Y+y, powerlineArrow, nil, capStyle)
 	}
