@@ -105,60 +105,101 @@ func (p *Panel) clearRegion(screen tcell.Screen) {
 	}
 }
 
-// drawHeader draws the panel header with branch info
+// drawHeader draws the panel header with folder and branch info (matching terminal prompt)
 func (p *Panel) drawHeader(screen tcell.Screen) int {
 	y := 1 // After top border
 
 	// Track header Y for click detection
 	p.headerY = y
 
-	// Header: just branch icon + branch name (compact)
+	// Powerline constants
+	const powerlineRound = '\ue0b4' // Rounded cap for badge/pill shape
+	const folderIcon = "\uF07C"
+	colorNavy := tcell.Color24   // Navy background for folder
+	colorWhite := tcell.Color231 // White text
+
+	// Get folder name from repo root
+	folderName := filepath.Base(p.RepoRoot)
+	if folderName == "" || folderName == "." {
+		folderName = p.RepoRoot
+	}
+
+	// Get branch name
 	branchName := p.GetBranchName()
 	if branchName == "" {
 		branchName = "no branch"
 	}
 
-	header := fmt.Sprintf(" %s %s ", IconBranch, branchName)
-	headerWidth := runewidth.StringWidth(header)
+	// Build folder and branch segments
+	// Folder segment has trailing space for visual separation from branch
+	folderContent := fmt.Sprintf(" %s %s ", folderIcon, folderName)
+	branchContent := fmt.Sprintf(" %s %s ", IconBranch, branchName)
 
-	// Powerline arrow (same as terminal prompt)
-	const powerlineArrow = '\ue0b0'
+	folderWidth := runewidth.StringWidth(folderContent)
+	branchWidth := runewidth.StringWidth(branchContent)
 
-	// Colors matching terminal prompt:
+	// Colors for branch segment (matching terminal prompt):
 	// Clean: teal background (Color 30) with white text (Color 231)
 	// Dirty: aqua background (#60fdff) with black text
 	isDirty := len(p.UnstagedFiles) > 0 || len(p.StagedFiles) > 0
-	var bgColor tcell.Color
-	var fgColor tcell.Color
+	var branchBg tcell.Color
+	var branchFg tcell.Color
 	if isDirty {
-		bgColor = tcell.NewRGBColor(96, 253, 255) // #60fdff aqua
-		fgColor = tcell.ColorBlack
+		branchBg = tcell.NewRGBColor(96, 253, 255) // #60fdff aqua
+		branchFg = tcell.ColorBlack
 	} else {
-		bgColor = tcell.Color30 // teal
-		fgColor = tcell.Color231 // white
+		branchBg = tcell.Color30   // teal
+		branchFg = tcell.Color231  // white
 	}
+
+	x := 1
 
 	// Selection highlight when header section is focused
 	if p.Section == SectionHeader && p.Focus {
-		// Focused: invert to white background
+		// Focused: both segments use white background
 		style := config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite).Bold(true)
-		for x := 1; x < headerWidth+1; x++ {
-			screen.SetContent(p.Region.X+x, p.Region.Y+y, ' ', nil, style)
+
+		// Draw folder segment (flat edge - no cap)
+		for i := 0; i < folderWidth; i++ {
+			screen.SetContent(p.Region.X+x+i, p.Region.Y+y, ' ', nil, style)
 		}
-		p.drawText(screen, 1, y, header, style)
-		// Powerline cap in white transitioning to default
+		p.drawText(screen, x, y, folderContent, style)
+		x += folderWidth
+
+		// Draw branch segment (directly after folder)
+		for i := 0; i < branchWidth; i++ {
+			screen.SetContent(p.Region.X+x+i, p.Region.Y+y, ' ', nil, style)
+		}
+		p.drawText(screen, x, y, branchContent, style)
+		x += branchWidth
+
+		// Final rounded cap
 		capStyle := config.DefStyle.Foreground(tcell.ColorWhite)
-		screen.SetContent(p.Region.X+headerWidth+1, p.Region.Y+y, powerlineArrow, nil, capStyle)
+		screen.SetContent(p.Region.X+x, p.Region.Y+y, powerlineRound, nil, capStyle)
+		x++
 	} else {
-		// Normal: color based on dirty state
-		style := config.DefStyle.Foreground(fgColor).Background(bgColor).Bold(true)
-		for x := 1; x < headerWidth+1; x++ {
-			screen.SetContent(p.Region.X+x, p.Region.Y+y, ' ', nil, style)
+		// Normal: folder=navy (flat edge), branch=teal/aqua (rounded cap)
+		folderStyle := config.DefStyle.Foreground(colorWhite).Background(colorNavy).Bold(true)
+		branchStyle := config.DefStyle.Foreground(branchFg).Background(branchBg).Bold(true)
+
+		// Draw folder segment (flat edge - background just ends)
+		for i := 0; i < folderWidth; i++ {
+			screen.SetContent(p.Region.X+x+i, p.Region.Y+y, ' ', nil, folderStyle)
 		}
-		p.drawText(screen, 1, y, header, style)
-		// Powerline arrow cap
-		capStyle := config.DefStyle.Foreground(bgColor)
-		screen.SetContent(p.Region.X+headerWidth+1, p.Region.Y+y, powerlineArrow, nil, capStyle)
+		p.drawText(screen, x, y, folderContent, folderStyle)
+		x += folderWidth
+
+		// Draw branch segment (directly after folder, no arrow between)
+		for i := 0; i < branchWidth; i++ {
+			screen.SetContent(p.Region.X+x+i, p.Region.Y+y, ' ', nil, branchStyle)
+		}
+		p.drawText(screen, x, y, branchContent, branchStyle)
+		x += branchWidth
+
+		// Final rounded cap
+		capStyle := config.DefStyle.Foreground(branchBg)
+		screen.SetContent(p.Region.X+x, p.Region.Y+y, powerlineRound, nil, capStyle)
+		x++
 	}
 
 	// Add [⌥b] hint after the powerline cap
@@ -166,13 +207,13 @@ func (p *Panel) drawHeader(screen tcell.Screen) int {
 	if p.Section == SectionHeader && p.Focus {
 		hintStyle = config.DefStyle.Foreground(tcell.ColorWhite)
 	}
-	hintX := headerWidth + 3
+	hintX := x + 1
 	hint := "[⌥b]"
 	if hintX+runewidth.StringWidth(hint) < p.Region.Width-2 {
 		p.drawText(screen, hintX, y, hint, hintStyle)
 	}
 
-	return y + 2 // Extra space after branch name
+	return y + 2 // Extra space after header
 }
 
 // drawUnstagedSection draws the unstaged changes section

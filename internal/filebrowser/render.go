@@ -35,36 +35,63 @@ func (p *Panel) clearRegion(screen tcell.Screen) {
 	}
 }
 
-// drawHeader draws the header showing current directory
+// drawHeader draws the header showing current directory with powerline style
 func (p *Panel) drawHeader(screen tcell.Screen) {
-	// Line 1: Directory name with open folder icon (clickable to change directory)
+	// Powerline constants
+	const powerlineRound = '\ue0b4' // Rounded cap for badge/pill shape
+	const folderIcon = "\uF07C"
+	colorNavy := tcell.Color24    // Navy background
+	colorWhite := tcell.Color231  // White text
+
+	// Line 1: Directory name with powerline style (matching terminal prompt)
 	dirName := filepath.Base(p.Tree.CurrentDir)
 	if dirName == "" || dirName == "." {
 		dirName = p.Tree.CurrentDir // Fallback for root paths
 	}
 
-	// Add open folder icon prefix (Nerd Font U+F07C)
-	displayName := " \uF07C " + dirName
+	// Build the folder segment content
+	folderContent := fmt.Sprintf(" %s %s ", folderIcon, dirName)
+
+	// Calculate width needed
+	contentWidth := len(folderContent)
+	maxWidth := p.Region.Width - 4 // Leave room for border and cap
 
 	// Truncate if needed
-	maxWidth := p.Region.Width - 2
-	if len(displayName) > maxWidth {
-		displayName = displayName[:maxWidth-3] + "..."
-	}
-
-	// Highlight header if selected (Selected == -1)
-	style := GetDirectoryStyle() // Default: bright blue
-	if p.Selected == -1 && p.Focus {
-		// Fill entire line with selection background first
-		focusedStyle := GetFocusedStyle()
-		for i := 0; i < p.Region.Width; i++ {
-			screen.SetContent(p.Region.X+i, p.Region.Y+1, ' ', nil, focusedStyle)
+	if contentWidth > maxWidth {
+		truncLen := maxWidth - 4 // Room for icon, spaces, and ellipsis
+		if truncLen > 0 {
+			folderContent = fmt.Sprintf(" %s %s... ", folderIcon, dirName[:truncLen])
+			contentWidth = len(folderContent)
 		}
-		style = focusedStyle // When selected: black bg, white text (same as nodes)
 	}
 
-	// Draw the directory name with appropriate style
-	p.drawText(screen, 3, 1, displayName, style)
+	// Determine styles based on selection state
+	var bgColor tcell.Color
+	var fgColor tcell.Color
+	if p.Selected == -1 && p.Focus {
+		// Selected: white background, black text
+		bgColor = tcell.ColorWhite
+		fgColor = tcell.ColorBlack
+	} else {
+		// Normal: navy background, white text (matching terminal)
+		bgColor = colorNavy
+		fgColor = colorWhite
+	}
+
+	// Draw the folder segment with background
+	segmentStyle := config.DefStyle.Foreground(fgColor).Background(bgColor).Bold(true)
+	x := 1
+	// Fill background first
+	for i := 0; i < contentWidth && x+i < p.Region.Width-2; i++ {
+		screen.SetContent(p.Region.X+x+i, p.Region.Y+1, ' ', nil, segmentStyle)
+	}
+	// Draw text over background (handles multi-byte runes correctly)
+	p.drawText(screen, x, 1, folderContent, segmentStyle)
+	x += contentWidth
+
+	// Draw rounded powerline cap (foreground = segment bg, background = default)
+	capStyle := config.DefStyle.Foreground(bgColor)
+	screen.SetContent(p.Region.X+x, p.Region.Y+1, powerlineRound, nil, capStyle)
 
 	// Line 2: Separator
 	separator := strings.Repeat("─", p.Region.Width-4)
