@@ -6,9 +6,9 @@ import (
 
 // Pane icons (larger Nerd Font glyphs)
 const (
-	PaneIconFolder        = '\uf07b' // nf-fa-folder
-	PaneIconSourceControl = '\ueba1' // nf-dev-github_alt (octocat)
-	PaneIconCode          = '\uf121' // nf-fa-code
+	PaneIconFolder        = '\uef81' // nf-md-folder
+	PaneIconSourceControl = '\U000F02A2' // nf-md-git
+	PaneIconCode          = '\U000F0169' // nf-md-application_brackets_outline
 	PaneIconTerminal      = '\uf489' // nf-oct-terminal
 )
 
