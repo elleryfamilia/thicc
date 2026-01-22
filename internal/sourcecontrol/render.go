@@ -142,7 +142,7 @@ func (p *Panel) drawHeader(screen tcell.Screen) int {
 		hintStyle = config.DefStyle.Foreground(tcell.ColorBlack).Background(tcell.ColorWhite)
 	}
 	hintX := runewidth.StringWidth(header) + 2
-	hint := "[⌥B]"
+	hint := "[⌥b]"
 	if hintX+runewidth.StringWidth(hint) < p.Region.Width-2 {
 		p.drawText(screen, hintX, y, hint, hintStyle)
 	}
@@ -168,7 +168,7 @@ func (p *Panel) drawUnstagedSection(screen tcell.Screen, startY int) int {
 	// Draw shortcut hints if there's space
 	hintStyle := config.DefStyle.Foreground(tcell.ColorGray)
 	hintX := runewidth.StringWidth(header) + 2
-	hint := "[space]stage [⌥D]discard"
+	hint := "[space]stage [⌥d]discard"
 	if hintX+runewidth.StringWidth(hint) < p.Region.Width-2 {
 		p.drawText(screen, hintX, y, hint, hintStyle)
 	}
