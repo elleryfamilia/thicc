@@ -284,11 +284,12 @@ func (p *Panel) MoveUp() {
 	case SectionUnstaged:
 		if p.Selected > 0 {
 			p.Selected--
-		} else {
-			p.Section = SectionHeader
 		}
+		// At top of unstaged - stay here (SectionHeader is click-only)
 	case SectionHeader:
-		// Already at top
+		// Header is click-only, move to unstaged
+		p.Section = SectionUnstaged
+		p.Selected = 0
 	}
 	p.ensureSelectedVisible()
 }
@@ -349,7 +350,7 @@ func (p *Panel) NextSection() {
 		p.GraphSelected = 0
 		p.GraphTopLine = 0
 	case SectionCommitGraph:
-		p.Section = SectionHeader
+		p.Section = SectionUnstaged
 	}
 	p.Selected = 0
 	p.TopLine = 0
