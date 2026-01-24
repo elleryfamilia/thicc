@@ -95,6 +95,9 @@ type Panel struct {
 	DiscardTarget      string // Path of file to discard
 	DiscardIsUntracked bool   // Whether the file is untracked (deletion warning)
 
+	// PR Size Meter state
+	PRMeter *PRMeterState // Current meter state (nil if not calculated yet)
+
 	// Click position tracking (set during render, used by mouse handler)
 	headerY         int   // Y position of branch header (clickable)
 	unstagedHeaderY int   // Y position of unstaged section header
@@ -129,6 +132,7 @@ func NewPanel(x, y, w, h int, repoRoot string) *Panel {
 		log.Println("THICC SourceControl: Loading initial git status")
 		p.RefreshStatus()
 		p.RefreshCommitGraph()
+		p.RefreshPRMeter()
 		if p.OnRefresh != nil {
 			p.OnRefresh()
 		}
@@ -192,6 +196,7 @@ func (p *Panel) StartPolling() {
 			case <-p.pollTicker.C:
 				p.RefreshStatus()
 				p.RefreshCommitGraph()
+				p.RefreshPRMeter()
 				if p.OnRefresh != nil {
 					p.OnRefresh()
 				}
@@ -810,4 +815,35 @@ func (p *Panel) EnsureBranchVisible() {
 	if p.BranchSelected >= p.BranchTopLine+maxVisible {
 		p.BranchTopLine = p.BranchSelected - maxVisible + 1
 	}
+}
+
+// RefreshPRMeter updates the PR size meter state
+func (p *Panel) RefreshPRMeter() {
+	if p.RepoRoot == "" {
+		return
+	}
+
+	stats, err := GetPRDiffStats(p.RepoRoot)
+	if err != nil {
+		log.Printf("THICC SourceControl: PR meter refresh failed: %v", err)
+		return
+	}
+
+	meter := CalculateMeterState(stats)
+
+	p.mu.Lock()
+	p.PRMeter = meter
+	p.mu.Unlock()
+
+	if meter != nil {
+		log.Printf("THICC SourceControl: PR meter updated - patience=%.0f%%, eaten=%d/%d, weighted=%d lines",
+			meter.Patience*100, meter.EatenPellets, meter.TotalPellets, meter.WeightedLines)
+	}
+}
+
+// GetPRMeter returns the current PR meter state (thread-safe)
+func (p *Panel) GetPRMeter() *PRMeterState {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.PRMeter
 }

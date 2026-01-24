@@ -935,6 +935,12 @@ func (lm *LayoutManager) Initialize(screen tcell.Screen) error {
 		})
 	}
 
+	// Initialize PR meter in nav bar (independent of SourceControl panel)
+	if lm.PaneNavBar != nil {
+		log.Println("THICC: Initializing PR meter in nav bar")
+		lm.PaneNavBar.InitPRMeter(lm.Root)
+	}
+
 	// Calculate terminal region with terminal as active panel
 	// This ensures shouldExpandTree() returns the correct value for the final layout
 	savedActivePanel := lm.ActivePanel
@@ -2569,7 +2575,7 @@ func (lm *LayoutManager) ToggleSourceControl() {
 		lm.updatePanelRegions()
 		lm.triggerRedraw()
 	} else {
-		// Hide Source Control and stop polling
+		// Hide Source Control and stop its polling
 		lm.SourceControlVisible = false
 		if lm.SourceControl != nil {
 			lm.SourceControl.StopPolling()
@@ -3110,6 +3116,23 @@ func (lm *LayoutManager) GetWorkInProgress() *WorkInProgress {
 	}
 
 	return wip
+}
+
+// HasActiveAISession returns true if any terminal has an AI tool in the foreground
+func (lm *LayoutManager) HasActiveAISession() bool {
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+
+	if lm.Terminal != nil && lm.Terminal.GetForegroundAITool() != "" {
+		return true
+	}
+	if lm.Terminal2 != nil && lm.Terminal2.GetForegroundAITool() != "" {
+		return true
+	}
+	if lm.Terminal3 != nil && lm.Terminal3.GetForegroundAITool() != "" {
+		return true
+	}
+	return false
 }
 
 // handleQuit handles the quit action with warning for unsaved changes or active AI sessions
