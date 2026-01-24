@@ -602,8 +602,8 @@ func (n *PaneNavBar) Render(screen tcell.Screen) {
 		}
 	}
 
-	// Render PR Size Meter on the right side
-	n.renderPRMeter(screen)
+	// Render PR Size Meter on the right side (pass where panes end so we can hide if no room)
+	n.renderPRMeter(screen, x)
 }
 
 // IsInNavBar returns true if the coordinates are within the nav bar
@@ -676,7 +676,8 @@ func getLabelColor(patience float64) tcell.Color {
 }
 
 // renderPRMeter draws the Pac-Man PR size meter on the right side of the nav bar
-func (n *PaneNavBar) renderPRMeter(screen tcell.Screen) {
+// panesEndX is where the pane items end, used to avoid overlapping with them
+func (n *PaneNavBar) renderPRMeter(screen tcell.Screen, panesEndX int) {
 	// Get the PR meter state (from nav bar's own state)
 	meter := n.GetPRMeter()
 	if meter == nil {
@@ -704,8 +705,10 @@ func (n *PaneNavBar) renderPRMeter(screen tcell.Screen) {
 	rightPadding := 2
 	startX := n.Region.X + n.Region.Width - meterWidth - rightPadding
 
-	if startX < n.Region.X {
-		return // Not enough room
+	// Need at least 2 cells of spacing between panes and meter
+	minSpacing := 2
+	if startX < panesEndX+minSpacing {
+		return // Not enough room - hide the meter to avoid overlap
 	}
 
 	// Styles
