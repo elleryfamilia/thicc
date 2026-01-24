@@ -1754,6 +1754,7 @@ func (lm *LayoutManager) setActivePanel(panel int) {
 	// Refresh source control on focus
 	if panel == 0 && lm.SourceControlVisible && lm.SourceControl != nil {
 		lm.SourceControl.RefreshStatus()
+		lm.SourceControl.RefreshCommitGraph()
 	}
 
 	lm.mu.RLock()
@@ -2570,8 +2571,9 @@ func (lm *LayoutManager) ToggleSourceControl() {
 		if lm.SourceControl == nil {
 			lm.initSourceControl()
 		} else {
-			// Refresh git status
+			// Refresh git status and commit graph
 			lm.SourceControl.RefreshStatus()
+			lm.SourceControl.RefreshCommitGraph()
 		}
 
 		// Focus source control and start polling
