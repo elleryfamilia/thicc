@@ -13,10 +13,10 @@ import (
 
 // Pane icons (larger Nerd Font glyphs)
 const (
-	PaneIconFolder        = '\uef81' // nf-md-folder
+	PaneIconFolder        = '\uef81'     // nf-md-folder
 	PaneIconSourceControl = '\U000F02A2' // nf-md-git
 	PaneIconCode          = '\U000F0169' // nf-md-application_brackets_outline
-	PaneIconTerminal      = '\uf489' // nf-oct-terminal
+	PaneIconTerminal      = '\uf489'     // nf-oct-terminal
 )
 
 // PaneInfo describes a single pane for the nav bar
@@ -48,12 +48,11 @@ type PaneNavBar struct {
 	prPolling       bool                        // Whether PR meter polling is active
 	prLastGitMtime  time.Time                   // Last .git/index mtime (for change detection)
 
-	// Animation state for PR meter Pac-Man
-	animMu          sync.Mutex
-	animTick        int           // Current animation frame (for bounce)
-	animDirection   int           // 1 = right, -1 = left (for bounce)
-	animating       bool          // Whether bounce animation is running
-	animStop        chan struct{} // Stop channel for animation goroutine
+	// Animation state for terminal activity indicator
+	animMu    sync.Mutex
+	animTick  int           // Current animation frame (for color pulse)
+	animating bool          // Whether animation is running
+	animStop  chan struct{} // Stop channel for animation goroutine
 
 	// Eating animation state (when PR grows or on startup)
 	eatingAnimating  bool  // Whether eating animation is running
@@ -72,7 +71,6 @@ type PaneNavBar struct {
 // NewPaneNavBar creates a new pane navigation bar
 func NewPaneNavBar() *PaneNavBar {
 	return &PaneNavBar{
-		animDirection:  1,
 		animStop:       make(chan struct{}),
 		eatingStop:     make(chan struct{}),
 		regenStop:      make(chan struct{}),
@@ -256,9 +254,9 @@ func (n *PaneNavBar) StopAnimation() {
 	close(n.animStop)
 }
 
-// animationLoop runs the animation ticker
+// animationLoop runs the animation ticker for terminal activity color pulse
 func (n *PaneNavBar) animationLoop() {
-	ticker := time.NewTicker(120 * time.Millisecond) // ~8 fps for smooth bouncing
+	ticker := time.NewTicker(100 * time.Millisecond) // Color pulse for terminal activity indicator
 	defer ticker.Stop()
 
 	for {
@@ -267,23 +265,8 @@ func (n *PaneNavBar) animationLoop() {
 			return
 		case <-ticker.C:
 			n.animMu.Lock()
-			// Update animation tick (bounce within eaten area)
-			n.animTick += n.animDirection
-
-			// Get current meter state to know bounds
-			var maxTick int
-			if meter := n.GetPRMeter(); meter != nil && meter.EatenPellets > 0 {
-				maxTick = meter.EatenPellets - 1
-			}
-
-			// Bounce at edges
-			if n.animTick >= maxTick {
-				n.animTick = maxTick
-				n.animDirection = -1
-			} else if n.animTick <= 0 {
-				n.animTick = 0
-				n.animDirection = 1
-			}
+			// Increment tick for color pulse cycle (wraps via modulo in getActiveTerminalStyle)
+			n.animTick++
 			n.animMu.Unlock()
 
 			// Trigger redraw
@@ -300,17 +283,63 @@ func (n *PaneNavBar) UpdateAnimationState() {
 		return
 	}
 
-	aiActive := n.Manager.HasActiveAISession()
+	// Check if any terminal has active AI processing
+	anyTerminalActive := n.Manager.IsTerminalActive(0) ||
+		n.Manager.IsTerminalActive(1) ||
+		n.Manager.IsTerminalActive(2)
 
 	n.animMu.Lock()
 	isAnimating := n.animating
 	n.animMu.Unlock()
 
-	if aiActive && !isAnimating {
+	if anyTerminalActive && !isAnimating {
 		n.StartAnimation()
-	} else if !aiActive && isAnimating {
+	} else if !anyTerminalActive && isAnimating {
 		n.StopAnimation()
 	}
+}
+
+// isTerminalPaneActive checks if a terminal pane (3, 4, 5) has active AI processing
+func (n *PaneNavBar) isTerminalPaneActive(key string) bool {
+	if n.Manager == nil {
+		return false
+	}
+	switch key {
+	case "3":
+		return n.Manager.IsTerminalActive(0)
+	case "4":
+		return n.Manager.IsTerminalActive(1)
+	case "5":
+		return n.Manager.IsTerminalActive(2)
+	}
+	return false
+}
+
+// getActiveTerminalStyle returns a smoothly pulsing color style for active terminals
+// Transitions between purple and pink (Spider-Verse theme) over 16 animation frames
+func (n *PaneNavBar) getActiveTerminalStyle() tcell.Style {
+	n.animMu.Lock()
+	tick := n.animTick
+	n.animMu.Unlock()
+
+	// Smooth gradient between violet (160,60,210) and hot pink (255,95,175)
+	// 16 steps total: 8 purple→pink, 8 pink→purple for smoother transition
+	steps := 16
+	pos := tick % steps
+	if pos >= steps/2 {
+		pos = steps - 1 - pos // Mirror back: 0,1,2,3,4,5,6,7,7,6,5,4,3,2,1,0
+	}
+
+	// Interpolate: violet at pos=0, hot pink at pos=7
+	// Violet:   R=160, G=60,  B=210
+	// Hot pink: R=255, G=95,  B=175
+	t := float64(pos) / float64(steps/2-1) // 0.0 to 1.0
+	r := int(160.0 + t*95.0)               // 160 → 255
+	g := int(60.0 + t*35.0)                // 60 → 95
+	b := int(210.0 - t*35.0)               // 210 → 175
+
+	color := tcell.NewRGBColor(int32(r), int32(g), int32(b))
+	return tcell.StyleDefault.Background(tcell.ColorBlack).Foreground(color)
 }
 
 // StartEatingAnimation starts the eating animation to consume pellets
@@ -553,6 +582,10 @@ func (n *PaneNavBar) Render(screen tcell.Screen) {
 	for _, pane := range panes {
 		startX := x // Track start of this pane's clickable region
 
+		// Check if this terminal pane has active AI processing
+		isActive := n.isTerminalPaneActive(pane.Key)
+
+		// Base style for key and name (not affected by AI activity)
 		var style tcell.Style
 		if pane.IsVisible {
 			style = tcell.StyleDefault.
@@ -574,8 +607,12 @@ func (n *PaneNavBar) Render(screen tcell.Screen) {
 		screen.SetContent(x, n.Region.Y, ' ', nil, bgStyle)
 		x++
 
-		// Draw icon
-		screen.SetContent(x, n.Region.Y, pane.Icon, nil, style)
+		// Draw icon - pulse color if terminal has active AI
+		iconStyle := style
+		if isActive {
+			iconStyle = n.getActiveTerminalStyle()
+		}
+		screen.SetContent(x, n.Region.Y, pane.Icon, nil, iconStyle)
 		x++
 
 		// Space
@@ -740,31 +777,9 @@ func (n *PaneNavBar) renderPRMeter(screen tcell.Screen, panesEndX int) {
 	// Get the displayed eaten count (may be mid-animation)
 	displayedEaten := n.GetDisplayedEatenCount(meter.EatenPellets)
 
-	// Determine Pac-Man position for animation
-	// When AI is animating (bounce), Pac-Man bounces in the eaten area
-	// Otherwise, Pac-Man sits at the edge (after eaten pellets, before filled ones)
-	n.animMu.Lock()
-	isBouncing := n.animating
-	bouncePosition := n.animTick
-	isEating := n.eatingAnimating
-	n.animMu.Unlock()
-
-	// pacmanAfterEaten: how many eaten pellets to draw before Pac-Man
-	// Default: all displayed eaten pellets (Pac-Man at edge, eating forward)
-	// When bouncing: Pac-Man bounces within eaten area
+	// Pac-Man position: sits at the edge (after eaten pellets, before filled ones)
+	// No bouncing animation - Pac-Man stays put while terminal activity pulses nav items
 	pacmanAfterEaten := displayedEaten
-
-	// Only bounce if not currently eating and there's room to bounce
-	if isBouncing && !isEating && displayedEaten > 1 {
-		// Pac-Man can bounce between position 0 and displayedEaten-1
-		pacmanAfterEaten = bouncePosition
-		if pacmanAfterEaten > displayedEaten-1 {
-			pacmanAfterEaten = displayedEaten - 1
-		}
-		if pacmanAfterEaten < 0 {
-			pacmanAfterEaten = 0
-		}
-	}
 
 	// Draw eaten pellets before Pac-Man
 	for i := 0; i < pacmanAfterEaten; i++ {

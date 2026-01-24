@@ -3125,19 +3125,36 @@ func (lm *LayoutManager) GetWorkInProgress() *WorkInProgress {
 	return wip
 }
 
-// HasActiveAISession returns true if any terminal has an AI tool in the foreground
+// HasActiveAISession returns true if any terminal has an AI tool actively processing
+// (i.e., receiving output recently, not just present in foreground)
 func (lm *LayoutManager) HasActiveAISession() bool {
 	lm.mu.RLock()
 	defer lm.mu.RUnlock()
 
-	if lm.Terminal != nil && lm.Terminal.GetForegroundAITool() != "" {
+	if lm.Terminal != nil && lm.Terminal.IsAIToolActive() {
 		return true
 	}
-	if lm.Terminal2 != nil && lm.Terminal2.GetForegroundAITool() != "" {
+	if lm.Terminal2 != nil && lm.Terminal2.IsAIToolActive() {
 		return true
 	}
-	if lm.Terminal3 != nil && lm.Terminal3.GetForegroundAITool() != "" {
+	if lm.Terminal3 != nil && lm.Terminal3.IsAIToolActive() {
 		return true
+	}
+	return false
+}
+
+// IsTerminalActive checks if a specific terminal (0, 1, 2) has active AI processing
+func (lm *LayoutManager) IsTerminalActive(index int) bool {
+	lm.mu.RLock()
+	defer lm.mu.RUnlock()
+
+	switch index {
+	case 0:
+		return lm.Terminal != nil && lm.Terminal.IsAIToolActive()
+	case 1:
+		return lm.Terminal2 != nil && lm.Terminal2.IsAIToolActive()
+	case 2:
+		return lm.Terminal3 != nil && lm.Terminal3.IsAIToolActive()
 	}
 	return false
 }

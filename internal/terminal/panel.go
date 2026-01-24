@@ -261,6 +261,10 @@ type Panel struct {
 	scrollOffset   int               // 0 = live view, >0 = scrolled up N lines
 	previousScreen [][]vt10x.Glyph   // All rows before VT.Write for scroll detection
 
+	// AI tool activity tracking
+	lastOutputTime time.Time // When we last received PTY output
+	lastInputTime  time.Time // When user last sent input (to filter out echo)
+
 	// Startup state - for showing loading indicator
 	hasReceivedOutput bool // True once terminal has received any output
 
@@ -532,6 +536,9 @@ func (p *Panel) readLoop() {
 			// Hold mutex during VT operations to prevent race with Resize
 			p.mu.Lock()
 
+			// Track output time for AI tool activity detection
+			p.lastOutputTime = time.Now()
+
 			// Mark that we've received output (clears loading indicator)
 			if !p.hasReceivedOutput {
 				p.hasReceivedOutput = true
@@ -766,6 +773,9 @@ func (p *Panel) Write(data []byte) (int, error) {
 		return 0, io.ErrClosedPipe
 	}
 
+	// Track input time to distinguish AI output from keystroke echo
+	p.lastInputTime = time.Now()
+
 	return p.PTY.Write(data)
 }
 
@@ -848,6 +858,28 @@ func (p *Panel) IsRunning() bool {
 // IsAIToolSession returns true if this terminal has an AI tool in the foreground
 func (p *Panel) IsAIToolSession() bool {
 	return p.GetForegroundAITool() != ""
+}
+
+// IsAIToolActive returns true if an AI tool is actively processing (receiving output recently)
+// This is used to detect when AI tools are generating responses vs waiting for user input.
+func (p *Panel) IsAIToolActive() bool {
+	if !p.IsAIToolSession() {
+		return false
+	}
+
+	p.mu.Lock()
+	lastOutput := p.lastOutputTime
+	lastInput := p.lastInputTime
+	p.mu.Unlock()
+
+	// Ignore output that happens shortly after user input (keystroke echo)
+	if time.Since(lastInput) < 200*time.Millisecond {
+		return false
+	}
+
+	// Active if output received within last 500ms
+	elapsed := time.Since(lastOutput)
+	return elapsed < 500*time.Millisecond
 }
 
 // GetToolName returns the name of the foreground process in this terminal
