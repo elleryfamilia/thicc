@@ -18,6 +18,7 @@ import (
 	"github.com/ellery/thicc/internal/config"
 	"github.com/ellery/thicc/internal/screen"
 	"github.com/ellery/thicc/internal/shell"
+	"github.com/ellery/thicc/internal/thicc"
 	"github.com/ellery/thicc/internal/util"
 )
 
@@ -337,6 +338,37 @@ func (h *BufPane) ReloadCmd(args []string) {
 // ReloadConfig reloads only the configuration
 func ReloadConfig() {
 	reloadRuntime(false)
+}
+
+// ReloadSettings reloads settings.json without reinitializing bindings/commands.
+// This is used for auto-reloading settings when the file is saved.
+func ReloadSettings() {
+	// Reload THICC settings
+	thicc.LoadSettings()
+
+	// Reload micro-style settings
+	err := config.ReadSettings()
+	if err != nil {
+		screen.TermMessage(err)
+		return
+	}
+	parsedSettings := config.ParsedSettings()
+	defaultSettings := config.DefaultAllSettings()
+	for k := range defaultSettings {
+		if _, ok := config.VolatileSettings[k]; ok {
+			// reload should not override volatile settings
+			continue
+		}
+
+		if _, ok := parsedSettings[k]; ok {
+			err = doSetGlobalOptionNative(k, parsedSettings[k])
+		} else {
+			err = doSetGlobalOptionNative(k, defaultSettings[k])
+		}
+		if err != nil {
+			screen.TermMessage(err)
+		}
+	}
 }
 
 func reloadRuntime(reloadPlugins bool) {

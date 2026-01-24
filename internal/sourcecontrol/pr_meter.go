@@ -8,6 +8,9 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/ellery/thicc/internal/config"
+	"github.com/ellery/thicc/internal/thicc"
 )
 
 // PRFileStats holds line count stats for a single file
@@ -151,6 +154,32 @@ func CalculateSpreadFactor(filesCount int, totalLines int) float64 {
 	return 1.0 // Normal
 }
 
+// GetPRSizeMultiplier returns the multiplier based on the user's preferred PR size.
+// "small": 1.5x (stricter - meter fills faster)
+// "medium": 1.0x (default behavior)
+// "large": 0.6x (more lenient - meter fills slower)
+func GetPRSizeMultiplier() float64 {
+	// Check THICC settings first
+	prsize := ""
+	if thicc.GlobalThiccSettings != nil && thicc.GlobalThiccSettings.Editor.PRSize != "" {
+		prsize = thicc.GlobalThiccSettings.Editor.PRSize
+	} else {
+		// Fall back to micro-style config
+		if opt := config.GetGlobalOption("prsize"); opt != nil {
+			prsize = opt.(string)
+		}
+	}
+
+	switch prsize {
+	case "small":
+		return 1.5
+	case "large":
+		return 0.6
+	default:
+		return 1.0
+	}
+}
+
 // CalculatePatience converts weighted lines to patience percentage
 func CalculatePatience(weightedLines int) float64 {
 	// Base thresholds:
@@ -209,7 +238,7 @@ func CalculateMeterState(stats *PRStats) *PRMeterState {
 
 	rawLines := stats.Additions + stats.Deletions
 	spreadFactor := CalculateSpreadFactor(stats.FilesCount, rawLines)
-	weightedLines := int(weightedTotal * spreadFactor)
+	weightedLines := int(weightedTotal * spreadFactor * GetPRSizeMultiplier())
 
 	patience := CalculatePatience(weightedLines)
 

@@ -810,6 +810,7 @@ var BufKeyActions = map[string]BufKeyAction{
 	"PastePrimary":              (*BufPane).PastePrimary,
 	"SelectAll":                 (*BufPane).SelectAll,
 	"OpenFile":                  (*BufPane).OpenFile,
+	"OpenSettings":              (*BufPane).OpenSettings,
 	"Start":                     (*BufPane).Start,
 	"End":                       (*BufPane).End,
 	"PageUp":                    (*BufPane).PageUp,

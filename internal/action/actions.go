@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io/fs"
 	"os"
+	"path/filepath"
 	"regexp"
 	"runtime"
 	"strings"
@@ -18,6 +19,7 @@ import (
 	"github.com/ellery/thicc/internal/display"
 	"github.com/ellery/thicc/internal/screen"
 	"github.com/ellery/thicc/internal/shell"
+	"github.com/ellery/thicc/internal/thicc"
 	"github.com/ellery/thicc/internal/update"
 	"github.com/ellery/thicc/internal/util"
 )
@@ -1070,7 +1072,14 @@ func (h *BufPane) saveBufToFile(filename string, action string, callback func())
 				if err != nil {
 					InfoBar.Error(err)
 				} else {
-					InfoBar.Message("Saved " + filename)
+					// Auto-reload settings if this is settings.json
+					settingsPath := thicc.GetSettingsFilePath()
+					if absPath, err := filepath.Abs(settingsPath); err == nil && h.Buf.AbsPath == absPath {
+						ReloadSettings()
+						InfoBar.Message("Saved and reloaded settings")
+					} else {
+						InfoBar.Message("Saved " + filename)
+					}
 					if callback != nil {
 						callback()
 					}
@@ -1094,7 +1103,14 @@ func (h *BufPane) saveBufToFile(filename string, action string, callback func())
 			InfoBar.Error(err)
 		}
 	} else {
-		InfoBar.Message("Saved " + filename)
+		// Auto-reload settings if this is settings.json
+		settingsPath := thicc.GetSettingsFilePath()
+		if absPath, err := filepath.Abs(settingsPath); err == nil && h.Buf.AbsPath == absPath {
+			ReloadSettings()
+			InfoBar.Message("Saved and reloaded settings")
+		} else {
+			InfoBar.Message("Saved " + filename)
+		}
 		if callback != nil {
 			callback()
 		}
@@ -1692,6 +1708,35 @@ func (h *BufPane) OpenFile() bool {
 			h.HandleCommand(resp)
 		}
 	})
+	return true
+}
+
+// OpenSettings opens the settings.json file in the editor
+func (h *BufPane) OpenSettings() bool {
+	settingsPath := thicc.GetSettingsFilePath()
+
+	// Create settings.json with empty object if it doesn't exist
+	if _, err := os.Stat(settingsPath); os.IsNotExist(err) {
+		if err := os.WriteFile(settingsPath, []byte("{}\n"), 0644); err != nil {
+			InfoBar.Error("Failed to create settings.json: ", err)
+			return false
+		}
+	}
+
+	open := func() {
+		b, err := buffer.NewBufferFromFile(settingsPath, buffer.BTDefault)
+		if err != nil {
+			InfoBar.Error(err)
+			return
+		}
+		h.OpenBuffer(b)
+	}
+
+	if h.Buf.Modified() && !h.Buf.Shared() {
+		h.closePrompt("Save", open)
+	} else {
+		open()
+	}
 	return true
 }
 

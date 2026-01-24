@@ -55,7 +55,7 @@ var bufdefaults = map[string]string{
 	"Ctrl-v":         "Paste",
 	"Ctrl-a":         "SelectAll",
 	"Ctrl-t":         "AddTab",
-	"Alt-,":          "PreviousTab|LastTab",
+	"Alt-,":          "OpenSettings",
 	"Alt-.":          "NextTab|FirstTab",
 	"Home":           "StartOfTextToggle",
 	"End":            "EndOfLine",

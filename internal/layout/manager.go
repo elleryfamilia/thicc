@@ -1373,6 +1373,7 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 				(ev.Rune() == '4' && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == '5' && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == 'a' && ev.Modifiers()&tcell.ModAlt != 0) ||
+				(ev.Rune() == ',' && ev.Modifiers()&tcell.ModAlt != 0) ||
 				(ev.Rune() == '/' && ev.Modifiers()&tcell.ModCtrl != 0) ||
 				ev.Key() == tcell.KeyCtrlUnderscore // Ctrl+/ often sends this
 
@@ -1573,8 +1574,8 @@ func (lm *LayoutManager) HandleEvent(event tcell.Event) bool {
 				log.Println("THICC: Alt+a detected, toggling source control")
 				lm.ToggleSourceControl()
 				return true
-			case 's':
-				log.Println("THICC: Alt+s detected, opening settings")
+			case ',':
+				log.Println("THICC: Alt+, detected, opening settings")
 				lm.OpenSettings()
 				return true
 			}

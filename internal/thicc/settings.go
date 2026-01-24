@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+
+	json5 "github.com/micro-editor/json5"
 )
 
 const (
@@ -20,6 +22,7 @@ const (
 	DefaultScrollbackLines        = 10000
 	DefaultBackgroundColor        = "#0b0614"
 	DefaultDoubleClickThresholdMs = 400
+	DefaultPRSize                 = "medium" // small, medium, or large
 )
 
 // TerminalSettings contains terminal-specific settings
@@ -34,7 +37,8 @@ type AppearanceSettings struct {
 
 // EditorSettings contains editor behavior settings
 type EditorSettings struct {
-	DoubleClickThresholdMs int `json:"double_click_threshold_ms"`
+	DoubleClickThresholdMs int    `json:"double_click_threshold_ms"`
+	PRSize                 string `json:"pr_size"` // small, medium, or large
 }
 
 // ThiccSettings holds all THICC-specific configuration
@@ -58,6 +62,7 @@ func DefaultSettings() *ThiccSettings {
 		},
 		Editor: EditorSettings{
 			DoubleClickThresholdMs: DefaultDoubleClickThresholdMs,
+			PRSize:                 DefaultPRSize,
 		},
 	}
 }
@@ -127,7 +132,7 @@ func LoadSettings() *ThiccSettings {
 		return settings
 	}
 
-	if err := json.Unmarshal(data, settings); err != nil {
+	if err := json5.Unmarshal(data, settings); err != nil {
 		log.Printf("THICC Settings: Failed to parse settings.json: %v", err)
 		GlobalThiccSettings = DefaultSettings()
 		return GlobalThiccSettings
@@ -143,26 +148,51 @@ func LoadSettings() *ThiccSettings {
 	if settings.Editor.DoubleClickThresholdMs <= 0 {
 		settings.Editor.DoubleClickThresholdMs = DefaultDoubleClickThresholdMs
 	}
+	if settings.Editor.PRSize == "" {
+		settings.Editor.PRSize = DefaultPRSize
+	}
 
 	GlobalThiccSettings = settings
 	return settings
 }
 
-// SaveSettings persists THICC settings to disk
+// SaveSettings persists THICC settings to disk with descriptive comments
 func SaveSettings(settings *ThiccSettings) error {
 	if err := EnsureConfigDir(); err != nil {
 		log.Printf("THICC Settings: Failed to create config dir: %v", err)
 		return err
 	}
 
-	data, err := json.MarshalIndent(settings, "", "  ")
-	if err != nil {
-		log.Printf("THICC Settings: Failed to marshal settings.json: %v", err)
-		return err
-	}
+	// Build JSON5 with comments for discoverability
+	content := fmt.Sprintf(`{
+  // Terminal settings
+  "terminal": {
+    // Number of lines to keep in scrollback buffer (default: %d)
+    "scrollback_lines": %d
+  },
+
+  // Appearance settings
+  "appearance": {
+    // Background color for all panes (editor, terminal, file tree, etc.)
+    // Use hex format like "#0b0614" (default: "%s")
+    "background_color": "%s"
+  },
+
+  // Editor settings
+  "editor": {
+    // Target PR size affects how quickly the PR meter fills up
+    // Options: "small" (stricter), "medium" (default), "large" (lenient)
+    "pr_size": "%s"
+  }
+}
+`,
+		DefaultScrollbackLines, settings.Terminal.ScrollbackLines,
+		DefaultBackgroundColor, settings.Appearance.BackgroundColor,
+		settings.Editor.PRSize,
+	)
 
 	filePath := GetSettingsFilePath()
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
 		log.Printf("THICC Settings: Failed to write settings.json: %v", err)
 		return err
 	}
