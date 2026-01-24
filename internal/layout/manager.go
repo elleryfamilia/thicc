@@ -216,6 +216,11 @@ func (lm *LayoutManager) suspendWatchers() {
 	log.Println("THICC: Watchers suspended due to inactivity")
 }
 
+// IsIdle returns true if the app is idle (watchers suspended)
+func (lm *LayoutManager) IsIdle() bool {
+	return lm.watchersSuspended
+}
+
 // resumeWatchers restarts file watching and git polling after user activity
 func (lm *LayoutManager) resumeWatchers() {
 	if !lm.watchersSuspended {

@@ -2,6 +2,8 @@ package layout
 
 import (
 	"log"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -39,11 +41,12 @@ type PaneNavBar struct {
 	clickRegions []paneClickRegion // Populated during Render
 
 	// PR Meter state (independent of SourceControl panel)
-	prMeterMu     sync.RWMutex
-	prMeter       *sourcecontrol.PRMeterState // Current meter state
-	prMeterRoot   string                      // Git repo root for PR meter
-	prPollStop    chan struct{}               // Stop channel for PR meter polling
-	prPolling     bool                        // Whether PR meter polling is active
+	prMeterMu       sync.RWMutex
+	prMeter         *sourcecontrol.PRMeterState // Current meter state
+	prMeterRoot     string                      // Git repo root for PR meter
+	prPollStop      chan struct{}               // Stop channel for PR meter polling
+	prPolling       bool                        // Whether PR meter polling is active
+	prLastGitMtime  time.Time                   // Last .git/index mtime (for change detection)
 
 	// Animation state for PR meter Pac-Man
 	animMu          sync.Mutex
@@ -143,7 +146,7 @@ func (n *PaneNavBar) StartPRMeterPolling() {
 	n.prMeterMu.Unlock()
 
 	go func() {
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(15 * time.Second) // Poll every 15 seconds
 		defer ticker.Stop()
 
 		for {
@@ -151,10 +154,68 @@ func (n *PaneNavBar) StartPRMeterPolling() {
 			case <-n.prPollStop:
 				return
 			case <-ticker.C:
+				// Skip if app is idle (watchers suspended)
+				if n.Manager != nil && n.Manager.IsIdle() {
+					log.Println("THICC PRMeter: Skipping poll - app is idle")
+					continue
+				}
+
+				// Skip if git state hasn't changed
+				if !n.hasGitChanged() {
+					log.Println("THICC PRMeter: Skipping poll - no git changes detected")
+					continue
+				}
+
 				n.RefreshPRMeter()
 			}
 		}
 	}()
+}
+
+// hasGitChanged checks if .git/index has been modified since last poll
+func (n *PaneNavBar) hasGitChanged() bool {
+	n.prMeterMu.RLock()
+	root := n.prMeterRoot
+	lastMtime := n.prLastGitMtime
+	n.prMeterMu.RUnlock()
+
+	if root == "" {
+		return false
+	}
+
+	// Check multiple git files that change on common operations
+	filesToCheck := []string{
+		filepath.Join(root, ".git", "index"),      // staged changes
+		filepath.Join(root, ".git", "HEAD"),       // branch changes
+		filepath.Join(root, ".git", "FETCH_HEAD"), // after fetch
+	}
+
+	var latestMtime time.Time
+	for _, f := range filesToCheck {
+		if stat, err := os.Stat(f); err == nil {
+			if stat.ModTime().After(latestMtime) {
+				latestMtime = stat.ModTime()
+			}
+		}
+	}
+
+	// Also check working directory for untracked files
+	// by looking at the root directory mtime
+	if stat, err := os.Stat(root); err == nil {
+		if stat.ModTime().After(latestMtime) {
+			latestMtime = stat.ModTime()
+		}
+	}
+
+	// If this is first check or mtime changed, update and return true
+	if lastMtime.IsZero() || latestMtime.After(lastMtime) {
+		n.prMeterMu.Lock()
+		n.prLastGitMtime = latestMtime
+		n.prMeterMu.Unlock()
+		return true
+	}
+
+	return false
 }
 
 // StopPRMeterPolling stops the PR meter polling
