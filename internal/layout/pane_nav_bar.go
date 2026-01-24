@@ -59,6 +59,11 @@ type PaneNavBar struct {
 	eatingStop       chan struct{}
 	lastKnownEaten   int   // Last known eaten count (to detect increases)
 	initialized      bool  // Whether we've received first meter data
+
+	// Regenerating animation state (when PR shrinks)
+	regenAnimating   bool  // Whether regenerate animation is running
+	regenTarget      int   // Target eaten pellets (lower than current)
+	regenStop        chan struct{}
 }
 
 // NewPaneNavBar creates a new pane navigation bar
@@ -67,6 +72,7 @@ func NewPaneNavBar() *PaneNavBar {
 		animDirection:  1,
 		animStop:       make(chan struct{}),
 		eatingStop:     make(chan struct{}),
+		regenStop:      make(chan struct{}),
 		prPollStop:     make(chan struct{}),
 		eatingCurrent:  0,
 		lastKnownEaten: 0,
@@ -249,6 +255,14 @@ func (n *PaneNavBar) UpdateAnimationState() {
 // StartEatingAnimation starts the eating animation to consume pellets
 func (n *PaneNavBar) StartEatingAnimation(target int) {
 	n.animMu.Lock()
+
+	// Stop any regen animation first
+	if n.regenAnimating {
+		n.regenAnimating = false
+		close(n.regenStop)
+		n.regenStop = make(chan struct{})
+	}
+
 	if n.eatingAnimating {
 		// Already eating, just update target if it's higher
 		if target > n.eatingTarget {
@@ -280,7 +294,7 @@ func (n *PaneNavBar) StopEatingAnimation() {
 // eatingLoop animates Pac-Man eating pellets one by one
 func (n *PaneNavBar) eatingLoop() {
 	log.Printf("THICC PRMeter: eatingLoop started, target=%d", n.eatingTarget)
-	ticker := time.NewTicker(160 * time.Millisecond) // Satisfying chomp pace
+	ticker := time.NewTicker(320 * time.Millisecond) // Slow satisfying chomp
 	defer ticker.Stop()
 
 	for {
@@ -315,7 +329,7 @@ func (n *PaneNavBar) eatingLoop() {
 	}
 }
 
-// CheckAndStartEatingAnimation checks if we need to eat more pellets and starts animation
+// CheckAndStartEatingAnimation checks if we need to eat or regenerate pellets
 func (n *PaneNavBar) CheckAndStartEatingAnimation(newEatenCount int) {
 	n.animMu.Lock()
 
@@ -327,15 +341,19 @@ func (n *PaneNavBar) CheckAndStartEatingAnimation(newEatenCount int) {
 	}
 
 	needsEating := newEatenCount > n.eatingCurrent
+	needsRegen := newEatenCount < n.eatingCurrent
 	currentEating := n.eatingCurrent
 	n.animMu.Unlock()
 
-	log.Printf("THICC PRMeter: CheckAndStartEating - new=%d, current=%d, needsEating=%v",
-		newEatenCount, currentEating, needsEating)
+	log.Printf("THICC PRMeter: CheckAnimation - new=%d, current=%d, needsEating=%v, needsRegen=%v",
+		newEatenCount, currentEating, needsEating, needsRegen)
 
-	if needsEating && newEatenCount > currentEating {
+	if needsEating {
 		log.Printf("THICC PRMeter: Starting eating animation from %d to %d", currentEating, newEatenCount)
 		n.StartEatingAnimation(newEatenCount)
+	} else if needsRegen {
+		log.Printf("THICC PRMeter: Starting regen animation from %d to %d", currentEating, newEatenCount)
+		n.StartRegenAnimation(newEatenCount)
 	}
 
 	n.animMu.Lock()
@@ -348,10 +366,94 @@ func (n *PaneNavBar) GetDisplayedEatenCount(actualEaten int) int {
 	n.animMu.Lock()
 	defer n.animMu.Unlock()
 
-	if n.eatingAnimating || n.eatingCurrent < actualEaten {
+	// During any animation, use eatingCurrent
+	if n.eatingAnimating || n.regenAnimating {
 		return n.eatingCurrent
 	}
+
+	// If we're mid-transition, use eatingCurrent
+	if n.eatingCurrent != actualEaten {
+		return n.eatingCurrent
+	}
+
 	return actualEaten
+}
+
+// StartRegenAnimation starts the regenerate animation (pellets coming back)
+func (n *PaneNavBar) StartRegenAnimation(target int) {
+	n.animMu.Lock()
+
+	// Stop any eating animation first
+	if n.eatingAnimating {
+		n.eatingAnimating = false
+		close(n.eatingStop)
+		n.eatingStop = make(chan struct{})
+	}
+
+	if n.regenAnimating {
+		// Already regenerating, just update target if it's lower
+		if target < n.regenTarget {
+			n.regenTarget = target
+		}
+		n.animMu.Unlock()
+		return
+	}
+	n.regenAnimating = true
+	n.regenTarget = target
+	n.regenStop = make(chan struct{})
+	n.animMu.Unlock()
+
+	go n.regenLoop()
+}
+
+// StopRegenAnimation stops the regenerate animation
+func (n *PaneNavBar) StopRegenAnimation() {
+	n.animMu.Lock()
+	defer n.animMu.Unlock()
+
+	if !n.regenAnimating {
+		return
+	}
+	n.regenAnimating = false
+	close(n.regenStop)
+}
+
+// regenLoop animates pellets regenerating (Pac-Man sliding back)
+func (n *PaneNavBar) regenLoop() {
+	log.Printf("THICC PRMeter: regenLoop started, target=%d", n.regenTarget)
+	ticker := time.NewTicker(240 * time.Millisecond) // Smooth pellet regeneration
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-n.regenStop:
+			log.Println("THICC PRMeter: regenLoop stopped via channel")
+			return
+		case <-ticker.C:
+			n.animMu.Lock()
+			if n.eatingCurrent > n.regenTarget {
+				n.eatingCurrent--
+				log.Printf("THICC PRMeter: Regen tick - current=%d, target=%d", n.eatingCurrent, n.regenTarget)
+			}
+
+			// Check if we've reached the target
+			done := n.eatingCurrent <= n.regenTarget
+			n.animMu.Unlock()
+
+			// Trigger redraw
+			if n.Manager != nil {
+				n.Manager.triggerRedraw()
+			}
+
+			if done {
+				log.Printf("THICC PRMeter: Regen animation complete at %d", n.eatingCurrent)
+				n.animMu.Lock()
+				n.regenAnimating = false
+				n.animMu.Unlock()
+				return
+			}
+		}
+	}
 }
 
 // Render draws the pane navigation bar
