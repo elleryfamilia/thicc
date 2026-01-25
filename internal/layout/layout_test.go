@@ -29,9 +29,9 @@ func TestLayout_TerminalWidth_Is45Percent(t *testing.T) {
 	assert.True(t, lm.EditorVisible)
 	assert.True(t, lm.TerminalVisible)
 
-	// Terminal should be 45% of screen
+	// Terminal should be 45% of screen minus tree expansion (45 - 10 = 35)
 	termWidth := lm.getTermWidth()
-	assert.Equal(t, 45, termWidth, "Terminal should be 45%% of screen width (100 * 0.45 = 45)")
+	assert.Equal(t, 35, termWidth, "Terminal should be 45%% of screen width minus tree expansion (100 * 0.45 - 10 = 35)")
 }
 
 func TestLayout_TerminalWidth_VariousScreenSizes(t *testing.T) {
@@ -39,10 +39,10 @@ func TestLayout_TerminalWidth_VariousScreenSizes(t *testing.T) {
 		screenW          int
 		expectedTermW    int
 	}{
-		{100, 45},  // 100 * 0.45 = 45
-		{200, 90},  // 200 * 0.45 = 90
-		{80, 36},   // 80 * 0.45 = 36
-		{120, 54},  // 120 * 0.45 = 54
+		{100, 35},  // 100 * 0.45 - 10 = 35
+		{200, 80},  // 200 * 0.45 - 10 = 80
+		{80, 26},   // 80 * 0.45 - 10 = 26
+		{120, 44},  // 120 * 0.45 - 10 = 44
 	}
 
 	for _, tt := range tests {
@@ -74,17 +74,17 @@ func TestLayout_MultipleTerminals_SplitEqually(t *testing.T) {
 	lm.Terminal2Visible = true
 	lm.Terminal3Visible = true
 
-	// Total terminal space is 45 (45% of 100)
-	// Each terminal should get 45/3 = 15
+	// Total terminal space is 35 (45% of 100 minus tree expansion)
+	// Each terminal should get 35/3 = 11
 	totalSpace := lm.getTotalTerminalSpace()
-	assert.Equal(t, 45, totalSpace)
+	assert.Equal(t, 35, totalSpace)
 
 	singleWidth := lm.getSingleTerminalWidth()
-	assert.Equal(t, 15, singleWidth, "3 terminals should split 45 pixels equally (15 each)")
+	assert.Equal(t, 11, singleWidth, "3 terminals should split 35 pixels equally (11 each)")
 
-	assert.Equal(t, 15, lm.getTermWidth())
-	assert.Equal(t, 15, lm.getTerm2Width())
-	assert.Equal(t, 15, lm.getTerm3Width())
+	assert.Equal(t, 11, lm.getTermWidth())
+	assert.Equal(t, 11, lm.getTerm2Width())
+	assert.Equal(t, 11, lm.getTerm3Width())
 }
 
 func TestLayout_TwoTerminals_SplitEqually(t *testing.T) {
@@ -94,21 +94,21 @@ func TestLayout_TwoTerminals_SplitEqually(t *testing.T) {
 	lm.Terminal2Visible = true
 	lm.Terminal3Visible = false
 
-	// Total terminal space is 45
-	// Each terminal should get 45/2 = 22
+	// Total terminal space is 35
+	// Each terminal should get 35/2 = 17
 	singleWidth := lm.getSingleTerminalWidth()
-	assert.Equal(t, 22, singleWidth, "2 terminals should split 45 pixels (22 each)")
+	assert.Equal(t, 17, singleWidth, "2 terminals should split 35 pixels (17 each)")
 }
 
 // =============================================================================
 // Tree Width Tests
 // =============================================================================
 
-func TestLayout_TreeWidth_Fixed30(t *testing.T) {
+func TestLayout_TreeWidth_Fixed40(t *testing.T) {
 	lm := newTestLayoutManager(100, 50)
 
 	treeWidth := lm.getTreeWidth()
-	assert.Equal(t, 30, treeWidth, "Tree width should be fixed at 30")
+	assert.Equal(t, 40, treeWidth, "Tree width should be fixed at 40")
 }
 
 func TestLayout_TreeWidth_HiddenReturnsZero(t *testing.T) {
@@ -126,7 +126,7 @@ func TestLayout_TreeWidth_HiddenReturnsZero(t *testing.T) {
 func TestLayout_EditorWidth_TakesRemainingSpace(t *testing.T) {
 	lm := newTestLayoutManager(100, 50)
 
-	// Tree = 30, Terminal = 45, Editor should be = 100 - 30 - 45 = 25
+	// Tree = 40, Terminal = 35, Editor should be = 100 - 40 - 35 = 25
 	editorWidth := lm.getEditorWidth()
 	assert.Equal(t, 25, editorWidth, "Editor should take remaining space after tree and terminal")
 }
@@ -156,19 +156,19 @@ func TestLayout_EditorWidth_HiddenReturnsZero(t *testing.T) {
 func TestLayout_TerminalX_Position(t *testing.T) {
 	lm := newTestLayoutManager(100, 50)
 
-	// Terminal X = Tree width + Editor width = 30 + 25 = 55
+	// Terminal X = Tree width + Editor width = 40 + 25 = 65
 	termX := lm.getTermX()
-	assert.Equal(t, 55, termX, "Terminal should start at tree + editor width")
+	assert.Equal(t, 65, termX, "Terminal should start at tree + editor width")
 }
 
 func TestLayout_Terminal2X_Position(t *testing.T) {
 	lm := newTestLayoutManager(100, 50)
 	lm.Terminal2Visible = true
 
-	// With 2 terminals, each gets 22 pixels
-	// Terminal2 X = Tree(30) + Editor(25) + Terminal1(22) = 77
+	// With 2 terminals, each gets 17 pixels
+	// Terminal2 X = Tree(40) + Editor(25) + Terminal1(17) = 82
 	term2X := lm.getTerm2X()
-	assert.Equal(t, 77, term2X)
+	assert.Equal(t, 82, term2X)
 }
 
 // =============================================================================
@@ -243,25 +243,25 @@ func TestLayout_ShouldExpandTree_SingleTerminalOnlyLayout(t *testing.T) {
 	assert.Equal(t, 40, lm.getTreeWidth())
 }
 
-func TestLayout_ShouldNotExpandTree_EditorPlusTerminal(t *testing.T) {
+func TestLayout_TreeAlwaysExpanded_EditorPlusTerminal(t *testing.T) {
 	lm := newTestLayoutManager(100, 50)
 	lm.ActivePanel = 1 // Editor focused
 	lm.EditorVisible = true
 	lm.TerminalVisible = true
 
-	assert.False(t, lm.shouldExpandTree(), "Tree should NOT expand with editor + terminal")
-	assert.Equal(t, 30, lm.getTreeWidth(), "Normal tree width should be 30")
+	assert.True(t, lm.shouldExpandTree(), "Tree should always be expanded")
+	assert.Equal(t, 40, lm.getTreeWidth(), "Tree width should always be 40")
 }
 
-func TestLayout_ShouldNotExpandTree_MultipleTerminals(t *testing.T) {
+func TestLayout_TreeAlwaysExpanded_MultipleTerminals(t *testing.T) {
 	lm := newTestLayoutManager(100, 50)
 	lm.ActivePanel = 2 // Terminal focused
 	lm.EditorVisible = false
 	lm.TerminalVisible = true
 	lm.Terminal2Visible = true
 
-	assert.False(t, lm.shouldExpandTree(), "Tree should NOT expand with multiple terminals")
-	assert.Equal(t, 30, lm.getTreeWidth())
+	assert.True(t, lm.shouldExpandTree(), "Tree should always be expanded")
+	assert.Equal(t, 40, lm.getTreeWidth())
 }
 
 func TestLayout_TerminalSpaceReducedWhenTreeExpanded(t *testing.T) {
@@ -299,7 +299,7 @@ func TestLayout_EditorWidthUnchangedWhenTreeExpanded(t *testing.T) {
 // Source Control Panel Resize Tests
 // =============================================================================
 
-func TestLayout_SourceControlWidth_UpdatedOnFocusChange(t *testing.T) {
+func TestLayout_SourceControlWidth_AlwaysFixed(t *testing.T) {
 	lm := newTestLayoutManager(100, 50)
 
 	// Manually create a mock SourceControl panel with a Region
@@ -308,17 +308,17 @@ func TestLayout_SourceControlWidth_UpdatedOnFocusChange(t *testing.T) {
 	}
 	lm.SourceControlVisible = true
 
-	// When focused (ActivePanel=0), tree expands to 40
+	// Width should always be 40 regardless of focus
 	lm.ActivePanel = 0
 	lm.updateLayout()
-	assert.Equal(t, 40, lm.SourceControl.Region.Width, "SC width should expand when focused")
+	assert.Equal(t, 40, lm.SourceControl.Region.Width, "SC width should always be 40")
 
-	// When not focused and multiple panes visible, tree is 30
+	// Width stays 40 even when not focused
 	lm.ActivePanel = 1
 	lm.EditorVisible = true
 	lm.TerminalVisible = true
 	lm.updateLayout()
-	assert.Equal(t, 30, lm.SourceControl.Region.Width, "SC width should shrink when not focused")
+	assert.Equal(t, 40, lm.SourceControl.Region.Width, "SC width should remain 40 when not focused")
 }
 
 func TestLayout_SourceControlResize_UpdatesRegion(t *testing.T) {

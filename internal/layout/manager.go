@@ -645,27 +645,9 @@ func (lm *LayoutManager) anyTerminalVisible() bool {
 }
 
 // shouldExpandTree returns true if tree should use expanded width
-// Expanded when: file browser is focused OR only one other pane is visible
+// Always use expanded width for consistent layout
 func (lm *LayoutManager) shouldExpandTree() bool {
-	// Always expand when file browser has focus
-	if lm.ActivePanel == 0 {
-		return true
-	}
-
-	// Stay expanded if only one other pane is visible
-	termCount := lm.getVisibleTerminalCount()
-
-	// File browser + editor only (no terminals)
-	if lm.EditorVisible && termCount == 0 {
-		return true
-	}
-
-	// File browser + single terminal only (no editor)
-	if !lm.EditorVisible && termCount == 1 {
-		return true
-	}
-
-	return false
+	return true
 }
 
 // getTotalTerminalSpace returns total space available for all terminal panes
@@ -677,8 +659,8 @@ func (lm *LayoutManager) getTotalTerminalSpace() int {
 	// If editor is also visible, terminals get their percentage of TOTAL screen width
 	if lm.EditorVisible {
 		space := lm.ScreenW * lm.TermWidthPct / 100
-		// When tree is expanded, reduce terminal space (not editor space)
-		if lm.shouldExpandTree() {
+		// When tree is visible and expanded, reduce terminal space (not editor space)
+		if lm.getTreeWidth() > 0 {
 			space -= (lm.TreeWidthExpanded - lm.TreeWidth)
 		}
 		if space < 0 {
