@@ -235,6 +235,11 @@ func (lm *LayoutManager) resumeWatchers() {
 		lm.SourceControl.RefreshStatus()
 		lm.SourceControl.StartPolling()
 	}
+	// Always refresh PR meter when resuming - git state may have changed during idle
+	// and hasGitChanged() might not detect it if the mtime was already recorded
+	if lm.PaneNavBar != nil {
+		lm.PaneNavBar.RefreshPRMeter()
+	}
 	log.Println("THICC: Watchers resumed")
 }
 
