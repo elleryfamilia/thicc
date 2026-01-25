@@ -5,6 +5,7 @@ package main
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"strings"
 	"time"
@@ -48,11 +49,20 @@ func main() {
 		fmt.Println("0.0.0-unknown")
 		return
 	}
-	if ahead == nil {
+	// Check if we're building a nightly release
+	isNightly := os.Getenv("THICC_NIGHTLY") == "1"
+
+	if ahead == nil && !isNightly {
 		// Seems that we are going to build a release.
 		// So the version number should already be correct.
 		fmt.Println(version.String())
 		return
+	}
+
+	// For nightly builds on a tagged commit, use 0 commits ahead
+	if ahead == nil {
+		zero, _ := semver.NewPRVersion("0")
+		ahead = &zero
 	}
 
 	// Get the tag of the current revision.
