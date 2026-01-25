@@ -100,7 +100,7 @@ func (m *ShortcutsModal) Render(screen tcell.Screen) {
 			},
 		},
 		{
-			title: "Tabs",
+			title: "Editor Tabs",
 			shortcuts: []shortcutEntry{
 				{"Ctrl+]", "Next tab"},
 				{"Ctrl+[", "Previous tab"},
