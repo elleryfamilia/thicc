@@ -66,6 +66,29 @@ If you need to trigger a release manually:
 4. Select the branch (usually `main`)
 5. Click "Run workflow"
 
+## Updating thicc
+
+Users can update thicc directly from the command line.
+
+### Check for Updates
+
+```bash
+thicc --update                    # Check using your configured channel
+thicc --update --channel nightly  # Check nightly channel
+thicc --update --channel stable   # Check stable channel
+```
+
+### Force Update
+
+Use `--force` to install regardless of version (useful for switching channels):
+
+```bash
+thicc --update --channel stable --force  # Switch back to stable from nightly
+thicc --update --channel nightly --force # Force reinstall nightly
+```
+
+The update channel can also be set permanently in settings via the `updatechannel` option.
+
 ## Nightly Builds
 
 Nightly builds run automatically every day at midnight UTC. They can also be triggered manually:

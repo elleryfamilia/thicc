@@ -62,7 +62,7 @@ func CheckAndPrompt(
 	channel := config.GetGlobalOption("updatechannel").(string)
 	messageFn("Checking for updates...")
 
-	updateInfo, err := CheckForUpdate(ctx, channel)
+	updateInfo, err := CheckForUpdate(ctx, channel, false)
 	if err != nil {
 		log.Printf("Update check failed: %v", err)
 		// Update last check time even on failure to avoid repeated failures

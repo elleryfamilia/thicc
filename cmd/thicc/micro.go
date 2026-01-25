@@ -48,6 +48,8 @@ var (
 	flagPlugin    = flag.String("plugin", "", "Plugin command")
 	flagClean     = flag.Bool("clean", false, "Clean configuration directory")
 	flagUpdate    = flag.Bool("update", false, "Check for updates and install if available")
+	flagChannel   = flag.String("channel", "", "Override update channel (stable, nightly)")
+	flagForce     = flag.Bool("force", false, "Force update even if current version is newer")
 	flagUninstall = flag.Bool("uninstall", false, "Uninstall thicc from your system")
 	flagReportBug = flag.Bool("report-bug", false, "Report a bug or issue")
 	optionFlags   map[string]*string
@@ -77,6 +79,8 @@ func InitFlags() {
 		fmt.Println("Options:")
 		fmt.Println("  -version           Show version and exit")
 		fmt.Println("  -update            Check for updates and install if available")
+		fmt.Println("  -channel <name>    Override update channel (stable, nightly)")
+		fmt.Println("  -force             Force update even if current version is newer")
 		fmt.Println("  -uninstall         Uninstall thicc from your system")
 		fmt.Println("  -report-bug        Report a bug or issue")
 		fmt.Println("  -clean             Clean configuration directory and exit")
@@ -157,13 +161,24 @@ func DoUpdateFlag() {
 		return
 	}
 
-	channel := config.GetGlobalOption("updatechannel").(string)
+	// Use --channel flag if provided, otherwise use setting
+	channel := *flagChannel
+	if channel == "" {
+		channel = config.GetGlobalOption("updatechannel").(string)
+	}
+
+	// Validate channel
+	if channel != "stable" && channel != "nightly" {
+		fmt.Printf("Invalid channel: %s (must be 'stable' or 'nightly')\n", channel)
+		os.Exit(1)
+	}
+
 	fmt.Printf("Checking for updates (channel: %s)...\n", channel)
 
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 
-	info, err := update.CheckForUpdate(ctx, channel)
+	info, err := update.CheckForUpdate(ctx, channel, *flagForce)
 	if err != nil {
 		fmt.Printf("Error checking for updates: %v\n", err)
 		os.Exit(1)

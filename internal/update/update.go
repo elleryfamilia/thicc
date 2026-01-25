@@ -20,7 +20,8 @@ type UpdateInfo struct {
 
 // CheckForUpdate checks if an update is available for the given channel
 // Returns nil if no update is available or an error occurred
-func CheckForUpdate(ctx context.Context, channel string) (*UpdateInfo, error) {
+// If force is true, skips version comparison and always returns update info
+func CheckForUpdate(ctx context.Context, channel string, force bool) (*UpdateInfo, error) {
 	var release *Release
 	var err error
 
@@ -39,13 +40,16 @@ func CheckForUpdate(ctx context.Context, channel string) (*UpdateInfo, error) {
 		return nil, nil
 	}
 
-	isNewer, err := IsNewerVersion(util.Version, release.TagName, channel)
-	if err != nil {
-		return nil, err
-	}
+	// Skip version comparison if force is true
+	if !force {
+		isNewer, err := IsNewerVersion(util.Version, release.TagName, channel)
+		if err != nil {
+			return nil, err
+		}
 
-	if !isNewer {
-		return nil, nil
+		if !isNewer {
+			return nil, nil
+		}
 	}
 
 	asset := GetAssetForPlatform(release)
