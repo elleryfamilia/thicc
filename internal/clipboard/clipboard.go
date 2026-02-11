@@ -2,8 +2,19 @@ package clipboard
 
 import (
 	"errors"
+	"sync"
 
 	"github.com/zyedidia/clipper"
+)
+
+// pendingClip tracks the last text written to the clipboard from within
+// the app. This ensures that reads return what we wrote, not stale content
+// from the system clipboard (which may differ when running over ssh/mosh/
+// zellij, or when the outer terminal emulator overwrites the clipboard).
+// pendingClip persists until overwritten by the next clipboard.Write().
+var (
+	pendingClip   string
+	pendingClipMu sync.Mutex
 )
 
 type Method int
@@ -78,6 +89,22 @@ func Write(text string, r Register) error {
 	return write(text, r, CurrentMethod)
 }
 
+// PasteText returns the best text to use for a paste operation.
+// If we have copied text within the app, return that instead of
+// the provided text (which may come from an EventPaste and contain
+// stale/wrong content from the outer terminal emulator — especially
+// over ssh/mosh where OSC 52 clipboard sync doesn't work).
+func PasteText(eventText string) string {
+	pendingClipMu.Lock()
+	pending := pendingClip
+	pendingClipMu.Unlock()
+
+	if pending != "" {
+		return pending
+	}
+	return eventText
+}
+
 // ReadMulti reads text from a clipboard register for a certain multi-cursor
 func ReadMulti(r Register, num, ncursors int) (string, error) {
 	clip, err := Read(r)
@@ -107,6 +134,22 @@ func writeMulti(text string, r Register, num int, ncursors int, m Method) error 
 }
 
 func read(r Register, m Method) (string, error) {
+	// If we have written to the clipboard from within the app, return
+	// our internal copy. This handles:
+	// 1. The outer terminal emulator overwriting the system clipboard.
+	// 2. Running over ssh/mosh where the remote system clipboard
+	//    differs from what the user copied inside the app.
+	// pendingClip persists until overwritten by the next Write().
+	if r == ClipboardReg || r == PrimaryReg {
+		pendingClipMu.Lock()
+		pending := pendingClip
+		pendingClipMu.Unlock()
+
+		if pending != "" {
+			return pending, nil
+		}
+	}
+
 	switch m {
 	case External:
 		switch r {
@@ -137,26 +180,37 @@ func read(r Register, m Method) (string, error) {
 }
 
 func write(text string, r Register, m Method) error {
+	// Always mirror to internal so we have a reliable copy that
+	// can't be overwritten by the outer terminal emulator.
+	internal.write(text, r)
+	if r == ClipboardReg || r == PrimaryReg {
+		pendingClipMu.Lock()
+		pendingClip = text
+		pendingClipMu.Unlock()
+	}
+
 	switch m {
 	case External:
 		switch r {
 		case ClipboardReg:
-			return clipboard.WriteAll(clipper.RegClipboard, []byte(text))
+			clipboard.WriteAll(clipper.RegClipboard, []byte(text))
+			// Also write via OSC 52 so the text reaches the local
+			// clipboard when running over ssh/mosh/tmux/zellij.
+			// Best-effort: ignore errors if the terminal doesn't
+			// support OSC 52.
+			terminal.write(text, "c")
+			return nil
 		case PrimaryReg:
-			return clipboard.WriteAll(clipper.RegPrimary, []byte(text))
-		default:
-			internal.write(text, r)
+			clipboard.WriteAll(clipper.RegPrimary, []byte(text))
+			terminal.write(text, "p")
+			return nil
 		}
-	case Internal:
-		internal.write(text, r)
 	case Terminal:
 		switch r {
 		case ClipboardReg:
 			return terminal.write(text, "c")
 		case PrimaryReg:
 			return terminal.write(text, "p")
-		default:
-			internal.write(text, r)
 		}
 	}
 	return nil

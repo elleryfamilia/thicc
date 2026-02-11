@@ -46,7 +46,7 @@ The `TERM` environment variable affects how terminals behave:
 We use `github.com/micro-editor/tcell/v2` (micro-editor's fork):
 
 - **Raw sequences**: Register with `Screen.RegisterRawSeq(seq)` to receive `*tcell.EventRaw` events
-- **Meta to Alt**: tcell converts `ModMeta` to `ModAlt` via `metaToAlt()` in `internal/action/events.go`
+- **Meta key conversion**: On macOS (Darwin), `ModMeta` (Cmd) is converted to `ModCtrl` for letter keys and special keys (so Cmd+C maps to Ctrl+C → Copy), while Cmd+symbol (e.g., Cmd+[) is converted to `ModAlt` to preserve Alt bindings. On other platforms, `ModMeta` is converted to `ModAlt` via `metaToAlt()`. See `internal/action/events.go`.
 - **Event types**: Key events come as `*tcell.EventKey`, raw sequences as `*tcell.EventRaw`
 
 ## Terminal-Specific Notes

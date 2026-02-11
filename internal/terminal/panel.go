@@ -7,8 +7,10 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
+	"unicode"
 
 	"github.com/creack/pty"
 	"github.com/ellery/thicc/internal/screen"
@@ -252,9 +254,12 @@ type Panel struct {
 	OriginalCommand []string
 
 	// Selection state for copy/paste
-	Selection          [2]Loc // Start and end of selection (Y is lineIndex into scrollback+live buffer)
-	mouseReleased      bool   // Track mouse button state for drag detection
-	keyboardSelecting  bool   // True when actively selecting with Shift+Arrow
+	Selection          [2]Loc    // Start and end of selection (Y is lineIndex into scrollback+live buffer)
+	mouseReleased      bool      // Track mouse button state for drag detection
+	keyboardSelecting  bool      // True when actively selecting with Shift+Arrow
+	lastClickTime      time.Time // For double-click detection
+	lastClickX         int       // X position of last click
+	lastClickY         int       // Y position (lineIndex) of last click
 
 	// Scrollback support
 	Scrollback     *ScrollbackBuffer // Circular buffer for terminal history
@@ -954,6 +959,83 @@ func (p *Panel) ClearSelection() {
 	p.Selection[1] = Loc{}
 }
 
+// SelectAll selects all content in the terminal (scrollback + live buffer)
+func (p *Panel) SelectAll() {
+	cols, rows := p.VT.Size()
+	scrollbackCount := p.Scrollback.Count()
+	p.Selection[0] = Loc{X: 0, Y: 0}
+	p.Selection[1] = Loc{X: cols, Y: scrollbackCount + rows}
+}
+
+// cellAt returns the character at the given position (x, lineIndex).
+// lineIndex is absolute (scrollback + live buffer).
+func (p *Panel) cellAt(x, lineIndex int) rune {
+	cols, rows := p.VT.Size()
+	scrollbackCount := p.Scrollback.Count()
+
+	if lineIndex < 0 {
+		return ' '
+	} else if lineIndex < scrollbackCount {
+		line := p.Scrollback.Get(lineIndex)
+		if line != nil && x < len(line.Cells) {
+			r := line.Cells[x].Char
+			if r == 0 {
+				return ' '
+			}
+			return r
+		}
+		return ' '
+	} else {
+		liveY := lineIndex - scrollbackCount
+		if liveY < rows && x < cols {
+			glyph := p.VT.Cell(x, liveY)
+			r := glyph.Char
+			if r == 0 {
+				return ' '
+			}
+			return r
+		}
+		return ' '
+	}
+}
+
+// isWordChar returns true if the rune is part of a "word" for
+// double-click selection purposes. Includes letters, digits,
+// underscores, hyphens, dots, tildes, and path separators — common
+// in filenames, paths, URLs, and identifiers.
+func isWordChar(r rune) bool {
+	return unicode.IsLetter(r) || unicode.IsDigit(r) ||
+		r == '_' || r == '-' || r == '.' || r == '~' || r == '/'
+}
+
+// selectWordAt selects the word at the given position.
+func (p *Panel) selectWordAt(x, lineIndex int) {
+	cols, _ := p.VT.Size()
+
+	ch := p.cellAt(x, lineIndex)
+	if !isWordChar(ch) {
+		// Clicked on whitespace/punctuation — select just the character
+		p.Selection[0] = Loc{X: x, Y: lineIndex}
+		p.Selection[1] = Loc{X: x + 1, Y: lineIndex}
+		return
+	}
+
+	// Scan left to find word start
+	startX := x
+	for startX > 0 && isWordChar(p.cellAt(startX-1, lineIndex)) {
+		startX--
+	}
+
+	// Scan right to find word end
+	endX := x + 1
+	for endX < cols && isWordChar(p.cellAt(endX, lineIndex)) {
+		endX++
+	}
+
+	p.Selection[0] = Loc{X: startX, Y: lineIndex}
+	p.Selection[1] = Loc{X: endX, Y: lineIndex}
+}
+
 // GetSelection returns the selected text from the terminal
 func (p *Panel) GetSelection() string {
 	if !p.HasSelection() {
@@ -1003,7 +1085,7 @@ func (p *Panel) GetSelection() string {
 		}
 	}
 
-	var result string
+	var lines []string
 	for lineIndex := start.Y; lineIndex <= end.Y; lineIndex++ {
 		lineStart := 0
 		lineEnd := cols
@@ -1015,17 +1097,16 @@ func (p *Panel) GetSelection() string {
 			lineEnd = end.X
 		}
 
+		var line strings.Builder
 		for x := lineStart; x < lineEnd && x < cols; x++ {
-			result += string(getCell(x, lineIndex))
+			line.WriteRune(getCell(x, lineIndex))
 		}
 
-		// Add newline between lines (but not at the end)
-		if lineIndex < end.Y {
-			result += "\n"
-		}
+		// Trim trailing whitespace — empty terminal cells are spaces
+		lines = append(lines, strings.TrimRight(line.String(), " "))
 	}
 
-	return result
+	return strings.Join(lines, "\n")
 }
 
 // isSelected returns true if the given cell position is within the selection

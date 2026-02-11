@@ -13,6 +13,9 @@ type terminalClipboard struct{}
 var terminal terminalClipboard
 
 func (t terminalClipboard) read(reg string) (string, error) {
+	if screen.Screen == nil {
+		return "", errors.New("screen not initialized")
+	}
 	screen.Screen.GetClipboard(reg)
 	// wait at most 200ms for response
 	for {
@@ -29,5 +32,8 @@ func (t terminalClipboard) read(reg string) (string, error) {
 }
 
 func (t terminalClipboard) write(text, reg string) error {
+	if screen.Screen == nil {
+		return errors.New("screen not initialized")
+	}
 	return screen.Screen.SetClipboard(text, reg)
 }

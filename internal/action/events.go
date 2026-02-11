@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"strings"
+	"unicode"
 
 	"github.com/micro-editor/tcell/v2"
 )
@@ -44,7 +45,51 @@ func metaToAlt(mod tcell.ModMask) tcell.ModMask {
 	return mod
 }
 
+func metaToCtrl(mod tcell.ModMask) tcell.ModMask {
+	if mod&tcell.ModMeta != 0 {
+		mod &= ^tcell.ModMeta
+		mod |= tcell.ModCtrl
+	}
+	return mod
+}
+
 func keyEvent(e *tcell.EventKey) KeyEvent {
+	// When ModMeta is set, the user pressed Cmd (macOS) or Super (Linux).
+	// Terminals rarely send ModMeta on native Linux, so receiving it
+	// almost always means the user is on macOS — either locally or
+	// connecting remotely via ssh/mosh. Map Meta to Ctrl so that
+	// Cmd+C/V/X/Z/A etc. trigger the expected Ctrl-based bindings
+	// (Copy, Paste, Cut, Undo, SelectAll).
+	if e.Modifiers()&tcell.ModMeta != 0 {
+		if e.Key() == tcell.KeyRune {
+			r := e.Rune()
+			if unicode.IsLetter(r) {
+				// Cmd+letter → Ctrl+letter with proper KeyCtrl* code
+				// so it matches bindings like "Ctrl-c": "Copy|CopyLine"
+				lower := unicode.ToLower(r)
+				ctrlKey := tcell.KeyCtrlA + tcell.Key(lower-'a')
+				return KeyEvent{
+					code: ctrlKey,
+					mod:  metaToCtrl(e.Modifiers()),
+					r:    rune(ctrlKey),
+				}
+			}
+			// Cmd+symbol (e.g., Cmd+[, Cmd+]) → Alt+symbol
+			// preserves bindings like "Alt-[": "DiffPrevious"
+			return KeyEvent{
+				code: e.Key(),
+				mod:  metaToAlt(e.Modifiers()),
+				r:    r,
+			}
+		}
+		// Cmd+special key (arrows, Home, etc.) → Ctrl+special
+		return KeyEvent{
+			code: e.Key(),
+			mod:  metaToCtrl(e.Modifiers()),
+		}
+	}
+
+	// No ModMeta: keep existing Meta→Alt behavior for other cases
 	ke := KeyEvent{
 		code: e.Key(),
 		mod:  metaToAlt(e.Modifiers()),
@@ -172,9 +217,15 @@ func ConstructEvent(event tcell.Event) (Event, error) {
 			esc: e.EscSeq(),
 		}, nil
 	case *tcell.EventMouse:
+		mod := e.Modifiers()
+		if mod&tcell.ModMeta != 0 {
+			mod = metaToCtrl(mod)
+		} else {
+			mod = metaToAlt(mod)
+		}
 		return MouseEvent{
 			btn: e.Buttons(),
-			mod: metaToAlt(e.Modifiers()),
+			mod: mod,
 		}, nil
 	}
 	return nil, errors.New("No micro event equivalent")

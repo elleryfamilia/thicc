@@ -3,6 +3,7 @@ package sourcecontrol
 import (
 	"log"
 
+	"github.com/ellery/thicc/internal/clipboard"
 	"github.com/micro-editor/tcell/v2"
 )
 
@@ -21,7 +22,7 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 	case *tcell.EventPaste:
 		// Handle paste into commit message input
 		if p.Focus && p.Section == SectionCommitInput && len(p.StagedFiles) > 0 {
-			p.PasteToCommitMsg(ev.Text())
+			p.PasteToCommitMsg(clipboard.PasteText(ev.Text()))
 			if p.OnRefresh != nil {
 				p.OnRefresh()
 			}

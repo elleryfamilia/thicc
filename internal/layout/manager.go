@@ -3270,8 +3270,9 @@ func (lm *LayoutManager) handleTerminalPaste(event tcell.Event) bool {
 
 	// Handle tcell.EventPaste (bracketed paste from outer terminal)
 	if ev, ok := event.(*tcell.EventPaste); ok {
-		log.Printf("THICC: EventPaste for terminal, len=%d", len(ev.Text()))
-		term.Write([]byte(ev.Text()))
+		text := clipboard.PasteText(ev.Text())
+		log.Printf("THICC: EventPaste for terminal, len=%d", len(text))
+		term.Write([]byte(text))
 		return true
 	}
 

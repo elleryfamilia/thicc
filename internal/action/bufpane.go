@@ -9,6 +9,7 @@ import (
 	"github.com/micro-editor/tcell/v2"
 	lua "github.com/yuin/gopher-lua"
 	"github.com/ellery/thicc/internal/buffer"
+	"github.com/ellery/thicc/internal/clipboard"
 	"github.com/ellery/thicc/internal/config"
 	"github.com/ellery/thicc/internal/display"
 	ulua "github.com/ellery/thicc/internal/lua"
@@ -472,7 +473,7 @@ func (h *BufPane) HandleEvent(event tcell.Event) {
 		}
 		h.DoKeyEvent(re)
 	case *tcell.EventPaste:
-		h.paste(e.Text())
+		h.paste(clipboard.PasteText(e.Text()))
 		h.Relocate()
 	case *tcell.EventKey:
 		ke := keyEvent(e)
@@ -483,9 +484,15 @@ func (h *BufPane) HandleEvent(event tcell.Event) {
 		}
 	case *tcell.EventMouse:
 		if e.Buttons() != tcell.ButtonNone {
+			mod := e.Modifiers()
+			if mod&tcell.ModMeta != 0 {
+				mod = metaToCtrl(mod)
+			} else {
+				mod = metaToAlt(mod)
+			}
 			me := MouseEvent{
 				btn:   e.Buttons(),
-				mod:   metaToAlt(e.Modifiers()),
+				mod:   mod,
 				state: MousePress,
 			}
 			isDrag := len(h.mousePressed) > 0

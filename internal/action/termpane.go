@@ -149,7 +149,7 @@ func (t *TermPane) HandleEvent(event tcell.Event) {
 			default:
 			}
 		}
-		if e.Key() == tcell.KeyCtrlC && t.HasSelection() {
+		if ke.code == tcell.KeyCtrlC && t.HasSelection() {
 			clipboard.Write(t.GetSelection(t.GetView().Width), clipboard.ClipboardReg)
 			InfoBar.Message("Copied selection to clipboard")
 		} else if t.Status != shell.TTDone {

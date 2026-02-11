@@ -2,6 +2,7 @@ package terminal
 
 import (
 	"log"
+	"time"
 	"unicode/utf8"
 
 	"github.com/ellery/thicc/internal/clipboard"
@@ -48,8 +49,10 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 			return true
 		}
 
-		// Handle Ctrl+C: copy selection if exists, otherwise send SIGINT
-		if ev.Key() == tcell.KeyCtrlC {
+		// Handle copy: Ctrl+C or Cmd+C (macOS sends KeyRune 'c' with ModMeta)
+		isCopy := ev.Key() == tcell.KeyCtrlC ||
+			(ev.Key() == tcell.KeyRune && (ev.Rune() == 'c' || ev.Rune() == 'C') && ev.Modifiers()&tcell.ModMeta != 0)
+		if isCopy {
 			if p.HasSelection() {
 				text := p.GetSelection()
 				clipboard.Write(text, clipboard.ClipboardReg)
@@ -61,7 +64,22 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 				}
 				return true
 			}
-			// No selection - fall through to send SIGINT to terminal
+			// No selection - fall through to send SIGINT/char to terminal
+		}
+
+		// Handle select all: Cmd+A (macOS sends KeyRune 'a' with ModMeta)
+		// Note: Ctrl+A (KeyCtrlA) is NOT intercepted here — it goes to the shell (beginning of line)
+		if ev.Key() == tcell.KeyRune && (ev.Rune() == 'a' || ev.Rune() == 'A') && ev.Modifiers()&tcell.ModMeta != 0 {
+			p.SelectAll()
+			// Auto-copy the full selection to clipboard
+			text := p.GetSelection()
+			if text != "" {
+				clipboard.Write(text, clipboard.ClipboardReg)
+			}
+			if p.OnRedraw != nil {
+				p.OnRedraw()
+			}
+			return true
 		}
 
 		// Handle Shift+Arrow for keyboard selection
@@ -96,8 +114,9 @@ func (p *Panel) HandleEvent(event tcell.Event) bool {
 		return result
 	case *tcell.EventPaste:
 		// Handle paste events directly (backup if layout manager doesn't catch it)
-		log.Printf("THICC Terminal: Paste event, len=%d", len(ev.Text()))
-		_, err := p.Write([]byte(ev.Text()))
+		text := clipboard.PasteText(ev.Text())
+		log.Printf("THICC Terminal: Paste event, len=%d", len(text))
+		_, err := p.Write([]byte(text))
 		return err == nil
 	case *tcell.EventMouse:
 		return p.handleMouse(ev)
@@ -167,6 +186,30 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 		lineIndex := scrollbackCount - p.scrollOffset + y
 
 		if p.mouseReleased {
+			now := time.Now()
+			// Detect double-click: same position within 500ms
+			if now.Sub(p.lastClickTime) < 500*time.Millisecond &&
+				x == p.lastClickX && lineIndex == p.lastClickY {
+				// Double-click — select word at cursor
+				p.selectWordAt(x, lineIndex)
+				p.mouseReleased = true // Prevent ButtonNone from overwriting the word selection
+				p.lastClickTime = time.Time{} // Reset to prevent triple-click
+				// Auto-copy the selected word
+				if p.HasSelection() {
+					text := p.GetSelection()
+					if text != "" {
+						clipboard.Write(text, clipboard.ClipboardReg)
+					}
+				}
+				if p.OnRedraw != nil {
+					p.OnRedraw()
+				}
+				return true
+			}
+			p.lastClickTime = now
+			p.lastClickX = x
+			p.lastClickY = lineIndex
+
 			// New click - start selection
 			p.Selection[0] = Loc{X: x, Y: lineIndex}
 			p.Selection[1] = Loc{X: x, Y: lineIndex}
@@ -191,6 +234,19 @@ func (p *Panel) handleMouse(ev *tcell.EventMouse) bool {
 			p.Selection[1] = Loc{X: x, Y: lineIndex}
 			p.mouseReleased = true
 			log.Printf("THICC Terminal: Selection end at (%d, %d) lineIndex", x, lineIndex)
+
+			// Auto-copy selection to clipboard on mouse release.
+			// This is necessary because Cmd+C is intercepted by the
+			// outer macOS terminal and never reaches the app over
+			// ssh/mosh/zellij. Copy-on-select ensures the selected
+			// text is available for paste without needing a key press.
+			if p.HasSelection() {
+				text := p.GetSelection()
+				if text != "" {
+					clipboard.Write(text, clipboard.ClipboardReg)
+					log.Printf("THICC Terminal: Auto-copied %d chars to clipboard", len(text))
+				}
+			}
 
 			// Trigger redraw
 			if p.OnRedraw != nil {
@@ -224,6 +280,14 @@ func (p *Panel) handleShiftArrow(ev *tcell.EventKey) bool {
 
 	// Auto-scroll if selection moved outside visible area
 	p.scrollToShowSelection()
+
+	// Auto-copy selection to clipboard as user extends it
+	if p.HasSelection() {
+		text := p.GetSelection()
+		if text != "" {
+			clipboard.Write(text, clipboard.ClipboardReg)
+		}
+	}
 
 	// Trigger redraw to show selection
 	if p.OnRedraw != nil {
