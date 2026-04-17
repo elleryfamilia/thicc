@@ -24,7 +24,6 @@ var debugFile *os.File
 
 func init() {
 	debugPTY = os.Getenv("THICC_DEBUG_PTY") == "1"
-	log.Printf("THICC: Debug PTY check - THICC_DEBUG_PTY=%q, debugPTY=%v", os.Getenv("THICC_DEBUG_PTY"), debugPTY)
 	if debugPTY {
 		var err error
 		debugFile, err = os.Create("/tmp/thicc_pty_debug.log")
