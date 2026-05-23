@@ -503,7 +503,6 @@ func (d *Dashboard) GetSelectedAITool() *aiterminal.AITool {
 		return nil
 	}
 
-	// Match by Name since it's unique (Command is not unique, e.g., Claude vs Claude YOLO)
 	for i := range d.AITools {
 		if d.AITools[i].Name == selectedName {
 			return &d.AITools[i]
