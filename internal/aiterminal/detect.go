@@ -27,12 +27,6 @@ func GetAvailableAITools() []AITool {
 			InstallCommand: "curl -fsSL https://raw.githubusercontent.com/elleryfamilia/thicc/main/scripts/install-tool.sh | sh -s -- @anthropic-ai/claude-code",
 		},
 		{
-			Name:        "Claude Code (YOLO)",
-			Command:     "claude",
-			Args:        []string{"--dangerously-skip-permissions"},
-			Description: "Claude Code with auto-accept permissions",
-		},
-		{
 			Name:           "Gemini CLI",
 			Command:        "gemini",
 			Args:           []string{},
@@ -92,19 +86,6 @@ func GetAvailableAITools() []AITool {
 			continue // Already marked as available
 		}
 		tools[i].Available = isCommandAvailable(tools[i].Command)
-	}
-
-	// YOLO variant inherits availability from regular Claude
-	for i := range tools {
-		if tools[i].Name == "Claude Code (YOLO)" {
-			for _, t := range tools {
-				if t.Name == "Claude Code" {
-					tools[i].Available = t.Available
-					break
-				}
-			}
-			break
-		}
 	}
 
 	return tools
